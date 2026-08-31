@@ -12,17 +12,9 @@ import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 import funkin.api.discord.DiscordClient;
 #end
 
-/**
- * A core class which provides a store of user-configurable, globally relevant values.
- */
 @:nullSafety
 class Preferences
 {
-  /**
-   * FPS
-   * Always the refresh rate of the display on mobile, or 60 on web.
-   * @default `60`
-   */
   public static var framerate(get, set):Int;
 
   static function get_framerate():Int
@@ -65,10 +57,6 @@ class Preferences
     #end
   }
 
-  /**
-   * Whether some particularly foul language is displayed.
-   * @default `true`
-   */
   public static var naughtyness(get, set):Bool;
 
   static function get_naughtyness():Bool
@@ -92,10 +80,6 @@ class Preferences
     #end
   }
 
-  /**
-   * If enabled, the strumline is at the bottom of the screen rather than the top.
-   * @default `false`
-   */
   public static var downscroll(get, set):Bool;
 
   static function get_downscroll():Bool
@@ -111,10 +95,21 @@ class Preferences
     return value;
   }
 
-  /**
-   * If disabled, flashing lights in the main menu and other areas will be less intense.
-   * @default `true`
-   */
+  public static var middlescroll(get, set):Bool;
+
+  static function get_middlescroll():Bool
+  {
+    return Save?.instance?.options?.middlescroll ?? false;
+  }
+
+  static function set_middlescroll(value:Bool):Bool
+  {
+    var save:Save = Save.instance;
+    save.options.middlescroll = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var flashingLights(get, set):Bool;
 
   static function get_flashingLights():Bool
@@ -130,10 +125,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If disabled, the camera bump synchronized to the beat.
-   * @default `false`
-   */
   public static var zoomCamera(get, set):Bool;
 
   static function get_zoomCamera():Bool
@@ -149,11 +140,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, an FPS and memory counter will be displayed even if this is not a debug build.
-   * Always disabled on release mobile builds.
-   * @default `Off`
-   */
   public static var debugDisplay(get, set):DebugDisplayMode;
 
   static function get_debugDisplay():DebugDisplayMode
@@ -179,10 +165,6 @@ class Preferences
     #end
   }
 
-  /**
-   * Opacity of the debug display's background.
-   * @default `50`
-   */
   public static var debugDisplayBGOpacity(get, set):Int;
 
   static function get_debugDisplayBGOpacity():Int
@@ -200,10 +182,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, haptic feedback will be enabled.
-   * @default `All`
-   */
   public static var hapticsMode(get, set):HapticsMode;
 
   static function get_hapticsMode():HapticsMode
@@ -241,10 +219,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * Multiplier of intensity for all the haptic feedback effects.
-   * @default `2.5`
-   */
   public static var hapticsIntensityMultiplier(get, set):Float;
 
   static function get_hapticsIntensityMultiplier():Float
@@ -260,11 +234,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, the game will automatically pause when tabbing out.
-   * Always enabled on mobile.
-   * @default `true`
-   */
   public static var autoPause(get, set):Bool;
 
   static function get_autoPause():Bool
@@ -290,10 +259,6 @@ class Preferences
     #end
   }
 
-  /**
-   * If enabled, the game will automatically launch in fullscreen on startup.
-   * @default `true`
-   */
   public static var autoFullscreen(get, set):Bool;
 
   static function get_autoFullscreen():Bool
@@ -309,11 +274,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * A global audio offset in milliseconds.
-   * This is used to sync the audio.
-   * @default `0`
-   */
   public static var globalOffset(get, set):Int;
 
   static function get_globalOffset():Int
@@ -329,10 +289,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, the game will utilize VSync (or adaptive VSync) on startup.
-   * @default `OFF`
-   */
   public static var vsyncMode(get, set):lime.ui.WindowVSyncMode;
 
   static function get_vsyncMode():lime.ui.WindowVSyncMode
@@ -452,11 +408,6 @@ class Preferences
   }
   #end
 
-  /**
-   * If >0, the game will display a semi-opaque background under the notes.
-   * `0` for no background, `100` for solid black if you're freaky like that
-   * @default `0`
-   */
   public static var strumlineBackgroundOpacity(get, set):Int;
 
   static function get_strumlineBackgroundOpacity():Int
@@ -472,10 +423,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, the game will hide the mouse when taking a screenshot.
-   * @default `true`
-   */
   public static var shouldHideMouse(get, set):Bool;
 
   static function get_shouldHideMouse():Bool
@@ -491,10 +438,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, the game will show a preview after taking a screenshot.
-   * @default `true`
-   */
   public static var fancyPreview(get, set):Bool;
 
   static function get_fancyPreview():Bool
@@ -510,10 +453,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * If enabled, the game will show the preview only after a screenshot is saved.
-   * @default `true`
-   */
   public static var previewOnSave(get, set):Bool;
 
   static function get_previewOnSave():Bool
@@ -529,22 +468,16 @@ class Preferences
     return value;
   }
 
-  /**
-   * Loads the user's preferences from the save data and apply them.
-   */
   public static function init():Void
   {
-    // Apply the autoPause setting (enables automatic pausing on focus lost).
     FlxG.autoPause = Preferences.autoPause;
 
-    // Apply the debugDisplay setting (enables the FPS and RAM display).
     setDebugDisplayMode(Preferences.debugDisplay);
     setDebugDisplayBGOpacity(Preferences.debugDisplayBGOpacity / 100);
 
     toggleFramerateCap(Preferences.unlockedFramerate);
 
     #if mobile
-    // Apply the allowScreenTimeout setting.
     lime.system.System.allowScreenTimeout = Preferences.screenTimeout;
     #end
   }
@@ -575,10 +508,6 @@ class Preferences
     Main.debugDisplay.backgroundOpacity = value;
   }
 
-  /**
-   * If enabled, subtitles will appear during some songs and cutscenes.
-   * @default `true`
-   */
   public static var subtitles(get, set):Bool;
 
   static function get_subtitles():Bool
@@ -595,10 +524,6 @@ class Preferences
   }
 
   #if mobile
-  /**
-   * If enabled, device will be able to sleep on its own.
-   * @default `false`
-   */
   public static var screenTimeout(get, set):Bool;
 
   static function get_screenTimeout():Bool
@@ -616,10 +541,6 @@ class Preferences
     return value;
   }
 
-  /**
-   * Controls Scheme for the hitbox.
-   * @default `4 Lanes`
-   */
   public static var controlsScheme(get, set):String;
 
   static function get_controlsScheme():String
@@ -636,10 +557,6 @@ class Preferences
   }
 
   #if FEATURE_MOBILE_IAP
-  /**
-   * If bought, the game will not show any ads.
-   * @default `false`
-   */
   @:unreflective
   public static var noAds(get, set):Bool;
 
