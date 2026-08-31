@@ -35,6 +35,7 @@ jobs:
             libasound2-dev \
             libudev-dev \
             libpipewire-0.3-dev \
+            libxkbcommon-dev \
             libwayland-dev \
             libwayland-bin \
             wayland-protocols \
@@ -78,7 +79,8 @@ jobs:
             | haxelib run lime setup android
 
       - name: Build Android APK
-        run: haxelib run lime build android -release -DGITHUB_BUILD
+        run: |
+          haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Locate build output
         id: apk
