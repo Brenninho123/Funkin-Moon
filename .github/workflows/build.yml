@@ -82,6 +82,10 @@ jobs:
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
 
+      - name: Build Lime Linux native tools
+        run: |
+          haxelib run lime rebuild cpp
+
       - name: Configure Lime Android
         run: |
           printf '%s\n%s\n%s\n' \
@@ -90,12 +94,15 @@ jobs:
             "$JAVA_HOME" \
             | haxelib run lime setup android
 
-      - name: Rebuild Lime Android
+      - name: Build Lime Android native libraries
         run: |
           haxelib run lime rebuild android
 
-      - name: Verify Lime Android library
+      - name: Verify Lime libraries
         run: |
+          test -f ".haxelib/lime/git/ndll/Linux64/lime.ndll" \
+            || test -f ".haxelib/lime/git/ndll/Linux/lime.ndll"
+
           test -f ".haxelib/lime/git/ndll/Android/liblime-64.so"
 
       - name: Build Android APK
