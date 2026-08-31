@@ -32,6 +32,12 @@ jobs:
             "build-tools;35.0.0" \
             "ndk;25.2.9519653"
 
+      - name: Configure Android environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -75,14 +81,6 @@ jobs:
 
       - name: Rebuild Lime native tools
         run: haxelib run lime rebuild cpp
-
-      - name: Configure Lime for Android
-        run: |
-          printf 'n\nn\nn\n%s\n%s\n%s\n' \
-            "$ANDROID_SDK_ROOT" \
-            "$ANDROID_SDK_ROOT/ndk/25.2.9519653" \
-            "$JAVA_HOME" \
-            | haxelib run lime setup android
 
       - name: Build Android APK
         run: |
