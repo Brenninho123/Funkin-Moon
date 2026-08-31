@@ -9,6 +9,10 @@ jobs:
   android:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_SDK: ${{ env.ANDROID_SDK_ROOT }}
+      ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,6 +27,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Configure Android environment
+        run: |
+          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
       - name: Install Android components
         run: |
@@ -77,16 +88,12 @@ jobs:
         run: haxelib run lime rebuild cpp
 
       - name: Configure Lime Android
-        env:
-          ANDROID_SDK: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
-          JAVA_HOME_PATH: ${{ env.JAVA_HOME }}
         run: |
-          printf '%s\n%s\n%s\n' \
-            "$ANDROID_SDK" \
-            "$ANDROID_NDK" \
-            "$JAVA_HOME_PATH" \
-            | haxelib run lime setup android
+          haxelib run lime setup android <<EOF
+          $ANDROID_SDK
+          $ANDROID_NDK_ROOT
+          $JAVA_HOME
+          EOF
 
       - name: Build Android APK
         run: |
