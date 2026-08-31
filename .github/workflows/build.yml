@@ -24,8 +24,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android NDK
-        run: sdkmanager --install "ndk;25.2.9519653"
+      - name: Install Android components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;25.2.9519653"
 
       - name: Install system dependencies
         run: |
@@ -73,14 +78,15 @@ jobs:
 
       - name: Configure Lime for Android
         run: |
-          printf 'n\n%s\n%s\n%s\nn\n' \
+          printf 'n\nn\nn\n%s\n%s\n%s\n' \
             "$ANDROID_SDK_ROOT" \
             "$ANDROID_SDK_ROOT/ndk/25.2.9519653" \
             "$JAVA_HOME" \
             | haxelib run lime setup android
 
       - name: Build Android APK
-        run: haxelib run lime build android -release -DGITHUB_BUILD
+        run: |
+          haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Locate build output
         id: apk
