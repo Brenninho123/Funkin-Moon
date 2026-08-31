@@ -37,6 +37,9 @@ jobs:
       - name: Install project dependencies
         run: haxelib run hmm install
 
+      - name: Rebuild Lime native tools
+        run: haxelib run lime rebuild cpp
+
       - name: Configure Lime for Android
         run: |
           printf 'n\n%s\n%s\n%s\nn\n' \
