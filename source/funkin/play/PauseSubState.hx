@@ -27,40 +27,30 @@ import funkin.util.TouchUtil;
 #if FEATURE_MOBILE_ADVERTISEMENTS
 import funkin.mobile.util.AdMobUtil;
 #end
+#if FEATURE_CHART_EDITOR
+import funkin.ui.debug.charting.ChartEditorState;
+#end
 
-/**
- * Parameters for initializing the PauseSubState.
- */
 typedef PauseSubStateParams =
 {
-  /**
-   * Which mode to start in. Dictates what entries are displayed.
-   */
   ?mode:PauseMode,
-  /**
-   * Whether the game paused because the window lost focus.
-   */
   ?lostFocus:Bool
 };
 
-/**
- * The menu displayed when the Play State is paused.
- */
 class PauseSubState extends MusicBeatSubState
 {
-  // ===============
-  // Constants
-  // ===============
-
-  /**
-   * Pause menu entries for when the game is paused during a song.
-   */
   static final PAUSE_MENU_ENTRIES_STANDARD:Array<PauseMenuEntry> = [
     {text: 'Resume', callback: resume},
     {
       text: 'Restart Song',
       callback: restartPlayState
     },
+    #if (mobile && FEATURE_CHART_EDITOR)
+    {
+      text: 'Chart Editor',
+      callback: openChartEditorFromPause
+    },
+    #end
     {
       text: 'Change Difficulty',
       callback: switchMode.bind(_, Difficulty)
@@ -73,9 +63,6 @@ class PauseSubState extends MusicBeatSubState
     {text: 'Exit to Menu', callback: quitToMenu},
   ];
 
-  /**
-   * Pause menu entries for when the game is paused in the Chart Editor preview.
-   */
   static final PAUSE_MENU_ENTRIES_CHARTING:Array<PauseMenuEntry> = [
     {text: 'Resume', callback: resume},
     {
@@ -85,19 +72,13 @@ class PauseSubState extends MusicBeatSubState
     {text: 'Return to Chart Editor', callback: quitToChartEditor},
   ];
 
-  /**
-   * Pause menu entries for when the user selects "Change Difficulty".
-   */
   static final PAUSE_MENU_ENTRIES_DIFFICULTY:Array<PauseMenuEntry> = [
     {
       text: 'Back',
       callback: switchMode.bind(_, Standard)
-    } // Other entries are added dynamically.
+    }
   ];
 
-  /**
-   * Pause menu entries for when the game is paused during a video cutscene.
-   */
   static final PAUSE_MENU_ENTRIES_VIDEO_CUTSCENE:Array<PauseMenuEntry> = [
     {text: 'Resume', callback: resume},
     {
@@ -108,9 +89,6 @@ class PauseSubState extends MusicBeatSubState
     {text: 'Exit to Menu', callback: quitToMenu},
   ];
 
-  /**
-   * Pause menu entries for when the game is paused during a conversation.
-   */
   static final PAUSE_MENU_ENTRIES_CONVERSATION:Array<PauseMenuEntry> = [
     {text: 'Resume', callback: resume},
     {
@@ -121,140 +99,57 @@ class PauseSubState extends MusicBeatSubState
     {text: 'Exit to Menu', callback: quitToMenu},
   ];
 
-  /**
-   * Duration for the music to fade in when the pause menu is opened.
-   */
   static final MUSIC_FADE_IN_TIME:Float = 5;
 
-  /**
-   * The final volume for the music when the pause menu is opened.
-   */
   static final MUSIC_FINAL_VOLUME:Float = 0.75;
 
   static final CHARTER_FADE_DELAY:Float = 15.0;
   static final CHARTER_FADE_DURATION:Float = 0.75;
 
-  /**
-   * Defines which pause music to use.
-   */
   public static var musicSuffix:String = '';
 
-  /**
-   * Reset the pause configuration to the default.
-   */
   public static function reset():Void
   {
     musicSuffix = '';
   }
 
-  // ===============
-  // Status Variables
-  // ===============
-
-  /**
-   * Disallow input until transitions are complete!
-   * This prevents the pause menu from immediately closing when opened, among other things.
-   */
   public var allowInput:Bool = true;
 
-  // If this is true, it means we are frame 1 of our substate.
   var justOpened:Bool = true;
 
-  /**
-   * The entries currently displayed in the pause menu.
-   */
   var currentMenuEntries:Array<PauseMenuEntry>;
 
-  /**
-   * The index of `currentMenuEntries` that is currently selected.
-   */
   var currentEntry:Int = 0;
 
-  /**
-   * The mode that the pause menu is currently in.
-   */
   var currentMode:PauseMode;
 
-  /**
-   * Whether the game paused because the window lost focus.
-   */
   var lostFocus:Bool = false;
 
-  // ===============
-  // Graphics Variables
-  // ===============
-
   #if mobile
-  /**
-   * The pause button for the game, only appears in Mobile targets. Shows up breifly to finish the pause animation.
-   */
   var pauseButton:FunkinSprite;
 
-  /**
-   * The pause circle for the game, only appears in Mobile targets. Shows up breifly to finish the pause animation.
-   */
   var pauseCircle:FunkinSprite;
   #end
 
-  /**
-   * The placeholder sprite displayed when an advertisement fails to load or display.
-   */
-  // var failedAdPlaceHolder:FunkinSprite;
-
-  /**
-   * The semi-transparent black background that appears when the game is paused.
-   */
   var background:FunkinSprite;
 
-  /**
-   * The metadata displayed in the top right.
-   */
   var metadata:FlxTypedSpriteGroup<FlxText>;
 
-  /**
-   * A text object that displays the current practice mode status.
-   */
   var metadataPractice:FlxText;
 
-  /**
-   * A text object that displays the current death count.
-   */
   var metadataDeaths:FlxText;
 
-  /**
-   * A text object which displays the current song's artist.
-   * Fades to the charter after a period before fading back.
-   */
   var metadataArtist:FlxText;
 
-  /**
-   * A text object that displays the current global offset.
-   */
   var offsetText:FlxText;
 
-  /**
-   * A text object that displays information about the current global offset.
-   */
   var offsetTextInfo:FlxText;
 
-  /**
-   * The actual text objects for the menu entries.
-   */
   var menuEntryText:FlxTypedSpriteGroup<AtlasText>;
 
-  /**
-   * Callback that gets called once substate gets open.
-   */
   var onPause:Void->Void;
 
-  // ===============
-  // Audio Variables
-  // ===============
   var pauseMusic:FunkinSound;
-
-  // ===============
-  // Constructor
-  // ===============
 
   public function new(?params:PauseSubStateParams, ?onPause:Void->Void)
   {
@@ -264,19 +159,9 @@ class PauseSubState extends MusicBeatSubState
     this.onPause = onPause;
   }
 
-  // ===============
-  // Lifecycle Functions
-  // ===============
-
-  /**
-   * Called when the state is first loaded.
-   */
   override public function create():Void
   {
-    // Add banner ad when game is state is first loaded.
     #if FEATURE_MOBILE_ADVERTISEMENTS
-    // extension.admob.Admob.onEvent.add(onBannerEvent);
-
     AdMobUtil.addBanner(extension.admob.AdmobBannerSize.BANNER, extension.admob.AdmobBannerAlign.TOP_LEFT);
     #end
 
@@ -299,10 +184,6 @@ class PauseSubState extends MusicBeatSubState
     startCharterTimer();
   }
 
-  /**
-   * Called every frame.
-   * @param elapsed The time elapsed since the last frame, in seconds.
-   */
   override public function update(elapsed:Float):Void
   {
     super.update(elapsed);
@@ -310,14 +191,8 @@ class PauseSubState extends MusicBeatSubState
     handleInputs();
   }
 
-  /**
-   * Called when the state is closed.
-   */
   override public function destroy():Void
   {
-    // #if FEATURE_MOBILE_ADVERTISEMENTS
-    // extension.admob.Admob.onEvent.remove(onBannerEvent);
-    // #end
     super.destroy();
     charterFadeTween.cancel();
     charterFadeTween = null;
@@ -329,44 +204,6 @@ class PauseSubState extends MusicBeatSubState
     onPause = null;
   }
 
-  // ===============
-  // Initialization Functions
-  // ===============
-
-  /*#if FEATURE_MOBILE_ADVERTISEMENTS
-    function onBannerEvent(event:extension.admob.AdmobEvent):Void
-    {
-      if (event.name.indexOf('BANNER') == -1) return;
-
-      if (event.errorCode != null && event.errorDescription != null)
-      {
-        if (failedAdPlaceHolder == null || members.indexOf(failedAdPlaceHolder) == -1)
-        {
-          var scale:Float = Math.min(FlxG.stage.stageWidth / FlxG.width, FlxG.stage.stageHeight / FlxG.height);
-
-          #if android
-          scale = Math.max(scale, 1);
-          #else
-          scale = Math.min(scale, 1);
-          #end
-
-          failedAdPlaceHolder = new FunkinSprite(0, 0);
-          failedAdPlaceHolder.makeSolidColor(Math.floor(320 * scale), Math.floor(50 * scale), FlxColor.RED);
-          failedAdPlaceHolder.updateHitbox();
-          failedAdPlaceHolder.screenCenter(X);
-          failedAdPlaceHolder.scrollFactor.set(0, 0);
-          add(failedAdPlaceHolder);
-        }
-      }
-      else if (failedAdPlaceHolder != null && members.indexOf(failedAdPlaceHolder) != -1)
-      {
-        remove(failedAdPlaceHolder);
-      }
-    }
-    #end */
-  /**
-   * Play the pause music.
-   */
   function startPauseMusic():Void
   {
     var pauseMusicPath:String = Paths.music('breakfast$musicSuffix/breakfast$musicSuffix');
@@ -377,35 +214,24 @@ class PauseSubState extends MusicBeatSubState
       FlxG.log.warn('Could not play pause music: ${pauseMusicPath} does not exist!');
     }
 
-    // Start playing at a random point in the song.
     pauseMusic.play(false, FlxG.random.int(0, Std.int(pauseMusic.length / 2)));
     pauseMusic.fadeIn(MUSIC_FADE_IN_TIME, 0, MUSIC_FINAL_VOLUME);
   }
 
-  /**
-   * Called when the game loses focus. Used to temporarily pause the sound.
-   */
   override public function onFocusLost():Void
   {
     super.onFocusLost();
     if (Preferences.autoPause) pauseMusic.pause();
   }
 
-  /**
-   * Called when the game loses focus. Used to temporarily pause the sound.
-   */
   override public function onFocus():Void
   {
     super.onFocus();
     if (Preferences.autoPause) pauseMusic.resume();
   }
 
-  /**
-   * Render the semi-transparent black background.
-   */
   function buildBackground():Void
   {
-    // Using state.bgColor causes bugs!
     background = new FunkinSprite(0, 0);
     background.makeSolidColor(camera.width, camera.height, FlxColor.BLACK);
     background.alpha = 0.0;
@@ -463,9 +289,6 @@ class PauseSubState extends MusicBeatSubState
     #end
   }
 
-  /**
-   * Render the metadata in the top right.
-   */
   function buildMetadata():Void
   {
     metadata = new FlxTypedSpriteGroup<FlxText>();
@@ -515,7 +338,6 @@ class PauseSubState extends MusicBeatSubState
     metadataPractice.scrollFactor.set(0, 0);
     metadata.add(metadataPractice);
 
-    // Right side
     offsetText = new FlxText(20, metadataSong.y - 12, (camera.width + 10) - Math.max(40, funkin.ui.FullScreenScaleMode.gameNotchSize.x),
       'Global Offset: ${Preferences.globalOffset ?? 0}ms');
     offsetText.setFormat(Paths.font('vcr.ttf'), 16, FlxColor.WHITE, FlxTextAlign.RIGHT);
@@ -604,9 +426,6 @@ class PauseSubState extends MusicBeatSubState
   var dataFadeTimer = new FlxTimer();
   var hapticTimer = new FlxTimer();
 
-  /**
-   * Perform additional animations to transition the pause menu in when it is first displayed.
-   */
   function transitionIn():Void
   {
     FlxTween.tween(background, {alpha: 0.6}, 0.8, {ease: FlxEase.quartOut});
@@ -637,7 +456,6 @@ class PauseSubState extends MusicBeatSubState
 
   function transitionMetadataIn():Void
   {
-    // Animate each element a little bit downwards.
     var delay:Float = 0.1;
     for (child in metadata.members)
     {
@@ -646,23 +464,16 @@ class PauseSubState extends MusicBeatSubState
     }
   }
 
-  // ===============
-  // Input Handling
-  // ===============
   var fastOffset:Bool = false;
   var lastOffsetPress:Float = 0;
   #if !mobile
   var offset:Float = Preferences.globalOffset ?? 0;
   #end
 
-  /**
-   * Process user inputs every frame.
-   */
   function handleInputs():Void
   {
     if (!allowInput) return;
 
-    // early return here if we are modifying our offsets stuff w/ shift + up/down
     if (handleModifyingOffsets()) return;
 
     handleDebugInputs();
@@ -676,8 +487,6 @@ class PauseSubState extends MusicBeatSubState
       changeSelection(1);
     }
 
-    // we only want justOpened to be true for 1 single frame, when we first get into the pause menu substate
-    // we early return here so we don't need to check `if (!justOpened)` everywhere
     if (justOpened)
     {
       justOpened = false;
@@ -721,11 +530,6 @@ class PauseSubState extends MusicBeatSubState
     #end
   }
 
-  /**
-   * used to both modify/change offsets, but also to early return so we don't interfere with other inputs while doing so
-   * TODO: refactor to use state design pattern to handle inputs, see MainMenuState
-   * @return Bool true if we are currently modifying our offsets (by holding shift and pressing UP or DOWN)
-   */
   function handleModifyingOffsets():Bool
   {
     #if !mobile
@@ -734,7 +538,6 @@ class PauseSubState extends MusicBeatSubState
       lastOffsetPress += FlxG.elapsed;
       if (!fastOffset)
       {
-        // If the last offset press was more than 0.5 seconds ago, reset the fast offset.
         if (lastOffsetPress > 0.5)
         {
           fastOffset = true;
@@ -764,7 +567,6 @@ class PauseSubState extends MusicBeatSubState
     }
     else
     {
-      // Reset the fast offset if the user is not holding SHIFT.
       fastOffset = false;
       lastOffsetPress = 0;
     }
@@ -775,22 +577,17 @@ class PauseSubState extends MusicBeatSubState
   function handleDebugInputs():Void
   {
     #if FEATURE_DEBUG_FUNCTIONS
-    // to pause the game and get screenshots easy, press H on pause menu!
     if (FlxG.keys.justPressed.H)
     {
       var visible = !metadata.visible;
       metadata.visible = visible;
       menuEntryText.visible = visible;
       background.visible = visible;
-      this.bgColor = visible ? 0x99000000 : 0x00000000; // 60% or fully transparent black
+      this.bgColor = visible ? 0x99000000 : 0x00000000;
     }
     #end
   }
 
-  /**
-   * Move the current selection up or down.
-   * @param change The amount to change the selection by, with sign indicating direction.
-   */
   function changeSelection(change:Int = 0):Void
   {
     var prevEntry:Int = currentEntry;
@@ -816,11 +613,9 @@ class PauseSubState extends MusicBeatSubState
       var entry:PauseMenuEntry = currentMenuEntries[entryIndex];
       var text:AtlasText = entry.sprite;
 
-      // Set the transparency.
       text.alpha = isCurrent ? 1.0 : 0.6;
 
       #if mobile
-      // Set the position.
       if (isCurrent && currentEntry != prevEntry)
       {
         FlxTween.globalManager.cancelTweensOf(text);
@@ -836,17 +631,8 @@ class PauseSubState extends MusicBeatSubState
     }
   }
 
-  // ===============
-  // Menu Functions
-  // ===============
-
-  /**
-   * Clear the current menu entries and regenerate them based on the current mode.
-   * @param targetMode Optionally specify a mode to switch to before regenerating the menu.
-   */
   function regenerateMenu(?targetMode:PauseMode):Void
   {
-    // If targetMode is null, keep the current mode.
     if (targetMode == null) targetMode = this.currentMode;
 
     this.currentMode = targetMode;
@@ -858,21 +644,13 @@ class PauseSubState extends MusicBeatSubState
     changeSelection();
   }
 
-  /**
-   * Reset the current selection to the first entry.
-   */
   function resetSelection():Void
   {
     this.currentEntry = 0;
   }
 
-  /**
-   * Select which menu entries to display based on the current mode.
-   */
   function chooseMenuEntries():Void
   {
-    // Choose the correct menu entries.
-    // NOTE: We clone the arrays to prevent modifications to the arrays from affecting the original.
     switch (this.currentMode)
     {
       case PauseMode.Standard:
@@ -880,7 +658,6 @@ class PauseSubState extends MusicBeatSubState
       case PauseMode.Charting:
         currentMenuEntries = PAUSE_MENU_ENTRIES_CHARTING.clone();
       case PauseMode.Difficulty:
-        // Prepend the difficulties.
         var entries:Array<PauseMenuEntry> = [];
         if (PlayState.instance.currentChart != null)
         {
@@ -891,7 +668,6 @@ class PauseSubState extends MusicBeatSubState
           }
         }
 
-        // Add the back button.
         currentMenuEntries = entries.concat(PAUSE_MENU_ENTRIES_DIFFICULTY.clone());
       case PauseMode.Conversation:
         currentMenuEntries = PAUSE_MENU_ENTRIES_CONVERSATION.clone();
@@ -900,10 +676,6 @@ class PauseSubState extends MusicBeatSubState
     }
   }
 
-  /**
-   * Clear the `menuEntryText` group and render the current menu entries to it.
-   * We first create the `menuEntryText` group if it doesn't already exist.
-   */
   function clearAndAddMenuEntries():Void
   {
     if (menuEntryText == null)
@@ -914,23 +686,17 @@ class PauseSubState extends MusicBeatSubState
     }
     menuEntryText.clear();
 
-    // Render out the entries depending on the mode.
     var entryIndex:Int = 0;
     var toRemove = [];
     for (entry in currentMenuEntries)
     {
       if (entry == null || (entry.filter != null && !entry.filter()))
       {
-        // Remove entries that should be hidden.
         toRemove.push(entry);
       }
       else
       {
-        // Handle visible entries.
         #if mobile
-        // var yPos:Float = (150 * entryIndex) + 100;
-
-        // var yPos:Float = (140 * entryIndex) + 150;
         var yPos:Float = (105 * entryIndex) + 150;
 
         var text:AtlasText = new AtlasText(110, yPos, entry.text, AtlasFont.BOLD);
@@ -970,13 +736,6 @@ class PauseSubState extends MusicBeatSubState
     }
   }
 
-  // ===============
-  // Metadata Functions
-  // ===============
-
-  /**
-   * Update the values for the metadata text in the top right.
-   */
   function updateMetadataText():Void
   {
     metadataPractice.visible = PlayState.instance?.isPracticeMode ?? false;
@@ -1004,17 +763,8 @@ class PauseSubState extends MusicBeatSubState
     }
   }
 
-  // ===============
-  // Menu Callbacks
-  // ===============
-
-  /**
-   * Close the pause menu and resume the game.
-   * @param state The current PauseSubState.
-   */
   static function resume(state:PauseSubState):Void
   {
-    // Resume a paused video if it exists.
     VideoCutscene.resumeVideo();
     #if FEATURE_MOBILE_ADVERTISEMENTS
     AdMobUtil.removeBanner();
@@ -1022,29 +772,16 @@ class PauseSubState extends MusicBeatSubState
     state.close();
   }
 
-  /**
-   * Switch the pause menu to the indicated mode.
-   * Create a callback from this using `.bind(_, targetMode)`.
-   * @param state The current PauseSubState.
-   * @param targetMode The mode to switch to.
-   */
   static function switchMode(state:PauseSubState, targetMode:PauseMode):Void
   {
     state.regenerateMenu(targetMode);
   }
 
-  /**
-   * Switch the game's difficulty to the indicated difficulty, then resume the game.
-   * @param state The current PauseSubState.
-   * @param difficulty The difficulty to switch to.
-   */
   static function changeDifficulty(state:PauseSubState, difficulty:String):Void
   {
     PlayState.instance.currentSong = SongRegistry.instance.fetchEntry(PlayState.instance.currentSong.id.toLowerCase(),
       {variation: PlayState.instance.currentChart.variation});
 
-    // Reset campaign score when changing difficulty
-    // So if you switch difficulty on the last song of a week you get a really low overall score.
     if (difficulty != PlayState.instance.currentDifficulty)
     {
       PlayStatePlaylist.campaignScore = 0;
@@ -1085,10 +822,6 @@ class PauseSubState extends MusicBeatSubState
     #end
   }
 
-  /**
-   * Restart the current level, then resume the game.
-   * @param state The current PauseSubState.
-   */
   static function restartPlayState(state:PauseSubState):Void
   {
     PlayState.instance.needsReset = true;
@@ -1122,10 +855,6 @@ class PauseSubState extends MusicBeatSubState
     #end
   }
 
-  /**
-   * Force the game into practice mode, then update the pause menu.
-   * @param state The current PauseSubState.
-   */
   static function enablePracticeMode(state:PauseSubState):Void
   {
     if (PlayState.instance == null) return;
@@ -1134,10 +863,32 @@ class PauseSubState extends MusicBeatSubState
     state.regenerateMenu();
   }
 
-  /**
-   * Restart the paused video cutscene, then resume the game.
-   * @param state The current PauseSubState.
-   */
+  #if (mobile && FEATURE_CHART_EDITOR)
+  static function openChartEditorFromPause(state:PauseSubState):Void
+  {
+    if (PlayState.instance == null) return;
+
+    #if FEATURE_MOBILE_ADVERTISEMENTS
+    AdMobUtil.removeBanner();
+    #end
+
+    var targetSongId:String = PlayState.instance.currentSong.id;
+    var targetDifficulty:String = PlayState.instance.currentDifficulty;
+    var targetVariation:String = PlayState.instance.currentVariation;
+    var targetPosition:Float = Conductor.instance.songPosition;
+
+    FlxTransitionableState.skipNextTransIn = true;
+    FlxTransitionableState.skipNextTransOut = true;
+
+    FlxG.switchState(() -> new ChartEditorState({
+      targetSongId: targetSongId,
+      targetSongDifficulty: targetDifficulty,
+      targetSongVariation: targetVariation,
+      targetSongPosition: targetPosition
+    }));
+  }
+  #end
+
   static function restartVideoCutscene(state:PauseSubState):Void
   {
     VideoCutscene.restartVideo();
@@ -1147,10 +898,6 @@ class PauseSubState extends MusicBeatSubState
     state.close();
   }
 
-  /**
-   * Skip the paused video cutscene, then resume the game.
-   * @param state The current PauseSubState.
-   */
   static function skipVideoCutscene(state:PauseSubState):Void
   {
     VideoCutscene.finishVideo();
@@ -1160,10 +907,6 @@ class PauseSubState extends MusicBeatSubState
     state.close();
   }
 
-  /**
-   * Restart the paused conversation, then resume the game.
-   * @param state The current PauseSubState.
-   */
   static function restartConversation(state:PauseSubState):Void
   {
     if (PlayState.instance?.currentConversation == null) return;
@@ -1175,10 +918,6 @@ class PauseSubState extends MusicBeatSubState
     state.close();
   }
 
-  /**
-   * Skip the paused conversation, then resume the game.
-   * @param state The current PauseSubState.
-   */
   static function skipConversation(state:PauseSubState):Void
   {
     if (PlayState.instance?.currentConversation == null) return;
@@ -1190,10 +929,6 @@ class PauseSubState extends MusicBeatSubState
     state.close();
   }
 
-  /**
-   * Quit the game and return to the main menu.
-   * @param state The current PauseSubState.
-   */
   static function quitToMenu(state:PauseSubState):Void
   {
     state.allowInput = false;
@@ -1206,7 +941,6 @@ class PauseSubState extends MusicBeatSubState
     var targetState:funkin.ui.transition.stickers.StickerSubState->FlxState = (PlayStatePlaylist.isStoryMode) ? (sticker) ->
       new StoryMenuState(sticker) : (sticker) -> FreeplayState.build(sticker);
 
-    // Do this AFTER because this resets the value of isStoryMode!
     if (PlayStatePlaylist.isStoryMode)
     {
       PlayStatePlaylist.reset();
@@ -1232,81 +966,36 @@ class PauseSubState extends MusicBeatSubState
     state.openSubState(new funkin.ui.transition.stickers.StickerSubState({targetState: targetState, stickerPack: stickerPackId}));
   }
 
-  /**
-   * Quit the game and return to the chart editor.
-   * @param state The current PauseSubState.
-   */
   @:access(funkin.play.PlayState)
   static function quitToChartEditor(state:PauseSubState):Void
   {
     #if FEATURE_MOBILE_ADVERTISEMENTS
     AdMobUtil.removeBanner();
     #end
-    // This should come first because the sounds list gets cleared!
     PlayState.instance?.forEachPausedSound(s -> s.destroy());
     state.close();
-    FlxG.sound.music?.pause(); // Don't reset song position!
+    FlxG.sound.music?.pause();
     PlayState.instance?.vocals?.pause();
-    PlayState.instance?.close(); // This only works because PlayState is a substate!
+    PlayState.instance?.close();
   }
 }
 
-/**
- * Which set of options the pause menu should display.
- */
 enum PauseMode
 {
-  /**
-   * The menu displayed when the player pauses the game during a song.
-   */
   Standard;
-
-  /**
-   * The menu displayed when the player pauses the game during a song while in charting mode.
-   */
   Charting;
-
-  /**
-   * The menu displayed when the player moves to change the game's difficulty.
-   */
   Difficulty;
-
-  /**
-   * The menu displayed when the player pauses the game during a conversation.
-   */
   Conversation;
-
-  /**
-   * The menu displayed when the player pauses the game during a video cutscene.
-   */
   Cutscene;
 }
 
-/**
- * Represents a single entry in the pause menu.
- */
 typedef PauseMenuEntry =
 {
-  /**
-   * The text to display for this entry.
-   * TODO: Implement localization.
-   */
   var text:String;
 
-  /**
-   * The callback to execute when the user selects this entry.
-   */
   var callback:PauseSubState->Void;
 
-  /**
-   * If this returns true, the entry will be displayed. If it returns false, the entry will be hidden.
-   */
   var ?filter:Void->Bool;
 
-  // Instance-specific properties
-
-  /**
-   * The text object currently displaying this entry.
-   */
   var ?sprite:AtlasText;
 };
