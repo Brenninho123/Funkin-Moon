@@ -34,6 +34,7 @@ jobs:
 
       - name: Install Android components
         run: |
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -81,16 +82,21 @@ jobs:
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
 
-      - name: Rebuild Lime native tools
-        run: haxelib run lime rebuild cpp
-
       - name: Configure Lime Android
         run: |
-          haxelib run lime setup android <<EOF
-          $ANDROID_SDK
-          $ANDROID_NDK_ROOT
-          $JAVA_HOME
-          EOF
+          printf '%s\n%s\n%s\n' \
+            "$ANDROID_SDK" \
+            "$ANDROID_NDK_ROOT" \
+            "$JAVA_HOME" \
+            | haxelib run lime setup android
+
+      - name: Rebuild Lime Android
+        run: |
+          haxelib run lime rebuild android
+
+      - name: Verify Lime Android library
+        run: |
+          test -f ".haxelib/lime/git/ndll/Android/liblime-64.so"
 
       - name: Build Android APK
         run: |
