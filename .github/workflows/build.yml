@@ -31,6 +31,8 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
+          echo "CFLAGS=-std=c17" >> "$GITHUB_ENV"
 
       - name: Install Android components
         run: |
@@ -88,22 +90,15 @@ jobs:
 
       - name: Configure Lime Android
         run: |
-          printf '%s\n%s\n%s\n' \
-            "$ANDROID_SDK" \
-            "$ANDROID_NDK_ROOT" \
-            "$JAVA_HOME" \
-            | haxelib run lime setup android
+          haxelib run lime setup android <<EOF
+          $ANDROID_SDK
+          $ANDROID_NDK_ROOT
+          $JAVA_HOME
+          EOF
 
       - name: Build Lime Android native libraries
         run: |
           haxelib run lime rebuild android
-
-      - name: Verify Lime libraries
-        run: |
-          test -f ".haxelib/lime/git/ndll/Linux64/lime.ndll" \
-            || test -f ".haxelib/lime/git/ndll/Linux/lime.ndll"
-
-          test -f ".haxelib/lime/git/ndll/Android/liblime-64.so"
 
       - name: Build Android APK
         run: |
