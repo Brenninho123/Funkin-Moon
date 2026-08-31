@@ -34,6 +34,9 @@ jobs:
       - name: Install hmm
         run: haxelib install hmm --quiet
 
+      - name: Install Wayland scanner
+        run: sudo apt-get update && sudo apt-get install -y libwayland-bin wayland-protocols
+
       - name: Install project dependencies
         run: haxelib run hmm install
 
