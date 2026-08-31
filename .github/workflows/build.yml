@@ -40,6 +40,12 @@ jobs:
       - name: Install project dependencies
         run: haxelib run hmm install
 
+      - name: Build hxcpp command-line tool
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
       - name: Rebuild Lime native tools
         run: haxelib run lime rebuild cpp
 
