@@ -4,6 +4,7 @@ import flixel.input.actions.FlxAction.FlxActionDigital;
 import flixel.input.actions.FlxActionInput;
 import flixel.input.FlxInput.FlxInputState;
 import flixel.input.actions.FlxActionInputDigital.FlxActionInputDigitalIFlxInput;
+import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.input.Controls;
 import funkin.mobile.ui.FunkinButton;
 import funkin.mobile.ui.FunkinHitbox;
@@ -15,54 +16,40 @@ import funkin.external.apple.KeyboardUtil;
 #end
 import lime.ui.Gamepad as LimeGamepad;
 import openfl.events.KeyboardEvent;
+import openfl.events.MouseEvent;
 import openfl.events.TouchEvent;
 
-/**
- * Handles setting up and managing input controls for the game.
- */
 class ControlsHandler
 {
-  /**
-   * Returns whether the last input was sent through touch.
-   */
   public static var lastInputTouch(default, null):Bool = true;
 
-  /**
-   * Returns whether there's a gamepad or keyboard devices connected and active.
-   */
   public static var hasExternalInputDevice(get, never):Bool;
 
-  /**
-   * Returns whether an external input device is currently used as the main input.
-   */
   public static var usingExternalInputDevice(get, never):Bool;
 
-  /**
-   * Initialize input trackers used to get the current status of the `lastInputTouch` field.
-   */
+  public static final onInputDeviceChanged:FlxTypedSignal<Bool->Void> = new FlxTypedSignal<Bool->Void>();
+
   public static function initInputTrackers():Void
   {
-    FlxG.stage.addEventListener(KeyboardEvent.KEY_DOWN, (_) -> lastInputTouch = false);
-    FlxG.stage.addEventListener(TouchEvent.TOUCH_BEGIN, (_) -> lastInputTouch = true);
+    FlxG.stage.addEventListener(KeyboardEvent.KEY_DOWN, (_) -> setLastInputTouch(false));
+    FlxG.stage.addEventListener(MouseEvent.MOUSE_DOWN, (_) -> setLastInputTouch(false));
+    FlxG.stage.addEventListener(TouchEvent.TOUCH_BEGIN, (_) -> setLastInputTouch(true));
 
     function doGamepad(gamepad:LimeGamepad)
     {
-      gamepad.onButtonDown.add((_) -> lastInputTouch = false);
+      gamepad.onButtonDown.add((_) -> setLastInputTouch(false));
+      gamepad.onDisconnect.add(dispatchInputDeviceChanged);
     }
 
     for (gamepad in LimeGamepad.devices.values()) doGamepad(gamepad);
 
-    LimeGamepad.onConnect.add((gamepad) -> doGamepad(gamepad));
+    LimeGamepad.onConnect.add((gamepad) ->
+    {
+      doGamepad(gamepad);
+      dispatchInputDeviceChanged();
+    });
   }
 
-  /**
-   * Adds a button input to a given FlxActionDigital and caches it.
-   *
-   * @param action The FlxActionDigital to add the button input to.
-   * @param button The FunkinButton associated with the action.
-   * @param state The input state to associate with the action.
-   * @param cachedInput The array of FlxActionInput objects to cache the input.
-   */
   public static function addButton(action:FlxActionDigital, button:FunkinButton, state:FlxInputState, cachedInput:Array<FlxActionInput>):Void
   {
     if (action == null || button == null || cachedInput == null) return;
@@ -72,13 +59,6 @@ class ControlsHandler
     action.add(input);
   }
 
-  /**
-   * Sets up hitbox controls based on game controls and hitbox hints.
-   *
-   * @param controls The controls instance defining game controls.
-   * @param hitbox The hitbox to associate with the controls.
-   * @param cachedInput The array of action input objects to cache the input.
-   */
   @:access(funkin.input.Controls)
   public static function setupHitbox(controls:Controls, hitbox:FunkinHitbox, cachedInput:Array<FlxActionInput>):Void
   {
@@ -113,12 +93,6 @@ class ControlsHandler
     }
   }
 
-  /**
-   * Removes cached input associated with game controls.
-   *
-   * @param controls The Controls instance defining game controls.
-   * @param cachedInput The array of action input objects to clear cached input from.
-   */
   public static function removeCachedInput(controls:Controls, cachedInput:Array<FlxActionInput>):Void
   {
     for (action in controls.digitalActions)
@@ -155,5 +129,18 @@ class ControlsHandler
   static function get_usingExternalInputDevice():Bool
   {
     return ControlsHandler.hasExternalInputDevice && !ControlsHandler.lastInputTouch;
+  }
+
+  static function setLastInputTouch(value:Bool):Void
+  {
+    if (lastInputTouch == value) return;
+
+    lastInputTouch = value;
+    dispatchInputDeviceChanged();
+  }
+
+  static function dispatchInputDeviceChanged():Void
+  {
+    onInputDeviceChanged.dispatch(usingExternalInputDevice);
   }
 }
