@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager --install "ndk;25.2.9519653"
+
+      - name: Set up Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: 4.3.6
+
+      - name: Install hmm
+        run: haxelib install hmm --quiet
+
+      - name: Install project dependencies
+        run: haxelib run hmm install
+
+      - name: Configure Lime for Android
+        run: |
+          printf 'n\n%s\n%s\n%s\nn\n' \
+            "$ANDROID_SDK_ROOT" \
+            "$ANDROID_SDK_ROOT/ndk/25.2.9519653" \
+            "$JAVA_HOME" \
+            | haxelib run lime setup android
+
+      - name: Build Android APK
+        run: haxelib run lime build android -release -DGITHUB_BUILD
+
+      - name: Locate build output
+        id: apk
+        run: |
+          APK_PATH=$(find export/release/android -iname "*.apk" | head -n 1)
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-android
+          path: ${{ steps.apk.outputs.path }}
