@@ -141,6 +141,8 @@ class Project extends HXProject
 
   static final FEATURE_POLYMOD_MODS:FeatureFlag = "FEATURE_POLYMOD_MODS";
 
+  static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
+
   static final FEATURE_SCREENSHOTS:FeatureFlag = "FEATURE_SCREENSHOTS";
 
   static final FEATURE_HAXEUI:FeatureFlag = "FEATURE_HAXEUI";
@@ -427,6 +429,7 @@ class Project extends HXProject
     FEATURE_OPEN_URL.apply(this, true);
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
+    FEATURE_LUA_SCRIPTS.apply(this, true);
 
     FEATURE_VIDEO_PLAYBACK.apply(this, true);
 
@@ -776,6 +779,11 @@ class Project extends HXProject
 
     addHaxelib('polymod');
     addHaxelib('flixel-animate');
+
+    if (FEATURE_LUA_SCRIPTS.isEnabled(this))
+    {
+      addHaxelib('hxlua');
+    }
 
     addHaxelib('json2object');
     addHaxelib('jsonpath');
