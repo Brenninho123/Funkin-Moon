@@ -9,10 +9,6 @@ jobs:
   android:
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_SDK: ${{ env.ANDROID_SDK_ROOT }}
-      ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,6 +25,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Configure Android environment
+        shell: bash
         run: |
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
@@ -101,6 +98,7 @@ jobs:
 
       - name: Locate build output
         id: apk
+        shell: bash
         run: |
           APK_PATH=$(find export/release/android -type f -iname "*.apk" | head -n 1)
 
