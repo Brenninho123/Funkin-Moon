@@ -62,6 +62,12 @@ class FunkinLua
     Lua.register(lua, 'getVariation', cpp.Function.fromStaticFunction(cb_getVariation));
     Lua.register(lua, 'getPlaybackRate', cpp.Function.fromStaticFunction(cb_getPlaybackRate));
     Lua.register(lua, 'triggerEvent', cpp.Function.fromStaticFunction(cb_triggerEvent));
+    Lua.register(lua, 'getHealth', cpp.Function.fromStaticFunction(cb_getHealth));
+    Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
+    Lua.register(lua, 'addHealth', cpp.Function.fromStaticFunction(cb_addHealth));
+    Lua.register(lua, 'getScore', cpp.Function.fromStaticFunction(cb_getScore));
+    Lua.register(lua, 'addScore', cpp.Function.fromStaticFunction(cb_addScore));
+    Lua.register(lua, 'getCombo', cpp.Function.fromStaticFunction(cb_getCombo));
   }
 
   public function setString(name:String, value:String):Void
@@ -205,6 +211,57 @@ class FunkinLua
   {
     Lua.pop(l, Lua.gettop(l));
     Lua.pushnumber(l, PlayState.instance?.playbackRate ?? 1.0);
+    return 1;
+  }
+
+  static function cb_getHealth(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, PlayState.instance?.health ?? 0);
+    return 1;
+  }
+
+  static function cb_setHealth(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.health = value;
+    return 0;
+  }
+
+  static function cb_addHealth(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var amount:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.health += amount;
+    return 0;
+  }
+
+  static function cb_getScore(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, PlayState.instance?.songScore ?? 0);
+    return 1;
+  }
+
+  static function cb_addScore(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var amount:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.songScore += amount;
+    return 0;
+  }
+
+  static function cb_getCombo(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Highscore.tallies?.combo ?? 0);
     return 1;
   }
 
