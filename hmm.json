@@ -154,6 +154,13 @@
       "url": "https://github.com/nadako/hxjsonast/"
     },
     {
+      "name": "hxlua",
+      "type": "git",
+      "dir": null,
+      "ref": "dab084bf87e6200c504125e5f780e71ffe95d50b",
+      "url": "https://github.com/MAJigsaw77/hxlua"
+    },
+    {
       "name": "hxgamemode",
       "type": "haxelib",
       "version": "1.0.1"
