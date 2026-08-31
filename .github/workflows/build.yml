@@ -8,6 +8,7 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,6 +27,24 @@ jobs:
       - name: Install Android NDK
         run: sdkmanager --install "ndk;25.2.9519653"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            pkg-config
+
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v1
         with:
@@ -33,9 +52,6 @@ jobs:
 
       - name: Install hmm
         run: haxelib install hmm --quiet
-
-      - name: Install Wayland scanner
-        run: sudo apt-get update && sudo apt-get install -y libwayland-bin wayland-protocols
 
       - name: Install project dependencies
         run: haxelib run hmm install
@@ -63,7 +79,12 @@ jobs:
       - name: Locate build output
         id: apk
         run: |
-          APK_PATH=$(find export/release/android -iname "*.apk" | head -n 1)
+          APK_PATH=$(find export/release/android -type f -iname "*.apk" | head -n 1)
+
+          if [ -z "$APK_PATH" ]; then
+            exit 1
+          fi
+
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK
