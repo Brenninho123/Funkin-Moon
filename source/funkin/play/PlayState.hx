@@ -223,6 +223,8 @@ class PlayState extends MusicBeatSubState
 
   var noteStyle:NoteStyle;
 
+  var luaScripts:Array<funkin.lua.FunkinLua> = [];
+
   var songEvents:Array<SongEventData> = [];
 
   var mayPauseGame:Bool = true;
@@ -500,6 +502,8 @@ class PlayState extends MusicBeatSubState
 
     generateSong();
 
+    initLuaScripts();
+
     resetCamera();
 
     initPreciseInputs();
@@ -528,6 +532,8 @@ class PlayState extends MusicBeatSubState
     initialized = true;
 
     refresh();
+
+    callLuaEvent('onCreatePost', []);
   }
 
   public function togglePauseButton(visible:Bool = false):Void
@@ -584,6 +590,8 @@ class PlayState extends MusicBeatSubState
     if (criticalFailure) return;
 
     super.update(elapsed);
+
+    callLuaEvent('onUpdate', [elapsed]);
 
     updateHealthBar();
     updateScoreText();
@@ -941,6 +949,8 @@ class PlayState extends MusicBeatSubState
     persistentUpdate = false;
     shouldSubstatePause = true;
     openSubState(pauseSubState);
+
+    callLuaEvent('onPause', []);
   }
 
   function moveToGameOver():Void
@@ -966,6 +976,9 @@ class PlayState extends MusicBeatSubState
 
     isGameOverState = true;
     shouldSubstatePause = true;
+
+    callLuaEvent('onGameOver', []);
+
     var gameOverSubState = new GameOverSubState({
       isChartingMode: isChartingMode,
       transparent: persistentDraw
@@ -1160,6 +1173,8 @@ class PlayState extends MusicBeatSubState
 
       Countdown.resumeCountdown();
 
+      callLuaEvent('onResume', []);
+
       #if FEATURE_DISCORD_RPC
       if (Conductor.instance.songPosition > 0)
       {
@@ -1303,6 +1318,8 @@ class PlayState extends MusicBeatSubState
 
     playerStrumline.noteVibrations.tryHoldNoteVibration();
 
+    callLuaEvent('onStepHit', [Std.int(Conductor.instance.currentStep)]);
+
     return true;
   }
 
@@ -1349,6 +1366,8 @@ class PlayState extends MusicBeatSubState
 
     if (playerStrumline != null) playerStrumline.onBeatHit();
     if (opponentStrumline != null) opponentStrumline.onBeatHit();
+
+    callLuaEvent('onBeatHit', [Std.int(Conductor.instance.currentBeat)]);
 
     return true;
   }
@@ -1740,6 +1759,51 @@ class PlayState extends MusicBeatSubState
   }
   #end
 
+  function initLuaScripts():Void
+  {
+    #if FEATURE_LUA_SCRIPTS
+    destroyLuaScripts();
+
+    var scriptsPath:String = 'assets/songs/${currentSong.id}/scripts';
+
+    #if sys
+    if (sys.FileSystem.exists(scriptsPath) && sys.FileSystem.isDirectory(scriptsPath))
+    {
+      for (file in sys.FileSystem.readDirectory(scriptsPath))
+      {
+        if (!file.toLowerCase().endsWith('.lua')) continue;
+
+        luaScripts.push(new funkin.lua.FunkinLua('${scriptsPath}/${file}'));
+      }
+    }
+    #end
+
+    callLuaEvent('onCreate', []);
+    #end
+  }
+
+  function destroyLuaScripts():Void
+  {
+    #if FEATURE_LUA_SCRIPTS
+    for (script in luaScripts)
+    {
+      script.destroy();
+    }
+    luaScripts = [];
+    #end
+  }
+
+  function callLuaEvent(funcName:String, args:Array<Dynamic>):Void
+  {
+    #if FEATURE_LUA_SCRIPTS
+    for (script in luaScripts)
+    {
+      if (script.closed) continue;
+      script.call(funcName, args);
+    }
+    #end
+  }
+
   function initPopups():Void
   {
     comboPopUps.zIndex = 900;
@@ -2027,6 +2091,8 @@ class PlayState extends MusicBeatSubState
     #end
 
     resyncVocals();
+
+    callLuaEvent('onSongStart', []);
   }
 
   function resyncVocals():Void
@@ -2599,6 +2665,8 @@ class PlayState extends MusicBeatSubState
     dispatchEvent(event);
     if (event.eventCanceled) return;
 
+    callLuaEvent('onSongEnd', []);
+
     deathCounter = 0;
 
     var suffixedDifficulty = (currentVariation != Constants.DEFAULT_VARIATION
@@ -2882,6 +2950,8 @@ class PlayState extends MusicBeatSubState
     GameOverSubState.reset();
     PauseSubState.reset();
     Countdown.reset();
+
+    destroyLuaScripts();
 
     instance = null;
   }
