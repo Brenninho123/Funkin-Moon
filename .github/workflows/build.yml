@@ -41,6 +41,7 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
+            libxss-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             pkg-config
