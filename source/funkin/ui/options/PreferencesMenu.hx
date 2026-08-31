@@ -82,9 +82,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     #end
   }
 
-  /**
-   * Create the description for preferences.
-   */
   function createPrefDescription():Void
   {
     itemDescBox.makeSolidColor(1, 1, FlxColor.BLACK);
@@ -92,20 +89,15 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     itemDesc.setFormat(Paths.font('vcr.ttf'), 32, FlxColor.WHITE, FlxTextAlign.CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
     itemDesc.borderSize = 3;
 
-    // Update the text.
     itemDesc.text = preferenceDesc[items.selectedIndex];
     itemDesc.screenCenter();
     itemDesc.y += 270;
 
-    // Create the box around the text.
     itemDescBox.setPosition(itemDesc.x - 10, itemDesc.y - 10);
     itemDescBox.setGraphicSize(Std.int(itemDesc.width + 20), Std.int(itemDesc.height + 25));
     itemDescBox.updateHitbox();
   }
 
-  /**
-   * Create the menu items for each of the preferences.
-   */
   function createPrefItems():Void
   {
     #if FEATURE_NAUGHTYNESS
@@ -120,6 +112,11 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     },
       Preferences.downscroll, #if mobile ControlsHandler.hasExternalInputDevice
       || Preferences.controlsScheme != FunkinHitboxControlSchemes.Arrows #end);
+    createPrefItemCheckbox('Middlescroll', 'When enabled, notes are centered on the strumline instead of being spread across the screen.',
+      function(value:Bool):Void
+      {
+        Preferences.middlescroll = value;
+      }, Preferences.middlescroll);
     createPrefItemPercentage('Strumline Background', 'Show a semi-transparent background behind the strumline.', function(value:Int):Void
     {
       Preferences.strumlineBackgroundOpacity = value;
@@ -160,7 +157,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       Preferences.subtitles = value;
     }, Preferences.subtitles);
     #if FEATURE_DEBUG_DISPLAY
-    // note: technically we can do DebugDisplayMode.Advanced => DebugDisplayMode.Advanced, etc. here, but that's a bit headache inducing.
     createPrefItemEnum('Debug Display', 'When enabled, FPS and other debug stats are displayed.', [
       "Advanced" => DebugDisplayMode.Advanced,
       "Simple" => DebugDisplayMode.Simple,
@@ -185,7 +181,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     }, Preferences.autoFullscreen);
     #end
 
-    // disable on mobile and web since it barely has any effect
     #if !(mobile || web)
     createPrefItemEnum('VSync', "When enabled, the game attempts to match the framerate with your monitor's refresh rate.", [
       "Off" => WindowVSyncMode.OFF,
@@ -193,7 +188,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       "Adaptive" => WindowVSyncMode.ADAPTIVE,
     ], function(key:String, value:WindowVSyncMode):Void
     {
-      trace("Setting vsync mode to " + key);
       Preferences.vsyncMode = value;
     }, switch (Preferences.vsyncMode)
       {
@@ -243,14 +237,11 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
   {
     super.update(elapsed);
 
-    // Positions the camera to the selected item.
     if (items != null) camFollow.y = items.selectedItem.y;
 
-    // Indent the selected item.
     items.forEach(function(daItem:TextMenuItem)
     {
       var thyOffset:Int = 0;
-      // Initializing thy text width (if thou text present)
       var thyTextWidth:Int = 0;
       switch (Type.typeof(daItem))
       {
@@ -264,7 +255,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
           thyTextWidth = cast(daItem, NumberPreferenceItem).lefthandText.getWidth();
           thyOffset = 0 + thyTextWidth - 75;
         default:
-          // Huh?
       }
 
       if (items.selectedItem == daItem)
@@ -280,14 +270,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     });
   }
 
-  // - Preference item creation methods -
-  // Should be moved into a separate PreferenceItems class but you can't access PreferencesMenu.items and PreferencesMenu.preferenceItems from outside.
-
-  /**
-   * Creates a pref item that works with booleans
-   * @param onChange Gets called every time the player changes the value; use this to apply the value
-   * @param defaultValue The value that is loaded in when the pref item is created (usually your Preferences.settingVariable)
-   */
   function createPrefItemCheckbox(prefName:String, prefDesc:String, onChange:Bool->Void, defaultValue:Bool, available:Bool = true):Void
   {
     var checkbox:CheckboxPreferenceItem = new CheckboxPreferenceItem(funkin.ui.FullScreenScaleMode.gameNotchSize.x, 120 * (items.length - 1 + 1),
@@ -304,16 +286,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     preferenceDesc.push(prefDesc);
   }
 
-  /**
-   * Creates a pref item that works with general numbers
-   * @param onChange Gets called every time the player changes the value; use this to apply the value
-   * @param valueFormatter Will get called every time the game needs to display the float value; use this to change how the displayed value looks
-   * @param defaultValue The value that is loaded in when the pref item is created (usually your Preferences.settingVariable)
-   * @param min Minimum value (example: 0)
-   * @param max Maximum value (example: 10)
-   * @param step The value to increment/decrement by (default = 0.1)
-   * @param precision Rounds decimals up to a `precision` amount of digits (ex: 4 -> 0.1234, 2 -> 0.12)
-   */
   function createPrefItemNumber(prefName:String, prefDesc:String, onChange:Float->Void, ?valueFormatter:Float->String, defaultValue:Float, min:Float,
       max:Float, step:Float = 0.1, precision:Int):Void
   {
@@ -324,13 +296,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     preferenceDesc.push(prefDesc);
   }
 
-  /**
-   * Creates a pref item that works with number percentages
-   * @param onChange Gets called every time the player changes the value; use this to apply the value
-   * @param defaultValue The value that is loaded in when the pref item is created (usually your Preferences.settingVariable)
-   * @param min Minimum value (default = 0)
-   * @param max Maximum value (default = 100)
-   */
   function createPrefItemPercentage(prefName:String, prefDesc:String, onChange:Int->Void, defaultValue:Int, min:Int = 0, max:Int = 100):Void
   {
     var newCallback = function(value:Float)
@@ -348,12 +313,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     preferenceDesc.push(prefDesc);
   }
 
-  /**
-   * Creates a pref item that works with enums
-   * @param values Maps enum values to display strings _(ex: `NoteHitSoundType.PingPong => "Ping pong"`)_
-   * @param onChange Gets called every time the player changes the value; use this to apply the value
-   * @param defaultValue The value that is loaded in when the pref item is created (usually your Preferences.settingVariable)
-   */
   function createPrefItemEnum<T>(prefName:String, prefDesc:String, values:Map<String, T>, onChange:String->T->Void, defaultKey:String):Void
   {
     var item = new EnumPreferenceItem<T>(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, values, defaultKey, onChange);
