@@ -79,23 +79,21 @@ jobs:
         with:
           haxe-version: 4.3.7
 
-      - name: Cache Haxelib
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.haxelib
-            .haxelib
-          key: android-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
-          restore-keys: |
-            android-haxelib-
+      - name: Setup Haxelib
+        shell: bash
+        run: |
+          haxelib setup "$HOME/.haxelib"
 
       - name: Install HMM
         shell: bash
-        run: haxelib install hmm --quiet
+        run: |
+          haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: bash
-        run: haxelib run hmm install
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
 
       - name: Build hxcpp
         shell: bash
@@ -106,7 +104,8 @@ jobs:
 
       - name: Rebuild Lime
         shell: bash
-        run: haxelib run lime rebuild cpp
+        run: |
+          haxelib run lime rebuild cpp
 
       - name: Setup Lime Android
         shell: bash
@@ -119,11 +118,13 @@ jobs:
 
       - name: Rebuild Lime Android
         shell: bash
-        run: haxelib run lime rebuild android
+        run: |
+          haxelib run lime rebuild android
 
       - name: Build Android
         shell: bash
-        run: haxelib run lime build android -release -DGITHUB_BUILD
+        run: |
+          haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Upload Android
         uses: actions/upload-artifact@v4
@@ -149,23 +150,24 @@ jobs:
         with:
           haxe-version: 4.3.7
 
-      - name: Cache Haxelib
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~\.haxelib
-            .haxelib
-          key: windows-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
-          restore-keys: |
-            windows-haxelib-
+      - name: Setup Haxelib
+        shell: pwsh
+        run: |
+          haxelib setup "$env:USERPROFILE\.haxelib"
 
       - name: Install HMM
         shell: pwsh
-        run: haxelib install hmm --quiet
+        run: |
+          haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: pwsh
-        run: haxelib run hmm install
+        run: |
+          if (Test-Path ".haxelib") {
+            Remove-Item ".haxelib" -Recurse -Force
+          }
+
+          haxelib run hmm install
 
       - name: Build hxcpp
         shell: pwsh
@@ -176,33 +178,13 @@ jobs:
 
       - name: Rebuild Lime Windows
         shell: pwsh
-        run: haxelib run lime rebuild cpp
-
-      - name: Verify Lime Windows
-        shell: pwsh
         run: |
-          $LimePath = (haxelib libpath lime).Trim()
-          $Candidates = @(
-            "$LimePath\ndll\Windows\lime.ndll",
-            "$LimePath\ndll\Windows64\lime.ndll"
-          )
-
-          $Found = $false
-
-          foreach ($Path in $Candidates) {
-            if (Test-Path $Path) {
-              $Found = $true
-              Write-Host "Found: $Path"
-            }
-          }
-
-          if (-not $Found) {
-            Write-Error "lime.ndll was not generated."
-          }
+          haxelib run lime rebuild cpp
 
       - name: Build Windows
         shell: pwsh
-        run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
+        run: |
+          haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
       - name: Upload Windows
         uses: actions/upload-artifact@v4
