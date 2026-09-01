@@ -3,6 +3,7 @@ package funkin.lua;
 import hxlua.Lua;
 import hxlua.LuaL;
 import hxlua.Types;
+import funkin.play.PlayState;
 
 typedef LuaState = cpp.RawPointer<Lua_State>;
 
