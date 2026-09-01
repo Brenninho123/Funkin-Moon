@@ -80,9 +80,9 @@ jobs:
       - name: Patch OpenAL PFFFT
         shell: bash
         run: |
-          PFFFT="lib/openal/common/pffft.h"
+          PFFFT=$(find . -type f -name "pffft.h" -print -quit)
 
-          if [ ! -f "$PFFFT" ]; then
+          if [ -z "$PFFFT" ]; then
             exit 1
           fi
 
