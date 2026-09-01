@@ -79,11 +79,6 @@ jobs:
         with:
           haxe-version: 4.3.7
 
-      - name: Setup Haxelib
-        shell: bash
-        run: |
-          haxelib setup "$HOME/.haxelib"
-
       - name: Install HMM
         shell: bash
         run: |
@@ -149,11 +144,6 @@ jobs:
         uses: krdlab/setup-haxe@v1
         with:
           haxe-version: 4.3.7
-
-      - name: Setup Haxelib
-        shell: pwsh
-        run: |
-          haxelib setup "$env:USERPROFILE\.haxelib"
 
       - name: Install HMM
         shell: pwsh
