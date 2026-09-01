@@ -1282,6 +1282,28 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
    */
   var rightStickRightGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.RIGHT_STICK_DIGITAL_RIGHT);
 
+  #if mobile
+  /**
+   * Timestamp (seconds) when the current touch/click started, used to detect a "long press" as a right-click equivalent.
+   */
+  var touchHoldStartTime:Null<Float> = null;
+
+  /**
+   * True for the frame(s) after a touch/click has been held long enough to count as a right-click equivalent.
+   */
+  var touchHoldTriggered:Bool = false;
+
+  /**
+   * How long, in seconds, a touch/click must be held to count as a right-click equivalent.
+   */
+  final TOUCH_HOLD_DURATION:Float = 0.5;
+
+  var mobileButtonUndo:Null<Button> = null;
+  var mobileButtonRedo:Null<Button> = null;
+  var mobileButtonSave:Null<Button> = null;
+  var mobileButtonPlaytest:Null<Button> = null;
+  #end
+
   /**
    * AUDIO AND SOUND DATA
    */
@@ -2507,6 +2529,12 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
     buildNotePreview();
 
     buildAdditionalUI();
+
+    #if mobile
+    buildMobileToolbar();
+    addBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, () -> quitChartEditor(true), 1.0);
+    #end
+
     populateOpenRecentMenu();
     this.applyPlatformShortcutText();
 
@@ -3023,6 +3051,129 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
     renderedSelectionSquares.zIndex = 26;
   }
 
+  #if mobile
+  /**
+   * Builds a small on-screen toolbar with buttons for the most commonly used actions
+   * (Undo, Redo, Save, Playtest), since keyboard shortcuts don't exist on touch devices.
+   */
+  function buildMobileToolbar():Void
+  {
+    var buttonWidth:Int = 90;
+    var buttonHeight:Int = 40;
+    var spacing:Int = 8;
+    var startX:Float = 8;
+    var startY:Float = FlxG.height - PLAYBAR_HEIGHT - buttonHeight - 16;
+
+    mobileButtonUndo = new Button();
+    mobileButtonUndo.allowFocus = false;
+    mobileButtonUndo.text = 'Undo';
+    mobileButtonUndo.x = startX;
+    mobileButtonUndo.y = startY;
+    mobileButtonUndo.width = buttonWidth;
+    mobileButtonUndo.height = buttonHeight;
+    mobileButtonUndo.zIndex = 120;
+    mobileButtonUndo.onClick = _ -> undoLastCommand();
+    add(mobileButtonUndo);
+
+    mobileButtonRedo = new Button();
+    mobileButtonRedo.allowFocus = false;
+    mobileButtonRedo.text = 'Redo';
+    mobileButtonRedo.x = startX + (buttonWidth + spacing);
+    mobileButtonRedo.y = startY;
+    mobileButtonRedo.width = buttonWidth;
+    mobileButtonRedo.height = buttonHeight;
+    mobileButtonRedo.zIndex = 120;
+    mobileButtonRedo.onClick = _ -> redoLastCommand();
+    add(mobileButtonRedo);
+
+    mobileButtonSave = new Button();
+    mobileButtonSave.allowFocus = false;
+    mobileButtonSave.text = 'Save';
+    mobileButtonSave.x = startX + (buttonWidth + spacing) * 2;
+    mobileButtonSave.y = startY;
+    mobileButtonSave.width = buttonWidth;
+    mobileButtonSave.height = buttonHeight;
+    mobileButtonSave.zIndex = 120;
+    mobileButtonSave.onClick = _ -> saveChart();
+    add(mobileButtonSave);
+
+    mobileButtonPlaytest = new Button();
+    mobileButtonPlaytest.allowFocus = false;
+    mobileButtonPlaytest.text = 'Play';
+    mobileButtonPlaytest.x = startX + (buttonWidth + spacing) * 3;
+    mobileButtonPlaytest.y = startY;
+    mobileButtonPlaytest.width = buttonWidth;
+    mobileButtonPlaytest.height = buttonHeight;
+    mobileButtonPlaytest.zIndex = 120;
+    mobileButtonPlaytest.onClick = _ -> testSongInPlayState(false);
+    add(mobileButtonPlaytest);
+  }
+
+  /**
+   * Tracks how long the current touch/click has been held, to detect a long-press
+   * as a stand-in for the right-click actions used throughout the grid (context menus,
+   * quick time-change placement, hold note removal).
+   */
+  function handleTouchHold():Void
+  {
+    touchHoldTriggered = false;
+
+    if (FlxG.mouse.justPressed)
+    {
+      touchHoldStartTime = FlxG.game.ticks / 1000.0;
+    }
+    else if (FlxG.mouse.pressed && touchHoldStartTime != null)
+    {
+      var heldFor:Float = (FlxG.game.ticks / 1000.0) - touchHoldStartTime;
+      if (heldFor >= TOUCH_HOLD_DURATION)
+      {
+        touchHoldTriggered = true;
+        touchHoldStartTime = null;
+      }
+    }
+    else if (FlxG.mouse.justReleased)
+    {
+      touchHoldStartTime = null;
+    }
+  }
+  #end
+
+  /**
+   * Returns true on the frame a "right click" equivalent action should fire.
+   * On desktop, that's an actual right mouse click. On mobile, it's a long touch-hold,
+   * since there's no secondary mouse button to use.
+   */
+  function isRightClickEquivalent():Bool
+  {
+    #if mobile
+    return touchHoldTriggered;
+    #else
+    return FlxG.mouse.justPressedRight;
+    #end
+  }
+
+  /**
+   * Saves the current chart, either overwriting the working file or prompting for a new path.
+   * Shared by the `File -> Save Chart` menu item and the mobile toolbar's Save button.
+   */
+  function saveChart():Void
+  {
+    if (currentWorkingFilePath != null)
+    {
+      this.exportAllSongData(true, currentWorkingFilePath);
+      this.success('Saved Chart', 'Chart saved successfully to ${currentWorkingFilePath}.');
+    }
+    else
+    {
+      this.exportAllSongData(false, null, function(path:String)
+      {
+        this.success('Saved Chart', 'Chart saved successfully to ${path}.');
+      }, function()
+      {
+      });
+    }
+  }
+
   function buildAdditionalUI():Void
   {
     playbarHeadLayout = new ChartEditorPlaybarHead();
@@ -3281,25 +3432,7 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
     // File
     menubarItemNewChart.onClick = _ -> this.openWelcomeDialog(true);
     menubarItemOpenChart.onClick = _ -> this.openBrowseFNFC(true);
-    menubarItemSaveChart.onClick = _ ->
-    {
-      if (currentWorkingFilePath != null)
-      {
-        this.exportAllSongData(true, currentWorkingFilePath);
-        this.success('Saved Chart', 'Chart saved successfully to ${currentWorkingFilePath}.');
-      }
-      else
-      {
-        this.exportAllSongData(false, null, function(path:String)
-        {
-          // CTRL + SHIFT + S Successful
-          this.success('Saved Chart', 'Chart saved successfully to ${path}.');
-        }, function()
-        {
-          // CTRL + SHIFT + S Cancelled
-        });
-      }
-    };
+    menubarItemSaveChart.onClick = _ -> saveChart();
     menubarItemSaveChartAs.onClick = _ -> this.exportAllSongData(false, null, function(path:String)
     {
       // CTRL + SHIFT + S Successful
@@ -3786,6 +3919,10 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
 
     // dispatchEvent gets called here.
     super.update(elapsed);
+
+    #if mobile
+    handleTouchHold();
+    #end
 
     if (criticalFailure) return;
 
@@ -4822,7 +4959,7 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
       }
     }
 
-    if (FlxG.mouse.justPressedRight)
+    if (isRightClickEquivalent())
     {
       if (gridPlayhead != null && FlxG.mouse.overlaps(gridPlayhead) && !isCursorOverHaxeUI)
       {
@@ -5455,7 +5592,7 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
         }
       }
 
-      var rightMouseUpdated:Bool = (FlxG.mouse.justPressedRight)
+      var rightMouseUpdated:Bool = isRightClickEquivalent()
         || (FlxG.mouse.pressedRight && (FlxG.mouse.deltaX > 0 || FlxG.mouse.deltaY > 0));
       if (rightMouseUpdated && overlapsGrid)
       {
