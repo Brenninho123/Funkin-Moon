@@ -54,17 +54,9 @@ class Main extends Sprite
   private static function setupWorkingDirectory():Void
   {
     #if android
-    Sys.setCwd(
-      haxe.io.Path.addTrailingSlash(
-        extension.androidtools.content.Context.getExternalFilesDir()
-      )
-    );
+    Sys.setCwd(haxe.io.Path.addTrailingSlash(extension.androidtools.content.Context.getExternalFilesDir()));
     #elseif ios
-    Sys.setCwd(
-      haxe.io.Path.addTrailingSlash(
-        System.documentsDirectory
-      )
-    );
+    Sys.setCwd(haxe.io.Path.addTrailingSlash(System.documentsDirectory));
     #end
   }
 
@@ -92,19 +84,32 @@ class Main extends Sprite
     haxe.Log.trace = AnsiTrace.trace;
     AnsiTrace.traceBF();
 
-    openfl.utils._internal.Log.level =
-      openfl.utils._internal.Log.LogLevel.INFO;
+    openfl.utils._internal.Log.level = openfl.utils._internal.Log.LogLevel.INFO;
   }
 
   private function initializeMods():Void
   {
-    funkin.modding.PolymodHandler.loadAllMods();
+    try
+    {
+      funkin.modding.PolymodHandler.loadAllMods();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to load mods, continuing with none loaded: $e');
+
+      try
+      {
+        funkin.modding.PolymodHandler.loadNoMods();
+      }
+      catch (e2:Dynamic)
+      {
+      }
+    }
   }
 
   private function initialize(?event:Event):Void
   {
-    if (initialized)
-      return;
+    if (initialized) return;
 
     initialized = true;
 
@@ -114,7 +119,9 @@ class Main extends Sprite
     }
 
     initializeShutdownHandler();
-    validateGraphicsContext();
+
+    if (!validateGraphicsContext()) return;
+
     setupGame();
   }
 
@@ -130,8 +137,7 @@ class Main extends Sprite
 
   private function shutdown():Void
   {
-    if (shuttingDown)
-      return;
+    if (shuttingDown) return;
 
     shuttingDown = true;
 
@@ -141,7 +147,7 @@ class Main extends Sprite
     }
     catch (e:Dynamic)
     {
-      AnsiTrace.trace('Failed to stop audio: $e');
+      FlxG.log.error('Failed to stop audio: $e');
     }
 
     try
@@ -150,7 +156,7 @@ class Main extends Sprite
     }
     catch (e:Dynamic)
     {
-      AnsiTrace.trace('Failed to purge memory: $e');
+      FlxG.log.error('Failed to purge memory: $e');
     }
 
     try
@@ -159,7 +165,7 @@ class Main extends Sprite
     }
     catch (e:Dynamic)
     {
-      AnsiTrace.trace('Failed to clear asset cache: $e');
+      FlxG.log.error('Failed to clear asset cache: $e');
     }
 
     #if !html5
@@ -167,173 +173,146 @@ class Main extends Sprite
     #end
   }
 
-  private function validateGraphicsContext():Void
+  private function validateGraphicsContext():Bool
   {
     var contextType = stage.window.context.type;
 
-    if (
-      contextType == WEBGL ||
-      contextType == OPENGL ||
-      contextType == OPENGLES
-    )
+    if (contextType == WEBGL || contextType == OPENGL || contextType == OPENGLES)
     {
-      return;
+      return true;
     }
 
-    var technology:String =
-      #if web
-      'WebGL';
-      #elseif desktop
-      'OpenGL';
-      #else
-      'OpenGL ES';
-      #end
+    var technology:String = #if web 'WebGL' #elseif desktop 'OpenGL' #else 'OpenGL ES' #end;
+    var requiredVersion:String = #if web '$technology 1.0 or newer' #elseif desktop '$technology 3.0 or newer' #else '$technology 2.0 or newer' #end;
 
-    var requiredVersion:String =
-      #if web
-      '$technology 1.0 or newer';
-      #elseif desktop
-      '$technology 3.0 or newer';
-      #else
-      '$technology 2.0 or newer';
-      #end
-
-    var description:String =
-      'Failed to initialize the $technology rendering context.\n\n';
+    var description:String = 'Failed to initialize the $technology rendering context.\n\n';
 
     #if web
-    description +=
-      'Make sure your graphics card supports $requiredVersion, '
-      + 'your graphics drivers are up to date, and hardware '
-      + 'acceleration is enabled in your browser.';
+    description += 'Make sure your graphics card supports $requiredVersion, your graphics drivers are up to date, and hardware acceleration is enabled in your browser.';
     #elseif desktop
-    description +=
-      'Make sure your graphics card supports $requiredVersion '
-      + 'and your graphics drivers are up to date.';
+    description += 'Make sure your graphics card supports $requiredVersion and your graphics drivers are up to date.';
     #else
-    description +=
-      'Make sure your device supports $requiredVersion.';
+    description += 'Make sure your device supports $requiredVersion.';
     #end
 
-    WindowUtil.showError(
-      'Graphics Initialization Error',
-      description
-    );
+    WindowUtil.showError('Graphics Initialization Error', description);
 
+    #if !html5
     System.exit(1);
+    #end
+
+    return false;
   }
 
   private function setupGame():Void
   {
-    #if FEATURE_HAXEUI
-    initializeHaxeUI();
+    try
+    {
+      #if FEATURE_HAXEUI
+      initializeHaxeUI();
+      #end
+
+      initializeDebugDisplay();
+      initializeSignals();
+      initializeSaveSystem();
+      initializeVideoSystem();
+      initializeRendering();
+
+      createGame();
+
+      initializeWindow();
+
+      finalizeGameSetup();
+    }
+    catch (e:Dynamic)
+    {
+      reportFatalStartupError(e);
+    }
+  }
+
+  private function reportFatalStartupError(e:Dynamic):Void
+  {
+    WindowUtil.showError('Startup Error', 'The game failed to start.\n\n${Std.string(e)}');
+
+    #if !html5
+    Sys.exit(1);
     #end
-
-    initializeDebugDisplay();
-    initializeSignals();
-    initializeSaveSystem();
-    initializeVideoSystem();
-    initializeRendering();
-    initializeWindow();
-
-    createGame();
-
-    finalizeGameSetup();
   }
 
   private function initializeDebugDisplay():Void
   {
-    debugDisplay = new FunkinDebugDisplay(
-      10,
-      10,
-      0xFFFFFF
-    );
+    debugDisplay = new FunkinDebugDisplay(10, 10, 0xFFFFFF);
   }
 
   private function initializeSignals():Void
   {
-    FlxG.signals.postUpdate.add(
-      handleDebugDisplayKeys
-    );
+    FlxG.signals.postUpdate.add(handleDebugDisplayKeys);
 
     #if mobile
-    FlxG.signals.preUpdate.add(
-      repositionCounters.bind(true)
-    );
+    FlxG.signals.preUpdate.add(repositionCounters.bind(true));
     #end
   }
 
   private function initializeSaveSystem():Void
   {
-    Save.load();
+    try
+    {
+      Save.load();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to load save data: $e');
+    }
   }
 
   private function initializeVideoSystem():Void
   {
     #if hxvlc
-    Handle.initAsync(function(success:Bool):Void
+    try
     {
-      if (success)
+      Handle.initAsync(function(success:Bool):Void
       {
-        trace(
-          ' HXVLC '.bold().bg_orange()
-          + ' LibVLC initialized successfully!'
-        );
-      }
-      else
-      {
-        trace(
-          ' HXVLC '.bold().bg_orange()
-          + ' Failed to initialize LibVLC!'
-        );
-      }
-    });
+        if (success)
+        {
+          FlxG.log.add('LibVLC initialized successfully!');
+        }
+        else
+        {
+          FlxG.log.error('Failed to initialize LibVLC!');
+        }
+      });
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to initialize the video system: $e');
+    }
     #end
   }
 
   private function initializeRendering():Void
   {
     @:privateAccess
-    FlxG.cameras =
-      new funkin.graphics.FunkinCameraFrontEnd();
+    FlxG.cameras = new funkin.graphics.FunkinCameraFrontEnd();
   }
 
   private function initializeWindow():Void
   {
-    WindowUtil.setVSyncMode(
-      Preferences.vsyncMode
-    );
+    WindowUtil.setVSyncMode(Preferences.vsyncMode);
 
     #if !html5
-    FlxG.scaleMode =
-      new FullScreenScaleMode();
+    FlxG.scaleMode = new FullScreenScaleMode();
     #end
   }
 
   private function createGame():Void
   {
-    var framerate:Int =
-      Preferences.unlockedFramerate
-        ? 0
-        : Preferences.framerate;
+    var framerate:Int = Preferences.unlockedFramerate ? 0 : Preferences.framerate;
+    var fullscreen:Bool = FlxG.stage.window.fullscreen || Preferences.autoFullscreen;
 
-    var fullscreen:Bool =
-      FlxG.stage.window.fullscreen
-      || Preferences.autoFullscreen;
-
-    var game:FlxGame = new FlxGame(
-      GAME_WIDTH,
-      GAME_HEIGHT,
-      initialState,
-      framerate,
-      framerate,
-      skipSplash,
-      fullscreen
-    );
+    var game:FlxGame = new FlxGame(GAME_WIDTH, GAME_HEIGHT, initialState, framerate, framerate, skipSplash, fullscreen);
 
     @:privateAccess
-    game._customSoundTray =
-      funkin.ui.options.FunkinSoundTray;
+    game._customSoundTray = funkin.ui.options.FunkinSoundTray;
 
     addChild(game);
   }
@@ -342,9 +321,7 @@ class Main extends Sprite
   {
     #if FEATURE_DEBUG_FUNCTIONS
     #if !FLX_NO_DEBUG
-    FlxG.game.debugger.interaction.addTool(
-      new funkin.util.TrackerToolButtonUtil()
-    );
+    FlxG.game.debugger.interaction.addTool(new funkin.util.TrackerToolButtonUtil());
     #end
 
     funkin.util.macro.ConsoleMacro.init();
@@ -355,46 +332,32 @@ class Main extends Sprite
     #end
 
     #if hxcpp_debug_server
-    trace(
-      ' DEBUG '.bold().bg_green()
-      + ' hxcpp_debug_server enabled.'
-    );
+    FlxG.log.add('hxcpp_debug_server enabled.');
     #else
-    trace(
-      ' DEBUG '.bold().bg_red()
-      + ' hxcpp_debug_server disabled.'
-    );
+    FlxG.log.add('hxcpp_debug_server disabled.');
     #end
   }
 
   #if FEATURE_HAXEUI
   private function initializeHaxeUI():Void
   {
-    haxe.ui.locale.LocaleManager
-      .instance
-      .autoSetLocale = false;
+    haxe.ui.locale.LocaleManager.instance.autoSetLocale = false;
 
     haxe.ui.Toolkit.init();
     haxe.ui.Toolkit.theme = 'dark';
     haxe.ui.Toolkit.autoScale = false;
 
-    haxe.ui.focus.FocusManager
-      .instance
-      .autoFocus = false;
+    haxe.ui.focus.FocusManager.instance.autoFocus = false;
 
     funkin.input.Cursor.registerHaxeUICursors();
 
-    haxe.ui.tooltips.ToolTipManager
-      .defaultDelay = 200;
+    haxe.ui.tooltips.ToolTipManager.defaultDelay = 200;
   }
   #end
 
   private function handleDebugDisplayKeys():Void
   {
-    if (
-      PlayerSettings.player1.controls == null
-      || !PlayerSettings.player1.controls.check(DEBUG_DISPLAY)
-    )
+    if (PlayerSettings.player1.controls == null || !PlayerSettings.player1.controls.check(DEBUG_DISPLAY))
     {
       return;
     }
@@ -402,64 +365,37 @@ class Main extends Sprite
     switch (Preferences.debugDisplay)
     {
       case DebugDisplayMode.Off:
-        Preferences.debugDisplay =
-          DebugDisplayMode.Simple;
+        Preferences.debugDisplay = DebugDisplayMode.Simple;
 
       case DebugDisplayMode.Simple:
-        Preferences.debugDisplay =
-          DebugDisplayMode.Advanced;
+        Preferences.debugDisplay = DebugDisplayMode.Advanced;
 
       case DebugDisplayMode.Advanced:
-        Preferences.debugDisplay =
-          DebugDisplayMode.Off;
+        Preferences.debugDisplay = DebugDisplayMode.Off;
     }
   }
 
   #if mobile
   private function repositionCounters(lerp:Bool):Void
   {
-    if (debugDisplay == null)
-      return;
+    if (debugDisplay == null) return;
 
-    var scale:Float = Math.max(
-      Math.min(
-        FlxG.stage.stageWidth / FlxG.width,
-        FlxG.stage.stageHeight / FlxG.height
-      ),
-      1
-    );
+    var scale:Float = Math.max(Math.min(FlxG.stage.stageWidth / FlxG.width, FlxG.stage.stageHeight / FlxG.height), 1);
 
     debugDisplay.scaleX = scale;
     debugDisplay.scaleY = scale;
 
-    if (FlxG.game == null)
-      return;
+    if (FlxG.game == null) return;
 
-    var notchOffset:Float =
-      Math.max(
-        FullScreenScaleMode.notchSize.x,
-        10
-      );
+    var notchOffset:Float = Math.max(FullScreenScaleMode.notchSize.x, 10);
 
-    var targetX:Float =
-      FlxG.game.x + notchOffset;
-
-    var targetY:Float =
-      FlxG.game.y + (3 * scale);
+    var targetX:Float = FlxG.game.x + notchOffset;
+    var targetY:Float = FlxG.game.y + (3 * scale);
 
     if (lerp)
     {
-      debugDisplay.x = flixel.math.FlxMath.lerp(
-        debugDisplay.x,
-        targetX,
-        FlxG.elapsed * 3
-      );
-
-      debugDisplay.y = flixel.math.FlxMath.lerp(
-        debugDisplay.y,
-        targetY,
-        FlxG.elapsed * 3
-      );
+      debugDisplay.x = flixel.math.FlxMath.lerp(debugDisplay.x, targetX, FlxG.elapsed * 3);
+      debugDisplay.y = flixel.math.FlxMath.lerp(debugDisplay.y, targetY, FlxG.elapsed * 3);
     }
     else
     {
