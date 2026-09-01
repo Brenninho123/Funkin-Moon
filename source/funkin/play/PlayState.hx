@@ -1650,6 +1650,8 @@ class PlayState extends MusicBeatSubState
     opponentStrumline.zIndex = 1000;
     opponentStrumline.cameras = [camHUD];
 
+    opponentStrumline.visible = !Preferences.middlescroll;
+
     #if mobile
     if (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows && !ControlsHandler.hasExternalInputDevice)
     {
@@ -1658,7 +1660,7 @@ class PlayState extends MusicBeatSubState
     #end
 
     playerStrumline.fadeInArrows();
-    opponentStrumline.fadeInArrows();
+    if (!Preferences.middlescroll) opponentStrumline.fadeInArrows();
   }
 
   #if mobile
@@ -2900,8 +2902,13 @@ class PlayState extends MusicBeatSubState
     super.close();
   }
 
+  var cleanedUp:Bool = false;
+
   function performCleanup():Void
   {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
     cancelAllCameraTweens();
 
     dispatchEvent(new ScriptEvent(DESTROY, false));
