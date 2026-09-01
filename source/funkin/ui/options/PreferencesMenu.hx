@@ -131,7 +131,9 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       function(value:Bool):Void
       {
         Preferences.middlescroll = value;
-      }, Preferences.middlescroll);
+      },
+      Preferences.middlescroll, #if mobile ControlsHandler.hasExternalInputDevice
+      || Preferences.controlsScheme != FunkinHitboxControlSchemes.Arrows #end);
     createPrefItemPercentage('Strumline Background', 'Show a semi-transparent background behind the strumline.', function(value:Int):Void
     {
       Preferences.strumlineBackgroundOpacity = value;
