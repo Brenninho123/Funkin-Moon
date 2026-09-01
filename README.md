@@ -36,6 +36,12 @@ Feel free to start learning to mod the game by reading our [documentation](https
 
 # Credits and Special Thanks
 
+# Moon Engine Credits
+• Brenninho123: Owner/Programmer
+• Sunndy • Artist
+
+# Friday Night Funkin' Credits
+
 Full credits can be found in-game, or in the `credits.json` file which is located [here](https://github.com/FunkinCrew/funkin.assets/blob/main/exclude/data/credits.json).
 
 ## Programming
