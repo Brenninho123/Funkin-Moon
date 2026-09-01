@@ -174,6 +174,32 @@ jobs:
           Set-Location "$HXCPP_PATH\tools\hxcpp"
           haxe compile.hxml
 
+      - name: Rebuild Lime Windows
+        shell: pwsh
+        run: haxelib run lime rebuild cpp
+
+      - name: Verify Lime Windows
+        shell: pwsh
+        run: |
+          $LimePath = (haxelib libpath lime).Trim()
+          $Candidates = @(
+            "$LimePath\ndll\Windows\lime.ndll",
+            "$LimePath\ndll\Windows64\lime.ndll"
+          )
+
+          $Found = $false
+
+          foreach ($Path in $Candidates) {
+            if (Test-Path $Path) {
+              $Found = $true
+              Write-Host "Found: $Path"
+            }
+          }
+
+          if (-not $Found) {
+            Write-Error "lime.ndll was not generated."
+          }
+
       - name: Build Windows
         shell: pwsh
         run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
