@@ -584,6 +584,18 @@ class Save implements ConsoleClass
     }
   }
 
+  public function toggleFavoriteSong(id:String):Void
+  {
+    if (isSongFavorited(id))
+    {
+      unfavoriteSong(id);
+    }
+    else
+    {
+      favoriteSong(id);
+    }
+  }
+
   public function getControls(playerId:Int, inputType:Device):Null<SaveControlsData>
   {
     switch (inputType)
@@ -686,14 +698,18 @@ class Save implements ConsoleClass
     return loadFromSlot(nextSlot);
   }
 
-  public static function debug_queryBadSaveData():Void
+  public static function debug_queryBadSaveData():Int
   {
     final RECOVERY_SLOT_START = 1000;
     final RECOVERY_SLOT_END = 1100;
-    var firstBadSaveData = querySlotRange(RECOVERY_SLOT_START, RECOVERY_SLOT_END);
-    if (firstBadSaveData > 0)
-    {
-    }
+    return querySlotRange(RECOVERY_SLOT_START, RECOVERY_SLOT_END);
+  }
+
+  public static function debug_dumpBadSaveData(slot:Int):Null<String>
+  {
+    var raw:Null<Dynamic> = fetchFromSlotRaw(slot);
+    if (raw == null) return null;
+    return haxe.Json.stringify(raw);
   }
 
   static function fetchFromSlotRaw(slot:Int):Null<Dynamic>
