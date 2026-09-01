@@ -1,5 +1,6 @@
 package funkin.ui;
 
+import flixel.FlxState;
 import flixel.FlxSubState;
 import flixel.text.FlxText;
 import funkin.ui.mainmenu.MainMenuState;
@@ -21,10 +22,6 @@ import funkin.mobile.ui.FunkinBackButton;
 import funkin.play.notes.NoteDirection;
 #end
 
-/**
- * MusicBeatSubState reincorporates the functionality of MusicBeatState into an FlxSubState.
- */
-@:nullSafety
 class MusicBeatSubState extends FlxSubState implements IEventHandler
 {
   public var leftWatermarkText:Null<FlxText> = null;
@@ -53,6 +50,21 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   public var backButton:Null<FunkinBackButton>;
   public var camControls:Null<FunkinCamera>;
 
+  function ensureControlsCamera():FunkinCamera
+  {
+    var cam:Null<FunkinCamera> = camControls;
+
+    if (cam == null)
+    {
+      cam = new FunkinCamera('camControls');
+      camControls = cam;
+      FlxG.cameras.add(cam, false);
+      cam.bgColor = 0x0;
+    }
+
+    return cam;
+  }
+
   public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
       ?colorsOverride:Array<FlxColor>):Void
   {
@@ -63,15 +75,10 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
       hitbox.destroy();
     }
 
-    if (camControls == null)
-    {
-      camControls = new FunkinCamera('camControls');
-      FlxG.cameras.add(camControls, false);
-      camControls.bgColor = 0x0;
-    }
+    var cam:FunkinCamera = ensureControlsCamera();
 
     hitbox = new FunkinHitbox(schemeOverride, directionsOverride, colorsOverride);
-    hitbox.cameras = [camControls];
+    hitbox.cameras = [cam];
     hitbox.visible = visible;
     add(hitbox);
 
@@ -83,15 +90,10 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   {
     if (backButton != null) remove(backButton);
 
-    if (camControls == null)
-    {
-      camControls = new FunkinCamera('camControls');
-      FlxG.cameras.add(camControls, false);
-      camControls.bgColor = 0x0;
-    }
+    var cam:FunkinCamera = ensureControlsCamera();
 
     backButton = new FunkinBackButton(xPos, yPos, color, confirmCallback, restOpacity, instant);
-    backButton.cameras = [camControls];
+    backButton.cameras = [cam];
     add(backButton);
   }
   #end
@@ -127,7 +129,12 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
     super.destroy();
 
     #if mobile
-    if (camControls != null) FlxG.cameras.remove(camControls);
+    if (camControls != null)
+    {
+      FlxG.cameras.remove(camControls);
+      camControls.destroy();
+      camControls = null;
+    }
     #end
 
     Conductor.beatHit.remove(this.beatHit);
@@ -138,14 +145,12 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   {
     super.update(elapsed);
 
-    // Emergency exit button.
     if (FlxG.keys.justPressed.F4)
     {
       FlxG.switchState(() -> new MainMenuState());
       WindowUtil.setWindowTitle('Friday Night Funkin\'');
     }
 
-    // Display Conductor info in the watch window.
     FlxG.watch.addQuick('musicTime', FlxG.sound.music?.time ?? 0.0);
     Conductor.watchQuick(conductorInUse);
 
@@ -174,24 +179,14 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   {
     PolymodHandler.forceReloadAssets();
 
-    // Restart the current state, so old data is cleared.
     FlxG.resetState();
   }
 
-  /**
-   * Refreshes the state, by redoing the render order of all sprites.
-   * It does this based on the `zIndex` of each prop.
-   */
   public function refresh()
   {
     sort(SortUtil.byZIndex, FlxSort.ASCENDING);
   }
 
-  /**
-   * Called when a step is hit in the current song.
-   * Continues outside of PlayState, for things like animations in menus.
-   * @return Whether the event should continue (not canceled).
-   */
   public function stepHit():Bool
   {
     if (this.subState != null && !persistentUpdate) return false;
@@ -205,11 +200,6 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
     return true;
   }
 
-  /**
-   * Called when a beat is hit in the current song.
-   * Continues outside of PlayState, for things like animations in menus.
-   * @return Whether the event should continue (not canceled).
-   */
   public function beatHit():Bool
   {
     if (this.subState != null && !persistentUpdate) return false;
@@ -230,12 +220,9 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
 
   function createWatermarkText():Void
   {
-    // Both have an xPos of 0, but a width equal to the full screen.
-    // The rightWatermarkText is right aligned, which puts the text in the correct spot.
     leftWatermarkText = new FlxText(0, FlxG.height - 18, FlxG.width, '', 12);
     rightWatermarkText = new FlxText(0, FlxG.height - 18, FlxG.width, '', 12);
 
-    // 100,000 should be good enough.
     leftWatermarkText.zIndex = 100000;
     rightWatermarkText.zIndex = 100000;
     leftWatermarkText.scrollFactor.set(0, 0);
@@ -247,13 +234,13 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
     add(rightWatermarkText);
   }
 
-  /**
-   * Close this substate and replace it with a different one.
-   */
   public function switchSubState(substate:FlxSubState):Void
   {
+    var parent:Null<FlxState> = this._parentState;
+
     this.close();
-    this._parentState.openSubState(substate);
+
+    if (parent != null) parent.openSubState(substate);
   }
 
   @:nullSafety(Off)
