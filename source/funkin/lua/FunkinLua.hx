@@ -4,12 +4,15 @@ import hxlua.Lua;
 import hxlua.LuaL;
 import hxlua.Types;
 import funkin.play.PlayState;
+import funkin.audio.FunkinSound;
 
 typedef LuaState = cpp.RawPointer<Lua_State>;
 
 class FunkinLua
 {
   public static var lastCalledScript:FunkinLua;
+
+  static var sharedVariables:Map<String, Dynamic> = new Map();
 
   public var lua:LuaState;
   public var scriptName:String;
@@ -69,6 +72,16 @@ class FunkinLua
     Lua.register(lua, 'getScore', cpp.Function.fromStaticFunction(cb_getScore));
     Lua.register(lua, 'addScore', cpp.Function.fromStaticFunction(cb_addScore));
     Lua.register(lua, 'getCombo', cpp.Function.fromStaticFunction(cb_getCombo));
+    Lua.register(lua, 'getSongPosition', cpp.Function.fromStaticFunction(cb_getSongPosition));
+    Lua.register(lua, 'getBPM', cpp.Function.fromStaticFunction(cb_getBPM));
+    Lua.register(lua, 'getCurrentStep', cpp.Function.fromStaticFunction(cb_getCurrentStep));
+    Lua.register(lua, 'getCurrentBeat', cpp.Function.fromStaticFunction(cb_getCurrentBeat));
+    Lua.register(lua, 'getDeaths', cpp.Function.fromStaticFunction(cb_getDeaths));
+    Lua.register(lua, 'isPracticeMode', cpp.Function.fromStaticFunction(cb_isPracticeMode));
+    Lua.register(lua, 'isBotPlayMode', cpp.Function.fromStaticFunction(cb_isBotPlayMode));
+    Lua.register(lua, 'playSound', cpp.Function.fromStaticFunction(cb_playSound));
+    Lua.register(lua, 'setVar', cpp.Function.fromStaticFunction(cb_setVar));
+    Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
   }
 
   public function setString(name:String, value:String):Void
@@ -138,6 +151,16 @@ class FunkinLua
     {
       Lua.pushnumber(lua, value);
     }
+    else if (Std.isOfType(value, Array))
+    {
+      var arr:Array<Dynamic> = cast value;
+      Lua.newtable(lua);
+      for (i in 0...arr.length)
+      {
+        pushValue(arr[i]);
+        Lua.rawseti(lua, -2, i + 1);
+      }
+    }
     else
     {
       Lua.pushstring(lua, Std.string(value));
@@ -151,6 +174,22 @@ class FunkinLua
     if (luaType == Lua.TBOOLEAN) return Lua.toboolean(lua, index) != 0;
     if (luaType == Lua.TNUMBER) return (Lua.tonumber(lua, index) : Float);
     if (luaType == Lua.TSTRING) return (Lua.tostring(lua, index) : String);
+
+    if (luaType == Lua.TTABLE)
+    {
+      var tableIndex:Int = Lua.absindex(lua, index);
+      var length:Int = Lua.rawlen(lua, tableIndex);
+      var result:Array<Dynamic> = [];
+
+      for (i in 1...length + 1)
+      {
+        Lua.rawgeti(lua, tableIndex, i);
+        result.push(pullValue(-1));
+        Lua.pop(lua, 1);
+      }
+
+      return result;
+    }
 
     return null;
   }
@@ -263,6 +302,99 @@ class FunkinLua
   {
     Lua.pop(l, Lua.gettop(l));
     Lua.pushnumber(l, Highscore.tallies?.combo ?? 0);
+    return 1;
+  }
+
+  static function cb_getSongPosition(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Conductor.instance?.songPosition ?? 0.0);
+    return 1;
+  }
+
+  static function cb_getBPM(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Conductor.instance?.bpm ?? 0.0);
+    return 1;
+  }
+
+  static function cb_getCurrentStep(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Conductor.instance?.currentStep ?? 0);
+    return 1;
+  }
+
+  static function cb_getCurrentBeat(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Conductor.instance?.currentBeat ?? 0);
+    return 1;
+  }
+
+  static function cb_getDeaths(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, PlayState.instance?.deathCounter ?? 0);
+    return 1;
+  }
+
+  static function cb_isPracticeMode(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushboolean(l, (PlayState.instance?.isPracticeMode ?? false) ? 1 : 0);
+    return 1;
+  }
+
+  static function cb_isBotPlayMode(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushboolean(l, (PlayState.instance?.isBotPlayMode ?? false) ? 1 : 0);
+    return 1;
+  }
+
+  static function cb_playSound(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var volume:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+    Lua.pop(l, n);
+
+    if (path == '') return 0;
+
+    FunkinSound.playOnce(Paths.sound(path), volume);
+    return 0;
+  }
+
+  static function cb_setVar(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var name:String = (Lua.tostring(l, 1) : String);
+    var value:Dynamic = lastCalledScript.pullValue(2);
+
+    sharedVariables.set(name, value);
+
+    Lua.pop(l, n);
+    return 0;
+  }
+
+  static function cb_getVar(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    Lua.pop(l, n);
+
+    if (lastCalledScript == null || !sharedVariables.exists(name)) return 0;
+
+    lastCalledScript.pushValue(sharedVariables.get(name));
     return 1;
   }
 
