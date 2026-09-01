@@ -564,10 +564,10 @@ class FunkinHitbox extends FlxTypedSpriteGroup<FunkinHint>
   {
     if (trackedInputs != null && trackedInputs.length > 0) ControlsHandler.removeCachedInput(PlayerSettings.player1.controls, trackedInputs);
 
+    super.destroy();
+
     FlxDestroyUtil.destroy(onHintDown);
     FlxDestroyUtil.destroy(onHintUp);
-
-    super.destroy();
   }
 
   @:noCompletion
