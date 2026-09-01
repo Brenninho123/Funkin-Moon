@@ -125,6 +125,7 @@ class Save implements ConsoleClass
       mobileOptions: {
         screenTimeout: false,
         controlsScheme: FunkinHitboxControlSchemes.Arrows,
+        fullscreenMode: true,
         noAds: false
       },
       #end
@@ -959,6 +960,8 @@ typedef SaveDataMobileOptions =
   var screenTimeout:Bool;
 
   var controlsScheme:String;
+
+  var fullscreenMode:Bool;
 
   var noAds:Bool;
 }
