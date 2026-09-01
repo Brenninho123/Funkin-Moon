@@ -7,13 +7,12 @@ import openfl.utils.AssetType;
 import funkin.util.macro.ConsoleMacro;
 import haxe.io.Path;
 
-/**
- * A core class which handles determining asset paths.
- */
 @:nullSafety
 class Paths implements ConsoleClass
 {
   static var currentLevel:Null<String> = null;
+
+  static var pathCache:Map<String, String> = new Map();
 
   public static function setCurrentLevel(name:Null<String>):Void
   {
@@ -25,6 +24,11 @@ class Paths implements ConsoleClass
     {
       currentLevel = name.toLowerCase();
     }
+  }
+
+  public static function clearCache():Void
+  {
+    pathCache.clear();
   }
 
   public static function stripLibrary(path:String):String
@@ -42,6 +46,17 @@ class Paths implements ConsoleClass
   }
 
   static function getPath(file:String, type:AssetType, library:Null<String>):String
+  {
+    var cacheKey:String = '${type}:${library ?? "auto"}:${currentLevel ?? "none"}:${file}';
+    var cached:Null<String> = pathCache.get(cacheKey);
+    if (cached != null) return cached;
+
+    var result:String = resolvePath(file, type, library);
+    pathCache.set(cacheKey, result);
+    return result;
+  }
+
+  static function resolvePath(file:String, type:AssetType, library:Null<String>):String
   {
     if (library != null) return getLibraryPath(file, library);
 
@@ -70,6 +85,21 @@ class Paths implements ConsoleClass
   static inline function getPreloadPath(file:String):String
   {
     return 'assets/$file';
+  }
+
+  public static function exists(file:String, type:AssetType = TEXT, ?library:String):Bool
+  {
+    return Assets.exists(getPath(file, type, library), type);
+  }
+
+  public static function imageExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(getPath('images/$key.png', IMAGE, library), IMAGE);
+  }
+
+  public static function soundExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(getPath('sounds/$key.${Constants.EXT_SOUND}', SOUND, library), SOUND);
   }
 
   public static function file(file:String, type:AssetType = TEXT, ?library:String):String
@@ -141,18 +171,11 @@ class Paths implements ConsoleClass
 
   public static function voices(song:String, ?suffix:String = ''):String
   {
-    if (suffix == null) suffix = ''; // no suffix, for a sorta backwards compatibility with older-ish voice files
+    if (suffix == null) suffix = '';
 
     return 'songs:assets/songs/${song.toLowerCase()}/Voices$suffix.${Constants.EXT_SOUND}';
   }
 
-  /**
-   * Gets the path to an `Inst.mp3/ogg` song instrumental from songs:assets/songs/`song`/
-   * @param song name of the song to get instrumental for
-   * @param suffix any suffix to add to end of song name, used for `-erect` variants usually
-   * @param withExtension if it should return with the audio file extension `.mp3` or `.ogg`.
-   * @return String
-   */
   public static function inst(song:String, ?suffix:String = '', withExtension:Bool = true):String
   {
     var ext:String = withExtension ? '.${Constants.EXT_SOUND}' : '';
@@ -206,7 +229,6 @@ class Paths implements ConsoleClass
       useRenderTexture: settings?.useRenderTexture ?? false
     };
 
-    // Validate asset path.
     if (!Assets.exists('${graphicKey}/Animation.json'))
     {
       throw 'No Animation.json file exists at the specified path (${graphicKey})';
