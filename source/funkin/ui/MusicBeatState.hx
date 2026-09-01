@@ -24,10 +24,6 @@ import funkin.mobile.ui.mainmenu.FunkinOptionsButton;
 import funkin.play.notes.NoteDirection;
 #end
 
-/**
- * MusicBeatState actually represents the core utility FlxState of the game.
- * It includes functionality for event handling, as well as maintaining BPM-based update events.
- */
 @:nullSafety
 class MusicBeatState extends FlxTransitionableState implements IEventHandler
 {
@@ -73,6 +69,15 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   public var optionsButton:Null<FunkinOptionsButton>;
   public var camControls:Null<FunkinCamera>;
 
+  function ensureControlsCamera():Void
+  {
+    if (camControls != null) return;
+
+    camControls = new FunkinCamera('camControls');
+    FlxG.cameras.add(camControls, false);
+    camControls.bgColor = 0x0;
+  }
+
   public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
       ?colorsOverride:Array<FlxColor>):Void
   {
@@ -83,12 +88,7 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
       hitbox.destroy();
     }
 
-    if (camControls == null)
-    {
-      camControls = new FunkinCamera('camControls');
-      FlxG.cameras.add(camControls, false);
-      camControls.bgColor = 0x0;
-    }
+    ensureControlsCamera();
 
     hitbox = new FunkinHitbox(schemeOverride, directionsOverride, colorsOverride);
     hitbox.cameras = [camControls];
@@ -103,30 +103,18 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   {
     if (backButton != null) remove(backButton);
 
-    if (camControls == null)
-    {
-      camControls = new FunkinCamera('camControls');
-      FlxG.cameras.add(camControls, false);
-      camControls.bgColor = 0x0;
-    }
+    ensureControlsCamera();
 
     backButton = new FunkinBackButton(xPos, yPos, color, confirmCallback, restOpacity, instant);
     backButton.cameras = [camControls];
     add(backButton);
   }
 
-  // this should get moved post ui update but this is easier rn lolll
-
   public function addOptionsButton(?xPos:Float = 0, ?yPos:Float = 0, ?confirmCallback:Void->Void = null, ?instant:Bool = false):Void
   {
     if (optionsButton != null) remove(optionsButton);
 
-    if (camControls == null)
-    {
-      camControls = new FunkinCamera('camControls');
-      FlxG.cameras.add(camControls, false);
-      camControls.bgColor = 0x0;
-    }
+    ensureControlsCamera();
 
     optionsButton = new FunkinOptionsButton(xPos, yPos, confirmCallback, instant);
     optionsButton.cameras = [camControls];
@@ -150,7 +138,12 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     super.destroy();
 
     #if mobile
-    if (camControls != null) FlxG.cameras.remove(camControls);
+    if (camControls != null)
+    {
+      FlxG.cameras.remove(camControls);
+      camControls.destroy();
+      camControls = null;
+    }
     #end
 
     Conductor.beatHit.remove(this.beatHit);
@@ -159,7 +152,6 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
 
   function handleFunctionControls():Void
   {
-    // Emergency exit button.
     if (FlxG.keys.justPressed.F4)
     {
       FlxG.switchState(() -> new MainMenuState());
@@ -170,6 +162,8 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   override function update(elapsed:Float)
   {
     super.update(elapsed);
+
+    handleFunctionControls();
 
     dispatchEvent(new UpdateScriptEvent(elapsed));
   }
@@ -190,13 +184,9 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
 
   function createWatermarkText()
   {
-    // Both have an xPos of 0, but a width equal to the full screen.
-    // The rightWatermarkText is right aligned, which puts the text in the correct spot.
-    // Their xPos is only changed when there's a notch on the device so it doesn't get covered by it.
     leftWatermarkText = new FlxText(funkin.ui.FullScreenScaleMode.gameNotchSize.x, FlxG.height - 18, FlxG.width, '', 12);
     rightWatermarkText = new FlxText(-(funkin.ui.FullScreenScaleMode.gameNotchSize.x), FlxG.height - 18, FlxG.width, '', 12);
 
-    // 100,000 should be good enough.
     leftWatermarkText.zIndex = 100000;
     rightWatermarkText.zIndex = 100000;
     leftWatermarkText.scrollFactor.set(0, 0);
@@ -217,7 +207,6 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   {
     PolymodHandler.forceReloadAssets();
 
-    // Create a new instance of the current state, so old data is cleared.
     FlxG.resetState();
   }
 
@@ -247,10 +236,6 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     return true;
   }
 
-  /**
-   * Refreshes the state, by redoing the render order of all sprites.
-   * It does this based on the `zIndex` of each prop.
-   */
   public function refresh()
   {
     sort(SortUtil.byZIndex, FlxSort.ASCENDING);
