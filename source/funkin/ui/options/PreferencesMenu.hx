@@ -160,6 +160,13 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       Preferences.hapticsIntensityMultiplier = value;
     }, null, Preferences.hapticsIntensityMultiplier, 0.1, 5, 0.1, 1);
     #end
+    #if mobile
+    createPrefItemCheckbox('Fullscreen Mode', 'When enabled, the game stretches to fill the entire screen, including areas behind notches and camera cutouts.',
+      function(value:Bool):Void
+      {
+        Preferences.fullscreenMode = value;
+      }, Preferences.fullscreenMode);
+    #end
     createPrefItemCheckbox('Flashing Lights', 'When disabled, flashing effects are dampened. Useful for people with photosensitive epilepsy.',
       function(value:Bool):Void
       {
