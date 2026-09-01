@@ -1,174 +1,187 @@
 name: Build
 
 on:
-push:
-branches: [main]
-workflow_dispatch:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-contents: read
+  contents: read
 
 jobs:
-android:
-name: Android
-runs-on: ubuntu-latest
+  android:
+    name: Android
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      submodules: recursive
-      fetch-depth: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
-  - name: Set up JDK
-    uses: actions/setup-java@v5
-    with:
-      distribution: temurin
-      java-version: '17'
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
-  - name: Set up Android SDK
-    uses: android-actions/setup-android@v3
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
 
-  - name: Install Android components
-    run: |
-      yes | sdkmanager --licenses >/dev/null || true
-      sdkmanager --install \
-        "platform-tools" \
-        "platforms;android-35" \
-        "build-tools;35.0.0" \
-        "ndk;27.2.12479018"
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018"
 
-  - name: Configure Android environment
-    run: |
-      echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-      echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-      echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
+      - name: Configure Android
+        shell: bash
+        run: |
+          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
 
-  - name: Install system dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        libdbus-1-dev \
-        libasound2-dev \
-        libudev-dev \
-        libpipewire-0.3-dev \
-        libpulse-dev \
-        libxkbcommon-dev \
-        libwayland-dev \
-        libwayland-bin \
-        wayland-protocols \
-        libx11-dev \
-        libxext-dev \
-        libxrandr-dev \
-        libxinerama-dev \
-        libxcursor-dev \
-        libxi-dev \
-        libxss-dev \
-        libgl1-mesa-dev \
-        libglu1-mesa-dev \
-        pkg-config
+      - name: Install Linux dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libasound2-dev \
+            libudev-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxss-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            pkg-config
 
-  - name: Set up Haxe
-    uses: krdlab/setup-haxe@v1
-    with:
-      haxe-version: 4.3.7
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: 4.3.7
 
-  - name: Cache Haxelib
-    uses: actions/cache@v4
-    with:
-      path: |
-        ~/.haxelib
-        .haxelib
-      key: ${{ runner.os }}-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
-      restore-keys: |
-        ${{ runner.os }}-haxelib-
+      - name: Cache Haxelib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.haxelib
+            .haxelib
+          key: android-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
+          restore-keys: |
+            android-haxelib-
 
-  - name: Install hmm
-    run: haxelib install hmm --quiet
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
 
-  - name: Install dependencies
-    run: haxelib run hmm install
+      - name: Install dependencies
+        shell: bash
+        run: haxelib run hmm install
 
-  - name: Build hxcpp
-    run: |
-      HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
-      cd "$HXCPP_PATH/tools/hxcpp"
-      haxe compile.hxml
+      - name: Build hxcpp
+        shell: bash
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
 
-  - name: Build Lime Linux
-    run: haxelib run lime rebuild cpp
+      - name: Rebuild Lime
+        shell: bash
+        run: haxelib run lime rebuild cpp
 
-  - name: Configure Lime Android
-    run: |
-      haxelib run lime setup android <<EOF
-      $ANDROID_SDK
-      $ANDROID_NDK_ROOT
-      $JAVA_HOME
-      EOF
+      - name: Setup Lime Android
+        shell: bash
+        run: |
+          haxelib run lime setup android <<EOF
+          $ANDROID_SDK_ROOT
+          $ANDROID_NDK_ROOT
+          $JAVA_HOME
+          EOF
 
-  - name: Build Lime Android
-    run: haxelib run lime rebuild android
+      - name: Rebuild Lime Android
+        shell: bash
+        run: haxelib run lime rebuild android
 
-  - name: Build APK
-    run: haxelib run lime build android -release -DGITHUB_BUILD
+      - name: Build Android
+        shell: bash
+        run: haxelib run lime build android -release -DGITHUB_BUILD
 
-  - name: Upload APK
-    uses: actions/upload-artifact@v4
-    with:
-      name: funkin-moon-android
-      path: export/release/android/**/*.apk
-      compression-level: 0
+      - name: Upload Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-android
+          path: export/release/android/**/*.apk
+          if-no-files-found: error
+          compression-level: 0
 
-windows:
-name: Windows
-runs-on: windows-latest
+  windows:
+    name: Windows
+    runs-on: windows-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      submodules: recursive
-      fetch-depth: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
-  - name: Set up Haxe
-    uses: krdlab/setup-haxe@v1
-    with:
-      haxe-version: 4.3.7
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: 4.3.7
 
-  - name: Cache Haxelib
-    uses: actions/cache@v4
-    with:
-      path: |
-        ~\.haxelib
-        .haxelib
-      key: windows-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
-      restore-keys: |
-        windows-haxelib-
+      - name: Cache Haxelib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.haxelib
+            .haxelib
+          key: windows-haxelib-${{ hashFiles('hmm.json', 'project.hxp') }}
+          restore-keys: |
+            windows-haxelib-
 
-  - name: Install hmm
-    shell: pwsh
-    run: haxelib install hmm --quiet
+      - name: Install HMM
+        shell: pwsh
+        run: haxelib install hmm --quiet
 
-  - name: Install dependencies
-    shell: pwsh
-    run: haxelib run hmm install
+      - name: Install dependencies
+        shell: pwsh
+        run: haxelib run hmm install
 
-  - name: Build hxcpp
-    shell: pwsh
-    run: |
-      $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
-      Set-Location "$HXCPP_PATH\tools\hxcpp"
-      haxe compile.hxml
+      - name: Build hxcpp
+        shell: pwsh
+        run: |
+          $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
+          Set-Location "$HXCPP_PATH\tools\hxcpp"
+          haxe compile.hxml
 
-  - name: Build Windows
-    shell: pwsh
-    run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
+      - name: Build Windows
+        shell: pwsh
+        run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
-  - name: Upload Windows
-    uses: actions/upload-artifact@v4
-    with:
-      name: funkin-moon-windows
-      path: export/release/windows/bin
-      compression-level: 6
+      - name: Upload Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-windows
+          path: export/release/windows/bin
+          if-no-files-found: error
+          compression-level: 6
