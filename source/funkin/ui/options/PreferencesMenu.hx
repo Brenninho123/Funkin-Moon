@@ -100,6 +100,21 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
 
   function createPrefItems():Void
   {
+    #if mobile
+    createPrefItemEnum('Hitbox Mode', 'Choose the layout of the on-screen touch controls.', [
+      "Arrows" => FunkinHitboxControlSchemes.Arrows,
+      "Four Lanes" => FunkinHitboxControlSchemes.FourLanes,
+    ], function(key:String, value:String):Void
+    {
+      Preferences.controlsScheme = value;
+    }, switch (Preferences.controlsScheme)
+      {
+        case FunkinHitboxControlSchemes.FourLanes:
+          "Four Lanes";
+        default:
+          "Arrows";
+      });
+    #end
     #if FEATURE_NAUGHTYNESS
     createPrefItemCheckbox('Naughtyness', 'When enabled, raunchy content (such as swearing, etc.) is displayed.', function(value:Bool):Void
     {
