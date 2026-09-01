@@ -5,8 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   android:
+    name: Android
     runs-on: ubuntu-latest
 
     steps:
@@ -14,12 +18,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -71,22 +77,21 @@ jobs:
         with:
           haxe-version: 4.3.7
 
+      - name: Cache Haxelib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.haxelib
+            .haxelib
+          key: ${{ runner.os }}-haxelib-${{ hashFiles('hmm.json', 'haxelib.json', 'project.hxp', 'project.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-haxelib-
+
       - name: Install hmm
         run: haxelib install hmm --quiet
 
       - name: Install project dependencies
         run: haxelib run hmm install
-
-      - name: Verify toolchain
-        run: |
-          haxe --version
-          haxelib version
-          "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++" --version
-          printf '#include <numbers>\nint main() { return 0; }\n' > /tmp/test.cpp
-          "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++" \
-            -std=c++20 \
-            -c /tmp/test.cpp \
-            -o /tmp/test.o
 
       - name: Build hxcpp command-line tool
         run: |
@@ -95,8 +100,7 @@ jobs:
           haxe compile.hxml
 
       - name: Build Lime Linux native tools
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
 
       - name: Configure Lime Android
         run: |
@@ -107,15 +111,13 @@ jobs:
           EOF
 
       - name: Build Lime Android native libraries
-        run: |
-          haxelib run lime rebuild android
+        run: haxelib run lime rebuild android
 
       - name: Build Android APK
-        run: |
-          haxelib run lime build android -release -DGITHUB_BUILD
+        run: haxelib run lime build android -release -DGITHUB_BUILD
 
-      - name: Locate build output
-        id: apk
+      - name: Locate Android APK
+        id: android-apk
         shell: bash
         run: |
           APK_PATH=$(find export/release/android -type f -iname "*.apk" | head -n 1)
@@ -126,8 +128,80 @@ jobs:
 
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: funkin-moon-android
-          path: ${{ steps.apk.outputs.path }}
+          path: ${{ steps.android-apk.outputs.path }}
+          compression-level: 0
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: 4.3.7
+
+      - name: Cache Haxelib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.haxelib
+            .haxelib
+          key: ${{ runner.os }}-haxelib-${{ hashFiles('hmm.json', 'haxelib.json', 'project.hxp', 'project.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-haxelib-
+
+      - name: Install hmm
+        shell: pwsh
+        run: haxelib install hmm --quiet
+
+      - name: Install project dependencies
+        shell: pwsh
+        run: haxelib run hmm install
+
+      - name: Build hxcpp command-line tool
+        shell: pwsh
+        run: |
+          $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
+          Set-Location "$HXCPP_PATH\tools\hxcpp"
+          haxe compile.hxml
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          haxelib run lime build windows -release -64 -DGITHUB_BUILD
+
+      - name: Locate Windows build
+        id: windows-build
+        shell: pwsh
+        run: |
+          $BuildPath = "export\release\windows\bin"
+
+          if (!(Test-Path $BuildPath)) {
+            Write-Error "Windows build directory was not found."
+          }
+
+          $Files = Get-ChildItem $BuildPath -File -Recurse
+
+          if ($Files.Count -eq 0) {
+            Write-Error "Windows build output is empty."
+          }
+
+          "path=$BuildPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-windows
+          path: ${{ steps.windows-build.outputs.path }}
+          compression-level: 6
