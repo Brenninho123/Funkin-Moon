@@ -1047,7 +1047,7 @@ class Project extends HXProject
 
     if (isAndroid())
     {
-      addIcon(ICON_MOBILE);
+      adaptiveIcon = new AdaptiveIcon('art/icons/android/', true);
     }
     else if (isIOS())
     {
