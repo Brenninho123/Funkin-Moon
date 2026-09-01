@@ -545,7 +545,16 @@ class Preferences
 
   static function get_controlsScheme():String
   {
-    return Save?.instance?.mobileOptions?.controlsScheme ?? FunkinHitboxControlSchemes.Arrows;
+    var value:String = Save?.instance?.mobileOptions?.controlsScheme ?? FunkinHitboxControlSchemes.Arrows;
+
+    return switch (value)
+    {
+      case FunkinHitboxControlSchemes.Arrows, FunkinHitboxControlSchemes.FourLanes, FunkinHitboxControlSchemes.DoubleThumbTriangle,
+        FunkinHitboxControlSchemes.DoubleThumbSquare, FunkinHitboxControlSchemes.DoubleThumbDPad:
+        value;
+      default:
+        FunkinHitboxControlSchemes.Arrows;
+    }
   }
 
   static function set_controlsScheme(value:String):String
