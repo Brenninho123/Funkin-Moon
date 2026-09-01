@@ -9,15 +9,8 @@ import flixel.input.gamepad.FlxGamepadInputID;
 import flixel.input.keyboard.FlxKey;
 import flixel.math.FlxPoint;
 
-/**
- * A core class which handles receiving player input and interpreting it into game actions.
- */
 class Controls extends FlxActionSet
 {
-  /*
-   * A list of actions that a player would invoke via some input device.
-   * Uses FlxActions to funnel various inputs to a single action.
-   */
   var _ui_up:FunkinAction = new FunkinAction(Action.UI_UP);
   var _ui_left:FunkinAction = new FunkinAction(Action.UI_LEFT);
   var _ui_right:FunkinAction = new FunkinAction(Action.UI_RIGHT);
@@ -491,16 +484,9 @@ class Controls extends FlxActionSet
     #end
 
     var action = byName[name];
-    if (gamepadOnly)
-    {
-      if(action.checkFiltered(trigger, GAMEPAD)) action.updateLastDeviceUsed();
-      return action.checkFiltered(trigger, GAMEPAD);
-    }
-    else
-    {
-      if(action.checkFiltered(trigger)) action.updateLastDeviceUsed();
-      return action.checkFiltered(trigger);
-    }
+    var result:Bool = gamepadOnly ? action.checkFiltered(trigger, GAMEPAD) : action.checkFiltered(trigger);
+    if (result) action.updateLastDeviceUsed();
+    return result;
   }
 
   public function getKeysForAction(name:Action):Array<FlxKey>
@@ -509,7 +495,6 @@ class Controls extends FlxActionSet
     if (!byName.exists(name)) throw 'Invalid name: $name';
     #end
 
-    // TODO: Revert to `.map().filter()` once HashLink doesn't complain anymore.
     var result:Array<FlxKey> = [];
     for (input in byName[name].inputs)
     {
@@ -535,7 +520,19 @@ class Controls extends FlxActionSet
   public function getDialogueName(action:FlxActionDigital, ?ignoreSurrounding:Bool = false):String
   {
     if (action.inputs.length == 0) return 'N/A';
-    var input = FunkinAction.lastDeviceUsed == KEYBOARD ? action.inputs[0] : action.inputs[1];
+
+    var targetDevice:FlxInputDevice = FunkinAction.lastDeviceUsed == KEYBOARD ? KEYBOARD : GAMEPAD;
+    var input:Null<FlxActionInput> = null;
+    for (candidate in action.inputs)
+    {
+      if (candidate.device == targetDevice)
+      {
+        input = candidate;
+        break;
+      }
+    }
+    if (input == null) input = action.inputs[0];
+
     if (ignoreSurrounding == false)
     {
       return switch (FunkinAction.lastDeviceUsed)
@@ -643,11 +640,6 @@ class Controls extends FlxActionSet
     }
   }
 
-  /**
-   * Calls a function passing each action bound by the specified control
-   * @param control
-   * @param func
-   */
   function forEachBound(control:Control, func:FunkinAction->FlxInputState->Void):Void
   {
     switch (control)
@@ -761,7 +753,6 @@ class Controls extends FlxActionSet
   {
     if (action.inputs.length == 0)
     {
-      // Add the keybind, don't replace.
       addKeys(action, [toAdd], state);
       return;
     }
@@ -776,12 +767,10 @@ class Controls extends FlxActionSet
       {
         if (toAdd == FlxKey.NONE)
         {
-          // Remove the keybind, don't replace.
           action.inputs.remove(input);
         }
         else
         {
-          // Replace the keybind.
           @:privateAccess
           action.inputs[i].inputID = toAdd;
         }
@@ -789,10 +778,8 @@ class Controls extends FlxActionSet
       }
       else if (input.device == KEYBOARD && input.inputID == toAdd)
       {
-        // This key is already bound!
         if (hasReplaced)
         {
-          // Remove the duplicate keybind, don't replace.
           action.inputs.remove(input);
         }
         else
@@ -850,7 +837,6 @@ class Controls extends FlxActionSet
     switch (device)
     {
       case null:
-        // add all
         for (gamepad in controls.gamepadsAdded) if (gamepadsAdded.indexOf(gamepad) == -1) gamepadsAdded.push(gamepad);
 
         mergeKeyboardScheme(controls.keyboardScheme);
@@ -881,19 +867,11 @@ class Controls extends FlxActionSet
     }
   }
 
-  /**
-   * Sets all actions that pertain to the binder to trigger when the supplied keys are used.
-   * If binder is a literal you can inline this
-   */
   public function bindKeys(control:Control, keys:Array<FlxKey>):Void
   {
     forEachBound(control, function(action, state) addKeys(action, keys, state));
   }
 
-  /**
-   * Sets all actions that pertain to the binder to trigger when the supplied keys are used.
-   * If binder is a literal you can inline this
-   */
   public function unbindKeys(control:Control, keys:Array<FlxKey>):Void
   {
     forEachBound(control, function(action, _) removeKeys(action, keys));
@@ -903,7 +881,7 @@ class Controls extends FlxActionSet
   {
     for (key in keys)
     {
-      if (key == FlxKey.NONE) continue; // Ignore unbound keys.
+      if (key == FlxKey.NONE) continue;
       action.addKey(key, state);
     }
   }
@@ -994,17 +972,17 @@ class Controls extends FlxActionSet
           case Control.RESET:
             return [R];
           case Control.WINDOW_FULLSCREEN:
-            return [F11]; // We use F for other things LOL.
+            return [F11];
           #if FEATURE_SCREENSHOTS
           case Control.WINDOW_SCREENSHOT:
             return [F3];
           #end
           case Control.FREEPLAY_FAVORITE:
-            return [F]; // Favorite a song on the menu
+            return [F];
           case Control.FREEPLAY_LEFT:
-            return [Q]; // Switch tabs on the menu
+            return [Q];
           case Control.FREEPLAY_RIGHT:
-            return [E]; // Switch tabs on the menu
+            return [E];
           case Control.FREEPLAY_CHAR_SELECT:
             return [TAB];
           case Control.FREEPLAY_JUMP_TO_TOP:
@@ -1068,11 +1046,11 @@ class Controls extends FlxActionSet
           case Control.WINDOW_FULLSCREEN:
             return [F11];
           case Control.FREEPLAY_FAVORITE:
-            return [F]; // Favorite a song on the menu
+            return [F];
           case Control.FREEPLAY_LEFT:
-            return [Q]; // Switch tabs on the menu
+            return [Q];
           case Control.FREEPLAY_RIGHT:
-            return [E]; // Switch tabs on the menu
+            return [E];
           case Control.FREEPLAY_CHAR_SELECT:
             return [TAB];
           case Control.FREEPLAY_JUMP_TO_TOP:
@@ -1171,7 +1149,6 @@ class Controls extends FlxActionSet
             return [NUMPADZERO];
         }
       default:
-        // Fallthrough.
     }
 
     return [];
@@ -1280,7 +1257,7 @@ class Controls extends FlxActionSet
       case Control.PAUSE:
         [START];
       case Control.RESET:
-        [FlxGamepadInputID.BACK]; // Back (i.e. Select)
+        [FlxGamepadInputID.BACK];
       case Control.WINDOW_FULLSCREEN:
         [];
       #if FEATURE_SCREENSHOTS
@@ -1290,7 +1267,7 @@ class Controls extends FlxActionSet
       case Control.CUTSCENE_ADVANCE:
         [A];
       case Control.FREEPLAY_FAVORITE:
-        [Y]; // Back (i.e. Select)
+        [Y];
       case Control.FREEPLAY_LEFT:
         [LEFT_SHOULDER];
       case Control.FREEPLAY_RIGHT:
@@ -1326,19 +1303,11 @@ class Controls extends FlxActionSet
     }
   }
 
-  /**
-   * Sets all actions that pertain to the binder to trigger when the supplied keys are used.
-   * If binder is a literal you can inline this
-   */
   public function bindButtons(control:Control, id:Int, buttons):Void
   {
     forEachBound(control, function(action, state) addButtons(action, buttons, state, id));
   }
 
-  /**
-   * Sets all actions that pertain to the binder to trigger when the supplied keys are used.
-   * If binder is a literal you can inline this
-   */
   public function unbindButtons(control:Control, gamepadID:Int, buttons):Void
   {
     forEachBound(control, function(action, _) removeButtons(action, gamepadID, buttons));
@@ -1348,7 +1317,7 @@ class Controls extends FlxActionSet
   {
     for (button in buttons)
     {
-      if (button == FlxGamepadInputID.NONE) continue; // Ignore unbound keys.
+      if (button == FlxGamepadInputID.NONE) continue;
       action.addGamepad(button, state, id);
     }
   }
@@ -1383,11 +1352,6 @@ class Controls extends FlxActionSet
     return list;
   }
 
-  /**
-   * NOTE: When loading controls:
-   * An EMPTY array means the control is uninitialized and needs to be reset to default.
-   * An array with a single FlxKey.NONE means the control was intentionally unbound by the user.
-   */
   public function fromSaveData(data:Dynamic, device:Device):Void
   {
     for (control in Control.createAll())
@@ -1398,7 +1362,6 @@ class Controls extends FlxActionSet
       {
         if (inputs.length == 0)
         {
-          trace('Control ${control} is missing bindings, resetting to default.');
           switch (device)
           {
             case Keys:
@@ -1407,9 +1370,8 @@ class Controls extends FlxActionSet
               bindButtons(control, id, getDefaultGamepadBinds(control));
           }
         }
-        else if (inputs == [FlxKey.NONE])
+        else if (inputs.length == 1 && inputs[0] == FlxKey.NONE)
         {
-          trace('Control ${control} is unbound, leaving it be.');
         }
         else
         {
@@ -1424,7 +1386,6 @@ class Controls extends FlxActionSet
       }
       else
       {
-        trace('Control ${control} is missing bindings, resetting to default.');
         switch (device)
         {
           case Keys:
@@ -1436,11 +1397,6 @@ class Controls extends FlxActionSet
     }
   }
 
-  /**
-   * NOTE: When saving controls:
-   * An EMPTY array means the control is uninitialized and needs to be reset to default.
-   * An array with a single FlxKey.NONE means the control was intentionally unbound by the user.
-   */
   public function createSaveData(device:Device):Dynamic
   {
     var isEmpty = true;
@@ -1496,11 +1452,6 @@ typedef Swipes =
   ?curTouchPos:FlxPoint
 };
 
-/**
- * An FlxActionDigital with additional functionality, including:
- * - Combining `pressed` and `released` inputs into one action.
- * - Filtering by input method (`KEYBOARD`, `MOUSE`, `GAMEPAD`, etc).
- */
 class FunkinAction extends FlxActionDigital
 {
   public var namePressed(default, null):Null<String>;
@@ -1519,76 +1470,49 @@ class FunkinAction extends FlxActionDigital
     updateLastDeviceUsed();
   }
 
-  /**
-   * Input checks default to whether the input was just pressed, on any input device.
-   */
   override public function check():Bool
   {
     return checkFiltered(JUST_PRESSED);
   }
 
-  /**
-   * Check whether the input is currently being held.
-   */
   public function checkPressed():Bool
   {
     if (checkFiltered(PRESSED)) updateLastDeviceUsed();
     return checkFiltered(PRESSED);
   }
 
-  /**
-   * Check whether the input is currently being held, and was not held last frame.
-   */
   public function checkJustPressed():Bool
   {
     if (checkFiltered(JUST_PRESSED)) updateLastDeviceUsed();
     return checkFiltered(JUST_PRESSED);
   }
 
-  /**
-   * Check whether the input is not currently being held.
-   */
   public function checkReleased():Bool
   {
     return checkFiltered(RELEASED);
   }
 
-  /**
-   * Check whether the input is not currently being held, and was held last frame.
-   */
   public function checkJustReleased():Bool
   {
     if (checkFiltered(JUST_RELEASED)) updateLastDeviceUsed();
     return checkFiltered(JUST_RELEASED);
   }
 
-  /**
-   * Check whether the input is currently being held by a gamepad device.
-   */
   public function checkPressedGamepad():Bool
   {
     return checkFiltered(PRESSED, GAMEPAD);
   }
 
-  /**
-   * Check whether the input is currently being held by a gamepad device, and was not held last frame.
-   */
   public function checkJustPressedGamepad():Bool
   {
     return checkFiltered(JUST_PRESSED, GAMEPAD);
   }
 
-  /**
-   * Check whether the input is not currently being held by a gamepad device.
-   */
   public function checkReleasedGamepad():Bool
   {
     return checkFiltered(RELEASED, GAMEPAD);
   }
 
-  /**
-   * Check whether the input is not currently being held by a gamepad device, and was held last frame.
-   */
   public function checkJustReleasedGamepad():Bool
   {
     return checkFiltered(JUST_RELEASED, GAMEPAD);
@@ -1599,7 +1523,6 @@ class FunkinAction extends FlxActionDigital
     filterTriggers ??= [PRESSED, JUST_PRESSED];
     filterDevices ??= [];
 
-    // Perform checkFiltered for each combination.
     for (i in filterTriggers)
     {
       if (filterDevices.length == 0)
@@ -1623,16 +1546,8 @@ class FunkinAction extends FlxActionDigital
     return false;
   }
 
-  /**
-   * Performs the functionality of `FlxActionDigital.check()`, but with optional filters.
-   * @param action The action to check for.
-   * @param filterTrigger Optionally filter by trigger condition (`JUST_PRESSED`, `PRESSED`, `JUST_RELEASED`, `RELEASED`).
-   * @param filterDevice Optionally filter by device (`KEYBOARD`, `MOUSE`, `GAMEPAD`, `OTHER`).
-   * @return bool if our input has been triggered
-   */
   public function checkFiltered(?filterTrigger:FlxInputState, ?filterDevice:FlxInputDevice):Bool
   {
-    // Make sure we only update the inputs once per frame.
     var key = '${filterTrigger}:${filterDevice}';
     var cacheEntry = cache.get(key);
 
@@ -1648,33 +1563,28 @@ class FunkinAction extends FlxActionDigital
     triggered = false;
 
     var i = inputs?.length ?? 0;
-    while (i-- > 0) // Iterate backwards, since we may remove items
+    while (i-- > 0)
     {
       var input = inputs[i];
 
-      // Filter out dead inputs.
       if (input.destroyed)
       {
         inputs.remove(input);
         continue;
       }
 
-      // Update the input.
       input.update();
 
-      // Check whether the input is the right trigger.
       if (filterTrigger != null && input.trigger != filterTrigger)
       {
         continue;
       }
 
-      // Check whether the input is the right device.
       if (filterDevice != null && input.device != filterDevice)
       {
         continue;
       }
 
-      // Check whether the input has triggered.
       if (input.check(this))
       {
         triggered = true;
@@ -1688,9 +1598,6 @@ class FunkinAction extends FlxActionDigital
 
   public static var lastDeviceUsed:FlxInputDevice;
 
-  /**
-   * Checks which is the last device you have used and stores the value in `lastDeviceUsed`.
-   */
   public function updateLastDeviceUsed()
   {
     if (FlxG.keys.pressed.ANY)
@@ -1705,24 +1612,16 @@ class FunkinAction extends FlxActionDigital
       return;
     }
 
-    // Default value (just in case everything's null somehow)
     lastDeviceUsed = FlxInputDevice.KEYBOARD;
   }
 }
 
-/**
- * Since, in many cases multiple actions should use similar keys, we don't want the
- * rebinding UI to list every action. ActionBinders are what the user perceives as
- * an input so, for instance, they can't set jump-press and jump-release to different keys.
- */
 enum Control
 {
-  // NOTE
   NOTE_LEFT;
   NOTE_DOWN;
   NOTE_UP;
   NOTE_RIGHT;
-  // UI
   UI_LEFT;
   UI_DOWN;
   UI_UP;
@@ -1731,23 +1630,18 @@ enum Control
   BACK;
   PAUSE;
   RESET;
-  // CUTSCENE
   CUTSCENE_ADVANCE;
-  // FREEPLAY
   FREEPLAY_FAVORITE;
   FREEPLAY_LEFT;
   FREEPLAY_RIGHT;
   FREEPLAY_CHAR_SELECT;
   FREEPLAY_JUMP_TO_TOP;
   FREEPLAY_JUMP_TO_BOTTOM;
-  // WINDOW
   #if FEATURE_SCREENSHOTS WINDOW_SCREENSHOT; #end
   WINDOW_FULLSCREEN;
-  // VOLUME
   VOLUME_UP;
   VOLUME_DOWN;
   VOLUME_MUTE;
-  // DEBUG
   #if FEATURE_DEBUG_MENU DEBUG_MENU; #end
   #if FEATURE_CHART_EDITOR DEBUG_CHART; #end
   #if FEATURE_STAGE_EDITOR DEBUG_STAGE; #end
@@ -1756,12 +1650,10 @@ enum Control
 
 enum abstract Action(String) to String from String
 {
-  // NOTE
   public var NOTE_UP = 'note_up';
   public var NOTE_LEFT = 'note_left';
   public var NOTE_RIGHT = 'note_right';
   public var NOTE_DOWN = 'note_down';
-  // UI
   public var UI_UP = 'ui_up';
   public var UI_LEFT = 'ui_left';
   public var UI_RIGHT = 'ui_right';
@@ -1770,25 +1662,20 @@ enum abstract Action(String) to String from String
   public var BACK = 'back';
   public var PAUSE = 'pause';
   public var RESET = 'reset';
-  // WINDOW
   public var WINDOW_FULLSCREEN = 'window_fullscreen';
   #if FEATURE_SCREENSHOTS
   var WINDOW_SCREENSHOT = 'window_screenshot';
   #end
-  // CUTSCENE
   public var CUTSCENE_ADVANCE = 'cutscene_advance';
-  // FREEPLAY
   public var FREEPLAY_FAVORITE = 'freeplay_favorite';
   public var FREEPLAY_LEFT = 'freeplay_left';
   public var FREEPLAY_RIGHT = 'freeplay_right';
   public var FREEPLAY_CHAR_SELECT = 'freeplay_char_select';
   public var FREEPLAY_JUMP_TO_TOP = 'freeplay_jump_to_top';
   public var FREEPLAY_JUMP_TO_BOTTOM = 'freeplay_jump_to_bottom';
-  // VOLUME
   public var VOLUME_UP = 'volume_up';
   public var VOLUME_DOWN = 'volume_down';
   public var VOLUME_MUTE = 'volume_mute';
-  // DEBUG
   #if FEATURE_DEBUG_MENU
   var DEBUG_MENU = 'debug_menu';
   #end
