@@ -38,7 +38,8 @@ Feel free to start learning to mod the game by reading our [documentation](https
 
 # Moon Engine Credits
 • Brenninho123: Owner/Programmer
-• Sunndy • Artist
+
+• Sunndy: Artist
 
 # Friday Night Funkin' Credits
 
