@@ -178,7 +178,7 @@ class FunkinLua
     if (luaType == Lua.TTABLE)
     {
       var tableIndex:Int = Lua.absindex(lua, index);
-      var length:Int = Lua.rawlen(lua, tableIndex);
+      var length:Int = cast Lua.rawlen(lua, tableIndex);
       var result:Array<Dynamic> = [];
 
       for (i in 1...length + 1)
