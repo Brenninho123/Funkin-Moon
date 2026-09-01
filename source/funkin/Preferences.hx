@@ -234,6 +234,25 @@ class Preferences
     return value;
   }
 
+  #if mobile
+  public static var fullscreenMode(get, set):Bool;
+
+  static function get_fullscreenMode():Bool
+  {
+    return Save?.instance?.mobileOptions?.fullscreenMode ?? true;
+  }
+
+  static function set_fullscreenMode(value:Bool):Bool
+  {
+    if (value != Save.instance.mobileOptions.fullscreenMode) funkin.ui.FullScreenScaleMode.enabled = value;
+
+    var save:Save = Save.instance;
+    save.mobileOptions.fullscreenMode = value;
+    Save.system.flush();
+    return value;
+  }
+  #end
+
   public static var autoPause(get, set):Bool;
 
   static function get_autoPause():Bool
