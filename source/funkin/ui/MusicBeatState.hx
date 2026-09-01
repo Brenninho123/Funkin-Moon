@@ -69,13 +69,19 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   public var optionsButton:Null<FunkinOptionsButton>;
   public var camControls:Null<FunkinCamera>;
 
-  function ensureControlsCamera():Void
+  function ensureControlsCamera():FunkinCamera
   {
-    if (camControls != null) return;
+    var cam:Null<FunkinCamera> = camControls;
 
-    camControls = new FunkinCamera('camControls');
-    FlxG.cameras.add(camControls, false);
-    camControls.bgColor = 0x0;
+    if (cam == null)
+    {
+      cam = new FunkinCamera('camControls');
+      camControls = cam;
+      FlxG.cameras.add(cam, false);
+      cam.bgColor = 0x0;
+    }
+
+    return cam;
   }
 
   public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
@@ -88,10 +94,10 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
       hitbox.destroy();
     }
 
-    ensureControlsCamera();
+    var cam:FunkinCamera = ensureControlsCamera();
 
     hitbox = new FunkinHitbox(schemeOverride, directionsOverride, colorsOverride);
-    hitbox.cameras = [camControls];
+    hitbox.cameras = [cam];
     hitbox.visible = visible;
     add(hitbox);
 
@@ -103,10 +109,10 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   {
     if (backButton != null) remove(backButton);
 
-    ensureControlsCamera();
+    var cam:FunkinCamera = ensureControlsCamera();
 
     backButton = new FunkinBackButton(xPos, yPos, color, confirmCallback, restOpacity, instant);
-    backButton.cameras = [camControls];
+    backButton.cameras = [cam];
     add(backButton);
   }
 
@@ -114,10 +120,10 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   {
     if (optionsButton != null) remove(optionsButton);
 
-    ensureControlsCamera();
+    var cam:FunkinCamera = ensureControlsCamera();
 
     optionsButton = new FunkinOptionsButton(xPos, yPos, confirmCallback, instant);
-    optionsButton.cameras = [camControls];
+    optionsButton.cameras = [cam];
     add(optionsButton);
   }
   #end
