@@ -225,6 +225,7 @@ class FunkinCamera extends FlxCamera
     return super.startTrianglesBatch(graphic, smoothing, isColored, blend, hasColorOffsets, shader);
   }
 
+  @:nullSafety(Off)
   override function destroy():Void
   {
     super.destroy();
