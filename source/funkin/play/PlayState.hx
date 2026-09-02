@@ -2,6 +2,7 @@ package funkin.play;
 
 import funkin.play.event.SongEvent;
 import funkin.play.PauseSubState.PauseMode;
+import funkin.lowend.FunkinLow;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.addons.transition.Transition;
 import funkin.ui.FullScreenScaleMode;
@@ -421,6 +422,9 @@ class PlayState extends MusicBeatSubState
     {
     }
     instance = this;
+
+    FunkinLow.init();
+
     #if !mobile
     if (!isChartingMode) FlxG.autoPause = false;
     #end
@@ -589,7 +593,42 @@ class PlayState extends MusicBeatSubState
   {
     if (criticalFailure) return;
 
+    try
+    {
+      updatePlayState(elapsed);
+    }
+    catch (e:Dynamic)
+    {
+      handleCriticalFailure(e);
+    }
+  }
+
+  function handleCriticalFailure(e:Dynamic):Void
+  {
+    if (criticalFailure) return;
+
+    criticalFailure = true;
+
+    FlxG.log.error('PlayState encountered a critical error during update and had to stop: $e');
+
+    try
+    {
+      FunkinSound.stopAllAudio();
+    }
+    catch (e2:Dynamic)
+    {
+    }
+
+    FlxG.switchState(() -> new funkin.ui.mainmenu.MainMenuState());
+  }
+
+  function updatePlayState(elapsed:Float):Void
+  {
+    if (criticalFailure) return;
+
     super.update(elapsed);
+
+    FunkinLow.update(elapsed);
 
     callLuaEvent('onUpdate', [elapsed]);
 
@@ -1308,6 +1347,7 @@ class PlayState extends MusicBeatSubState
     final MAX_RELATIVE_CAM_ZOOM:Float = 1.35;
 
     if (Preferences.zoomCamera
+      && !FunkinLow.shouldSkipEffect(NORMAL)
       && camHUD.zoom < (MAX_RELATIVE_CAM_ZOOM * defaultHUDCameraZoom)
       && cameraZoomRate > 0
       && (Conductor.instance.currentStep + cameraZoomRateOffset * Constants.STEPS_PER_BEAT) % (cameraZoomRate * Constants.STEPS_PER_BEAT) == 0)
