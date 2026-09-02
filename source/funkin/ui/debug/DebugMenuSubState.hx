@@ -22,6 +22,8 @@ class DebugMenuSubState extends MusicBeatSubState
 
   var camFocusPoint:FlxObject;
 
+  var closing:Bool = false;
+
   override function create():Void
   {
     FlxTransitionableState.skipNextTransIn = true;
@@ -87,6 +89,21 @@ class DebugMenuSubState extends MusicBeatSubState
 
   override function update(elapsed:Float):Void
   {
+    if (closing) return;
+
+    try
+    {
+      updateDebugMenu(elapsed);
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('DebugMenuSubState encountered an error and had to close: $e');
+      exitDebugMenu();
+    }
+  }
+
+  function updateDebugMenu(elapsed:Float):Void
+  {
     super.update(elapsed);
 
     #if mobile
@@ -112,24 +129,36 @@ class DebugMenuSubState extends MusicBeatSubState
     return item;
   }
 
+  function switchToState(stateFactory:Void->flixel.FlxState):Void
+  {
+    if (closing) return;
+    closing = true;
+
+    FlxTransitionableState.skipNextTransIn = true;
+
+    FlxG.camera.follow(null);
+
+    this.close();
+
+    FlxG.switchState(stateFactory);
+  }
+
   #if FEATURE_CHART_EDITOR
   function openChartEditor():Void
   {
-    FlxTransitionableState.skipNextTransIn = true;
-
-    FlxG.switchState(() -> new ChartEditorState());
+    switchToState(() -> new ChartEditorState());
   }
   #end
 
   function openCharSelect():Void
   {
-    FlxG.switchState(() -> new funkin.ui.charSelect.CharSelectSubState());
+    switchToState(() -> new funkin.ui.charSelect.CharSelectSubState());
   }
 
   #if FEATURE_ANIMATION_EDITOR
   function openAnimationEditor():Void
   {
-    FlxG.switchState(() -> new funkin.ui.debug.anim.DebugBoundingState());
+    switchToState(() -> new funkin.ui.debug.anim.DebugBoundingState());
   }
   #end
 
@@ -142,14 +171,14 @@ class DebugMenuSubState extends MusicBeatSubState
   #if FEATURE_STAGE_EDITOR
   function openStageEditor():Void
   {
-    FlxG.switchState(() -> new funkin.ui.debug.stageeditor.StageEditorState());
+    switchToState(() -> new funkin.ui.debug.stageeditor.StageEditorState());
   }
   #end
 
   #if FEATURE_RESULTS_DEBUG
   function openTestResultsScreen():Void
   {
-    FlxG.switchState(() -> new funkin.ui.debug.results.ResultsDebugSubState());
+    switchToState(() -> new funkin.ui.debug.results.ResultsDebugSubState());
   }
   #end
 
@@ -160,8 +189,20 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
-  function exitDebugMenu()
+  function exitDebugMenu():Void
   {
+    if (closing) return;
+    closing = true;
+
+    FlxG.camera.follow(null);
+
     this.close();
+  }
+
+  override public function destroy():Void
+  {
+    if (FlxG.camera != null) FlxG.camera.follow(null);
+
+    super.destroy();
   }
 }
