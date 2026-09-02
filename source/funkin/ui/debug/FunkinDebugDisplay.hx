@@ -9,9 +9,6 @@ import openfl.text.TextField;
 import openfl.text.TextFormat;
 import openfl.Lib;
 
-/**
- * A debug overlay showing useful info.
- */
 class FunkinDebugDisplay extends Sprite
 {
   static final UPDATE_DELAY:Int = 100;
@@ -19,14 +16,8 @@ class FunkinDebugDisplay extends Sprite
   static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 201];
   static final OTHERS_OFFSET:Int = 8;
 
-  /**
-   * Indicates whether the debug display is in advanced mode.
-   */
   public var isAdvanced(default, set):Bool = false;
 
-  /**
-   * The opacity of the debug display's background.
-   */
   public var backgroundOpacity(default, set):Float = 0.5;
 
   var deltaTimeout:Float;
@@ -43,6 +34,7 @@ class FunkinDebugDisplay extends Sprite
   var gcMemGraph:FunkinStatsGraph;
   var taskMemGraph:FunkinStatsGraph;
   var infoDisplay:TextField;
+  var osInfo:String;
 
   public function new(x:Float = 10, y:Float = 10, color:Int = 0x000000):Void
   {
@@ -62,8 +54,36 @@ class FunkinDebugDisplay extends Sprite
     this.taskMem = 0.0;
     this.taskMemPeak = 0.0;
 
+    this.osInfo = computeOSInfo();
+
     this.backgroundOpacity = 0;
     this.isAdvanced = false;
+  }
+
+  function computeOSInfo():String
+  {
+    var platformName:String = lime.system.System.platformName ?? 'Unknown';
+    var platformVersion:String = lime.system.System.platformVersion ?? '';
+
+    var friendlyName:String = switch (platformName.toLowerCase())
+    {
+      case 'android':
+        'Android';
+      case 'ios':
+        'iOS';
+      case 'windows':
+        'Windows';
+      case 'mac':
+        'macOS';
+      case 'linux':
+        'Linux';
+      case 'html5':
+        'Web';
+      default:
+        platformName;
+    }
+
+    return platformVersion != '' ? '$friendlyName $platformVersion' : friendlyName;
   }
 
   function buildDebugDisplay(advanced:Bool):Void
@@ -130,8 +150,10 @@ class FunkinDebugDisplay extends Sprite
 
     if (MemoryUtil.supportsTaskMem())
     {
-      taskMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (gcMemGraph.y + gcMemGraph.axisHeight) + 22), graphsWidth, graphsHeight,
-        color);
+      var previousGraph:FunkinStatsGraph = gcMemGraph != null ? gcMemGraph : fpsGraph;
+
+      taskMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (previousGraph.y + previousGraph.axisHeight) + 22), graphsWidth,
+        graphsHeight, color);
       taskMemGraph.minValue = 0;
       addChild(taskMemGraph);
     }
@@ -208,6 +230,7 @@ class FunkinDebugDisplay extends Sprite
     info.push('FPS: $fps');
     info.push('AVG FPS: ${Math.floor(fpsGraph.average())}');
     info.push('1% LOW FPS: ${Math.floor(fpsGraph.lowest())}');
+    info.push('OS: $osInfo');
     fpsGraph.textDisplay.text = info.join('\n');
 
     if (gcMemGraph != null)
@@ -238,6 +261,8 @@ class FunkinDebugDisplay extends Sprite
       {
         info.push('TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}');
       }
+
+      info.push('OS: $osInfo');
 
       infoDisplay.text = info.join('\n');
     }
@@ -282,26 +307,9 @@ class FunkinDebugDisplay extends Sprite
   }
 }
 
-// Note: the string values here are deduced
-// so we dont need to do `Off = 'Off'` or nothin
-// https://haxe.org/manual/types-abstract-enum.html
-
 enum abstract DebugDisplayMode(String) from String to String
 {
-  /**
-   * Debug display is disabled.
-   */
   public var Off;
-
-  /**
-   * Simple debug display.
-   * FPS and Memory counters only.
-   */
   public var Simple;
-
-  /**
-   * Advanced debug display.
-   * Full FPS and Memory info.
-   */
   public var Advanced;
 }
