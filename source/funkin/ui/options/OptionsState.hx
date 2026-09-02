@@ -25,22 +25,15 @@ import funkin.util.TouchUtil;
 import funkin.mobile.ui.FunkinBackButton;
 import funkin.mobile.input.ControlsHandler;
 import funkin.mobile.ui.options.ControlsSchemeMenu;
+import funkin.ui.debug.DebugMenuSubState;
 #end
 #if FEATURE_MOBILE_IAP
 import funkin.mobile.util.InAppPurchasesUtil;
 #end
 import flixel.util.FlxColor;
 
-/**
- * The main options menu
- * It mainly is controlled via the "optionsCodex" object,
- * which handles paging and going to the different submenus
- */
 class OptionsState extends MusicBeatState
 {
-  /**
-   * Instance of the OptionsState
-   */
   public static var instance:OptionsState;
 
   var optionsCodex:Codex<OptionsMenuPageName>;
@@ -92,7 +85,6 @@ class OptionsState extends MusicBeatState
     }
     else
     {
-      // No need to show Options page
       #if mobile
       preferences.onExit.add(exitToMainMenu);
       optionsCodex.setPage(Preferences);
@@ -130,7 +122,6 @@ class OptionsState extends MusicBeatState
 
   function exitControls():Void
   {
-    // Apply any changes to the controls.
     PlayerSettings.reset();
     PlayerSettings.init();
 
@@ -140,15 +131,11 @@ class OptionsState extends MusicBeatState
   function exitToMainMenu():Void
   {
     optionsCodex.currentPage.enabled = false;
-    // TODO: Animate this transition?
     FlxG.keys.enabled = false;
     FlxG.switchState(() -> new MainMenuState());
   }
 }
 
-/**
- * Our default Page when we enter the OptionsState, a bit of the root
- */
 class OptionsMenu extends Page<OptionsMenuPageName>
 {
   var items:TextMenuList;
@@ -157,9 +144,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
   var goingBack:Bool = false;
   #end
 
-  /**
-   * Camera focus point
-   */
   var camFocusPoint:FlxObject;
 
   final CAMERA_MARGIN:Int = 150;
@@ -174,9 +158,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     if (ControlsHandler.hasExternalInputDevice)
     #end
     createItem('CONTROLS', function() codex.switchPage(Controls));
-    // createItem("CONTROL SCHEMES", function() {
-    //   FlxG.state.openSubState(new ControlsSchemeMenu());
-    // });
     #if FEATURE_LAG_ADJUSTMENT
     createItem('LAG ADJUSTMENT', function()
     {
@@ -225,8 +206,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
       {
         NewgroundsClient.instance.logout(function()
         {
-          // Reset the options menu when logout succeeds.
-          // This means the login option will be displayed.
           FlxG.resetState();
         }, function()
         {
@@ -240,10 +219,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
       {
         NewgroundsClient.instance.login(function()
         {
-          // Reset the options menu when login succeeds.
-          // This means the logout option will be displayed.
-          // NOTE: If the user presses login and opens the browser,
-          // then navigates the UI
           FlxG.resetState();
         }, function()
         {
@@ -253,16 +228,13 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     }
     #end
 
-    // Create an object for the camera to track.
     camFocusPoint = new FlxObject(0, 0, 140, 70);
     add(camFocusPoint);
 
-    // Follow the camera focus as we scroll.
     FlxG.camera.follow(camFocusPoint, null, 0.085);
     FlxG.camera.deadzone.set(0, CAMERA_MARGIN / 2, FlxG.camera.width, FlxG.camera.height - CAMERA_MARGIN + 40);
     FlxG.camera.minScrollY = -CAMERA_MARGIN / 2;
 
-    // Move the camera when the menu is scrolled.
     items.onChange.add(onMenuChange);
 
     onMenuChange(items.members[0]);
@@ -275,7 +247,13 @@ class OptionsMenu extends Page<OptionsMenuPageName>
 
   public function addSaveDataOptionsItem(saveDataMenu:SaveDataMenu):Void
   {
-    // no need to show an entire new menu for just one option
+    #if (mobile && FEATURE_DEBUG_MENU)
+    createItem('DEBUG MENU', function()
+    {
+      FlxG.state.openSubState(new DebugMenuSubState());
+    });
+    #end
+
     if (saveDataMenu.hasMultipleOptions())
     {
       createItem('SAVE DATA OPTIONS', function()
@@ -337,10 +315,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     return super.set_enabled(value);
   }
 
-  /**
-   * True if this page has multiple options, excluding the exit option.
-   * If false, there's no reason to ever show this page.
-   */
   public function hasMultipleOptions():Bool
   {
     return items.length > 2;
