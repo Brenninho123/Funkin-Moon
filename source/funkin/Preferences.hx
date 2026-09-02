@@ -182,6 +182,23 @@ class Preferences
     return value;
   }
 
+  public static var debugDisplayOffsetX(get, set):Int;
+
+  static function get_debugDisplayOffsetX():Int
+  {
+    return Save?.instance?.options?.debugDisplayOffsetX ?? 10;
+  }
+
+  static function set_debugDisplayOffsetX(value:Int):Int
+  {
+    setDebugDisplayOffsetX(value);
+
+    var save:Save = Save.instance;
+    save.options.debugDisplayOffsetX = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var hapticsMode(get, set):HapticsMode;
 
   static function get_hapticsMode():HapticsMode
@@ -493,6 +510,7 @@ class Preferences
 
     setDebugDisplayMode(Preferences.debugDisplay);
     setDebugDisplayBGOpacity(Preferences.debugDisplayBGOpacity / 100);
+    setDebugDisplayOffsetX(Preferences.debugDisplayOffsetX);
 
     toggleFramerateCap(Preferences.unlockedFramerate);
 
@@ -525,6 +543,13 @@ class Preferences
     if (Main.debugDisplay == null) return;
 
     Main.debugDisplay.backgroundOpacity = value;
+  }
+
+  static function setDebugDisplayOffsetX(value:Int):Void
+  {
+    if (Main.debugDisplay == null) return;
+
+    Main.debugDisplay.setOffsetX(value);
   }
 
   public static var subtitles(get, set):Bool;
