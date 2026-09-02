@@ -352,23 +352,34 @@ class FunkinHitbox extends FlxTypedSpriteGroup<FunkinHint>
     hint.onDown.add(onHintDown.dispatch.bind(hint));
     hint.onUp.add(onHintUp.dispatch.bind(hint));
     hint.onOut.add(onHintUp.dispatch.bind(hint));
-    hint.initTween(INVISIBLE_TILL_PRESS);
 
-    hint.onDown.add(function()
+    if (Preferences.invisibleHitbox)
     {
-      FlxTween.cancelTweensOf(hint.scale);
-      FlxTween.tween(hint.scale, {x: FOUR_LANES_PRESS_SCALE, y: FOUR_LANES_PRESS_SCALE}, 0.08, {ease: FlxEase.quadOut});
-    });
-    hint.onUp.add(function()
+      hint.alpha = 0;
+
+      @:privateAccess
+      if (hint.label != null) hint.label.alpha = 0;
+    }
+    else
     {
-      FlxTween.cancelTweensOf(hint.scale);
-      FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
-    });
-    hint.onOut.add(function()
-    {
-      FlxTween.cancelTweensOf(hint.scale);
-      FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
-    });
+      hint.initTween(INVISIBLE_TILL_PRESS);
+
+      hint.onDown.add(function()
+      {
+        FlxTween.cancelTweensOf(hint.scale);
+        FlxTween.tween(hint.scale, {x: FOUR_LANES_PRESS_SCALE, y: FOUR_LANES_PRESS_SCALE}, 0.08, {ease: FlxEase.quadOut});
+      });
+      hint.onUp.add(function()
+      {
+        FlxTween.cancelTweensOf(hint.scale);
+        FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
+      });
+      hint.onOut.add(function()
+      {
+        FlxTween.cancelTweensOf(hint.scale);
+        FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
+      });
+    }
 
     return hint;
   }
