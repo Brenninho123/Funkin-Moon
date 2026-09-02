@@ -45,20 +45,9 @@ class PauseSubState extends MusicBeatSubState
       text: 'Restart Song',
       callback: restartPlayState
     },
-    #if (mobile && FEATURE_CHART_EDITOR)
-    {
-      text: 'Chart Editor',
-      callback: openChartEditorFromPause
-    },
-    #end
     {
       text: 'Change Difficulty',
       callback: switchMode.bind(_, Difficulty)
-    },
-    {
-      text: 'Enable Practice Mode',
-      callback: enablePracticeMode,
-      filter: () -> !(PlayState.instance?.isPracticeMode ?? false)
     },
     {text: 'Exit to Menu', callback: quitToMenu},
   ];
@@ -854,40 +843,6 @@ class PauseSubState extends MusicBeatSubState
     state.close();
     #end
   }
-
-  static function enablePracticeMode(state:PauseSubState):Void
-  {
-    if (PlayState.instance == null) return;
-
-    PlayState.instance.isPracticeMode = true;
-    state.regenerateMenu();
-  }
-
-  #if (mobile && FEATURE_CHART_EDITOR)
-  static function openChartEditorFromPause(state:PauseSubState):Void
-  {
-    if (PlayState.instance == null) return;
-
-    #if FEATURE_MOBILE_ADVERTISEMENTS
-    AdMobUtil.removeBanner();
-    #end
-
-    var targetSongId:String = PlayState.instance.currentSong.id;
-    var targetDifficulty:String = PlayState.instance.currentDifficulty;
-    var targetVariation:String = PlayState.instance.currentVariation;
-    var targetPosition:Float = Conductor.instance.songPosition;
-
-    FlxTransitionableState.skipNextTransIn = true;
-    FlxTransitionableState.skipNextTransOut = true;
-
-    FlxG.switchState(() -> new ChartEditorState({
-      targetSongId: targetSongId,
-      targetSongDifficulty: targetDifficulty,
-      targetSongVariation: targetVariation,
-      targetSongPosition: targetPosition
-    }));
-  }
-  #end
 
   static function restartVideoCutscene(state:PauseSubState):Void
   {
