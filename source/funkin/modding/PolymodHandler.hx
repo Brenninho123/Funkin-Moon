@@ -23,6 +23,13 @@ import polymod.backends.PolymodAssets.PolymodAssetType;
 import polymod.format.ParseRules.TextFileFormat;
 import polymod.Polymod;
 
+enum ModApiTier
+{
+  Engine;
+  Support;
+  Unsupported;
+}
+
 @:nullSafety
 class PolymodHandler
 {
@@ -33,7 +40,13 @@ class PolymodHandler
     return Constants.VERSION;
   }
 
-  public static final API_VERSION_RULE:String = '=0.0.1';
+  public static final API_VERSION_ENGINE:String = '0.0.1';
+
+  public static final API_VERSION_RULE_ENGINE:String = '=0.0.1';
+
+  public static final API_VERSION_RULE_SUPPORT:String = '>=0.1.0 <=0.9.0';
+
+  public static final API_VERSION_RULE:String = '>=0.0.1 <=0.9.0';
 
   static final MOD_FOLDER:String =
     #if (REDIRECT_ASSETS_FOLDER && mac)
@@ -57,7 +70,11 @@ class PolymodHandler
 
   public static var loadedModIds:Array<String> = [];
 
+  public static var modApiTiers:Map<String, ModApiTier> = new Map();
+
   static var modFileSystem:Null<ZipFileSystem> = null;
+
+  static var cachedModMetadata:Null<Array<ModMetadata>> = null;
 
   public static function createModRoot():Void
   {
@@ -92,6 +109,8 @@ class PolymodHandler
   {
     buildImports();
 
+    refreshModCache();
+
     if (modFileSystem == null) modFileSystem = buildFileSystem();
 
     var loadedModList:Array<ModMetadata> = polymod.Polymod.init({
@@ -111,6 +130,7 @@ class PolymodHandler
 
     loadedModIds = [];
     loadedModDirs = [];
+    modApiTiers = new Map();
 
     if (loadedModList != null)
     {
@@ -118,8 +138,55 @@ class PolymodHandler
       {
         loadedModDirs.push(mod.dirName);
         loadedModIds.push(mod.id);
+
+        var tier:ModApiTier = classifyModApiVersion(mod.apiVersion);
+        modApiTiers.set(mod.dirName, tier);
+
+        switch (tier)
+        {
+          case Engine:
+            FlxG.log.add('[Polymod] "${mod.id}" targets the native engine API (${mod.apiVersion}).');
+          case Support:
+            FlxG.log.add('[Polymod] "${mod.id}" targets the compatibility API (${mod.apiVersion}), running in support mode.');
+          case Unsupported:
+            FlxG.log.warn('[Polymod] "${mod.id}" declares an unrecognized API version (${mod.apiVersion}).');
+        }
       }
     }
+  }
+
+  public static function classifyModApiVersion(version:Null<String>):ModApiTier
+  {
+    if (version == null) return Unsupported;
+
+    var parts:Array<String> = version.split('.');
+    if (parts.length < 3) return Unsupported;
+
+    var major:Null<Int> = Std.parseInt(parts[0]);
+    var minor:Null<Int> = Std.parseInt(parts[1]);
+    var patch:Null<Int> = Std.parseInt(parts[2]);
+
+    if (major == null || minor == null || patch == null) return Unsupported;
+
+    if (major == 0 && minor == 0 && patch == 1) return Engine;
+    if (major == 0 && minor >= 1 && minor <= 9 && patch == 0) return Support;
+
+    return Unsupported;
+  }
+
+  public static function isEngineMod(dirName:String):Bool
+  {
+    return modApiTiers.get(dirName) == Engine;
+  }
+
+  public static function isSupportMod(dirName:String):Bool
+  {
+    return modApiTiers.get(dirName) == Support;
+  }
+
+  public static function getModApiTier(dirName:String):ModApiTier
+  {
+    return modApiTiers.exists(dirName) ? modApiTiers.get(dirName) : Unsupported;
   }
 
   static function buildFileSystem():polymod.fs.ZipFileSystem
@@ -129,6 +196,17 @@ class PolymodHandler
       modRoot: MOD_FOLDER,
       autoScan: true
     });
+  }
+
+  static function blacklistPackage(packageName:String, ?skipIf:String->Bool):Void
+  {
+    for (cls in ClassMacro.listClassesInPackage(packageName))
+    {
+      if (cls == null) continue;
+      var className:String = Type.getClassName(cls);
+      if (skipIf != null && skipIf(className)) continue;
+      Polymod.blacklistImport(className);
+    }
   }
 
   static function buildImports():Void
@@ -186,19 +264,8 @@ class PolymodHandler
 
     Polymod.blacklistImport('lime.utils.AssetLibrary');
 
-    for (cls in ClassMacro.listClassesInPackage('funkin.mobile.util'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('extension'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
+    blacklistPackage('funkin.mobile.util');
+    blacklistPackage('extension');
 
     Polymod.blacklistImport('lime.system.CFFI');
 
@@ -232,48 +299,12 @@ class PolymodHandler
     Polymod.blacklistInstanceFields(openfl.net.Socket, ['readObject']);
     Polymod.blacklistInstanceFields(openfl.utils.ByteArray.ByteArrayData, ['readObject']);
 
-    for (cls in ClassMacro.listClassesInPackage('funkin.api'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      if (polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className)) continue;
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('polymod'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('hscript'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('io.newgrounds'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('sys'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
-
-    for (cls in ClassMacro.listClassesInPackage('funkin.util.macro'))
-    {
-      if (cls == null) continue;
-      var className:String = Type.getClassName(cls);
-      Polymod.blacklistImport(className);
-    }
+    blacklistPackage('funkin.api', (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className));
+    blacklistPackage('polymod');
+    blacklistPackage('hscript');
+    blacklistPackage('io.newgrounds');
+    blacklistPackage('sys');
+    blacklistPackage('funkin.util.macro');
 
     Polymod.blacklistImport('funkin.external.android.CallbackUtil');
     Polymod.blacklistImport('funkin.external.android.DataFolderUtil');
@@ -326,8 +357,15 @@ class PolymodHandler
     }
   }
 
-  public static function getAllMods():Array<ModMetadata>
+  public static function refreshModCache():Void
   {
+    cachedModMetadata = null;
+  }
+
+  public static function getAllMods(forceRescan:Bool = false):Array<ModMetadata>
+  {
+    if (!forceRescan && cachedModMetadata != null) return cachedModMetadata;
+
     if (modFileSystem == null) modFileSystem = buildFileSystem();
 
     var modMetadata:Array<ModMetadata> = Polymod.scan({
@@ -337,6 +375,7 @@ class PolymodHandler
       errorCallback: PolymodErrorHandler.onPolymodError
     });
 
+    cachedModMetadata = modMetadata;
     return modMetadata;
   }
 
@@ -373,6 +412,8 @@ class PolymodHandler
   {
     ModuleHandler.clearModuleCache();
     Polymod.clearScripts();
+
+    refreshModCache();
 
     funkin.modding.PolymodHandler.loadAllMods();
 
