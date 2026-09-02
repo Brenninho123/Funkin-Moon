@@ -86,6 +86,7 @@ class Save implements ConsoleClass
         naughtyness: true,
         downscroll: false,
         middlescroll: false,
+        invisibleHitbox: false,
         flashingLights: true,
         zoomCamera: true,
         debugDisplay: 'Off',
@@ -904,6 +905,8 @@ typedef SaveDataOptions =
   var downscroll:Bool;
 
   var middlescroll:Bool;
+
+  var invisibleHitbox:Bool;
 
   var flashingLights:Bool;
 
