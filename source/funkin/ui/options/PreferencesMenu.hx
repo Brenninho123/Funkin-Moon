@@ -193,6 +193,10 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     {
       Preferences.debugDisplayBGOpacity = value;
     }, Preferences.debugDisplayBGOpacity);
+    createPrefItemNumber('DebugDisplay Offset', "Adjust the debug display's horizontal (X) position.", function(value:Float):Void
+    {
+      Preferences.debugDisplayOffsetX = Std.int(value);
+    }, null, Preferences.debugDisplayOffsetX, 0, 600, 10, 0);
     #end
     #if !mobile
     createPrefItemCheckbox('Pause on Unfocus', 'When enabled, the game automatically pauses when losing focus.', function(value:Bool):Void
