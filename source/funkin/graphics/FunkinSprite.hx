@@ -700,6 +700,7 @@ class FunkinSprite extends FlxAnimate
     }
   }
 
+  @:nullSafety(Off)
   override public function destroy():Void
   {
     @:nullSafety(Off)
