@@ -7,13 +7,12 @@ import openfl.display.Shape;
 import openfl.display.Sprite;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
-import openfl.Lib;
 
 class FunkinDebugDisplay extends Sprite
 {
   static final UPDATE_DELAY:Int = 100;
   static final INNER_RECT_DIFF:Int = 3;
-  static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 201];
+  static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 245];
   static final OTHERS_OFFSET:Int = 8;
 
   public var isAdvanced(default, set):Bool = false;
@@ -21,7 +20,8 @@ class FunkinDebugDisplay extends Sprite
   public var backgroundOpacity(default, set):Float = 0.5;
 
   var deltaTimeout:Float;
-  var times:Array<Float>;
+  var fpsAccumTime:Float;
+  var frameCounter:Int;
   var color:Int;
   var fps:Int;
   var fpsPeak:Int;
@@ -44,7 +44,8 @@ class FunkinDebugDisplay extends Sprite
     this.y = y;
 
     this.deltaTimeout = 0.0;
-    this.times = [];
+    this.fpsAccumTime = 0.0;
+    this.frameCounter = 0;
     this.color = color;
 
     this.fps = 0;
@@ -175,13 +176,18 @@ class FunkinDebugDisplay extends Sprite
 
   override function __enterFrame(deltaTime:Float):Void
   {
-    var currentTime:Float = Lib.getTimer();
+    if (backgroundOpacity <= 0) return;
 
-    times.push(currentTime);
+    frameCounter++;
+    fpsAccumTime += deltaTime;
 
-    while (times[0] < currentTime - Constants.MS_PER_SEC)
+    if (fpsAccumTime >= Constants.MS_PER_SEC)
     {
-      times.shift();
+      fps = frameCounter;
+      frameCounter = 0;
+      fpsAccumTime -= Constants.MS_PER_SEC;
+
+      if (fps > fpsPeak) fpsPeak = fps;
     }
 
     if (deltaTimeout < UPDATE_DELAY)
@@ -189,10 +195,6 @@ class FunkinDebugDisplay extends Sprite
       deltaTimeout += deltaTime;
       return;
     }
-
-    fps = times.length;
-
-    if (fps > fpsPeak) fpsPeak = fps;
 
     if (MemoryUtil.supportsGCMem())
     {
@@ -231,16 +233,19 @@ class FunkinDebugDisplay extends Sprite
     info.push('AVG FPS: ${Math.floor(fpsGraph.average())}');
     info.push('1% LOW FPS: ${Math.floor(fpsGraph.lowest())}');
     info.push('OS: $osInfo');
-    fpsGraph.textDisplay.text = info.join('\n');
+    var newFpsText:String = info.join('\n');
+    if (fpsGraph.textDisplay.text != newFpsText) fpsGraph.textDisplay.text = newFpsText;
 
     if (gcMemGraph != null)
     {
-      gcMemGraph.textDisplay.text = 'GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}';
+      var newGcText:String = 'GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}';
+      if (gcMemGraph.textDisplay.text != newGcText) gcMemGraph.textDisplay.text = newGcText;
     }
 
     if (taskMemGraph != null)
     {
-      taskMemGraph.textDisplay.text = 'TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}';
+      var newTaskText:String = 'TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}';
+      if (taskMemGraph.textDisplay.text != newTaskText) taskMemGraph.textDisplay.text = newTaskText;
     }
   }
 
@@ -264,7 +269,8 @@ class FunkinDebugDisplay extends Sprite
 
       info.push('OS: $osInfo');
 
-      infoDisplay.text = info.join('\n');
+      var newText:String = info.join('\n');
+      if (infoDisplay.text != newText) infoDisplay.text = newText;
     }
   }
 
