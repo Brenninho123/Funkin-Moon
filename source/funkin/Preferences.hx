@@ -110,6 +110,21 @@ class Preferences
     return value;
   }
 
+  public static var invisibleHitbox(get, set):Bool;
+
+  static function get_invisibleHitbox():Bool
+  {
+    return Save?.instance?.options?.invisibleHitbox ?? false;
+  }
+
+  static function set_invisibleHitbox(value:Bool):Bool
+  {
+    var save:Save = Save.instance;
+    save.options.invisibleHitbox = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var flashingLights(get, set):Bool;
 
   static function get_flashingLights():Bool
