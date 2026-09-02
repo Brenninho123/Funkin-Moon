@@ -128,15 +128,15 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
 
   public function runLater(seconds:Float, callback:Void->Void):FlxTimer
   {
-    var timer:FlxTimer = null;
+    var timer:FlxTimer = new FlxTimer();
+    activeTimers.push(timer);
 
-    timer = new FlxTimer().start(seconds, (_) ->
+    timer.start(seconds, (_) ->
     {
       activeTimers.remove(timer);
       if (active) callback();
     });
 
-    activeTimers.push(timer);
     return timer;
   }
 
