@@ -168,8 +168,12 @@ class PolymodHandler
 
     if (major == null || minor == null || patch == null) return Unsupported;
 
-    if (major == 0 && minor == 0 && patch == 1) return Engine;
-    if (major == 0 && minor >= 1 && minor <= 9 && patch == 0) return Support;
+    var majorInt:Int = major;
+    var minorInt:Int = minor;
+    var patchInt:Int = patch;
+
+    if (majorInt == 0 && minorInt == 0 && patchInt == 1) return Engine;
+    if (majorInt == 0 && minorInt >= 1 && minorInt <= 9 && patchInt == 0) return Support;
 
     return Unsupported;
   }
@@ -186,7 +190,8 @@ class PolymodHandler
 
   public static function getModApiTier(dirName:String):ModApiTier
   {
-    return modApiTiers.exists(dirName) ? modApiTiers.get(dirName) : Unsupported;
+    var tier:Null<ModApiTier> = modApiTiers.get(dirName);
+    return tier == null ? Unsupported : tier;
   }
 
   static function buildFileSystem():polymod.fs.ZipFileSystem
