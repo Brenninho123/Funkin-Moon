@@ -90,6 +90,7 @@ class Save implements ConsoleClass
         zoomCamera: true,
         debugDisplay: 'Off',
         debugDisplayBGOpacity: 50,
+        debugDisplayOffsetX: 10,
         subtitles: true,
         hapticsMode: 'All',
         hapticsIntensityMultiplier: 1,
@@ -911,6 +912,8 @@ typedef SaveDataOptions =
   var debugDisplay:String;
 
   var debugDisplayBGOpacity:Int;
+
+  var debugDisplayOffsetX:Int;
 
   var subtitles:Bool;
 
