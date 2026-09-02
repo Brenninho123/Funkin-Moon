@@ -35,12 +35,19 @@ class FunkinDebugDisplay extends Sprite
   var taskMemGraph:FunkinStatsGraph;
   var infoDisplay:TextField;
   var osInfo:String;
+  var lastFpsColorTier:Int = -1;
+
+  static final FPS_GOOD_THRESHOLD:Int = 50;
+  static final FPS_OK_THRESHOLD:Int = 30;
+  static final FPS_COLOR_GOOD:Int = 0x39FF7A;
+  static final FPS_COLOR_OK:Int = 0xFFD400;
+  static final FPS_COLOR_BAD:Int = 0xFF4C4C;
 
   public function new(x:Float = 10, y:Float = 10, color:Int = 0x000000):Void
   {
     super();
 
-    this.x = x;
+    this.x = Preferences.debugDisplayOffsetX;
     this.y = y;
 
     this.deltaTimeout = 0.0;
@@ -90,6 +97,10 @@ class FunkinDebugDisplay extends Sprite
   function buildDebugDisplay(advanced:Bool):Void
   {
     removeChildren(0, numChildren);
+
+    this.x = Preferences.debugDisplayOffsetX;
+
+    lastFpsColorTier = -1;
 
     var bgWidthMultiplier:Float = advanced ? 1 : 0.3;
 
@@ -228,13 +239,22 @@ class FunkinDebugDisplay extends Sprite
     updateGcMemGraph();
     updateTaskMemGraph();
 
+    var fpsLine:String = 'FPS: $fps';
     var info:Array<String> = [];
-    info.push('FPS: $fps');
+    info.push(fpsLine);
     info.push('AVG FPS: ${Math.floor(fpsGraph.average())}');
     info.push('1% LOW FPS: ${Math.floor(fpsGraph.lowest())}');
     info.push('OS: $osInfo');
     var newFpsText:String = info.join('\n');
-    if (fpsGraph.textDisplay.text != newFpsText) fpsGraph.textDisplay.text = newFpsText;
+    var textChanged:Bool = fpsGraph.textDisplay.text != newFpsText;
+    if (textChanged) fpsGraph.textDisplay.text = newFpsText;
+
+    var currentTier:Int = fpsColorTier(fps);
+    if (textChanged || currentTier != lastFpsColorTier)
+    {
+      fpsGraph.textDisplay.setTextFormat(new TextFormat(null, null, getFpsColor(fps), true), 0, fpsLine.length);
+      lastFpsColorTier = currentTier;
+    }
 
     if (gcMemGraph != null)
     {
@@ -251,26 +271,34 @@ class FunkinDebugDisplay extends Sprite
 
   function updateSimpleDisplay():Void
   {
-    if (infoDisplay != null)
+    if (infoDisplay == null) return;
+
+    var info:Array<String> = [];
+
+    var fpsLine:String = 'FPS: $fps';
+    info.push(fpsLine);
+
+    if (MemoryUtil.supportsGCMem())
     {
-      var info:Array<String> = [];
+      info.push('GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}');
+    }
 
-      info.push('FPS: $fps');
+    if (MemoryUtil.supportsTaskMem())
+    {
+      info.push('TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}');
+    }
 
-      if (MemoryUtil.supportsGCMem())
-      {
-        info.push('GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}');
-      }
+    info.push('OS: $osInfo');
 
-      if (MemoryUtil.supportsTaskMem())
-      {
-        info.push('TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}');
-      }
+    var newText:String = info.join('\n');
+    var textChanged:Bool = infoDisplay.text != newText;
+    if (textChanged) infoDisplay.text = newText;
 
-      info.push('OS: $osInfo');
-
-      var newText:String = info.join('\n');
-      if (infoDisplay.text != newText) infoDisplay.text = newText;
+    var currentTier:Int = fpsColorTier(fps);
+    if (textChanged || currentTier != lastFpsColorTier)
+    {
+      infoDisplay.setTextFormat(new TextFormat(null, null, getFpsColor(fps), true), 0, fpsLine.length);
+      lastFpsColorTier = currentTier;
     }
   }
 
@@ -315,6 +343,20 @@ class FunkinDebugDisplay extends Sprite
   public function setOffsetX(value:Float):Void
   {
     this.x = Math.max(0, value);
+  }
+
+  function getFpsColor(value:Int):Int
+  {
+    if (value >= FPS_GOOD_THRESHOLD) return FPS_COLOR_GOOD;
+    if (value >= FPS_OK_THRESHOLD) return FPS_COLOR_OK;
+    return FPS_COLOR_BAD;
+  }
+
+  function fpsColorTier(value:Int):Int
+  {
+    if (value >= FPS_GOOD_THRESHOLD) return 2;
+    if (value >= FPS_OK_THRESHOLD) return 1;
+    return 0;
   }
 }
 
