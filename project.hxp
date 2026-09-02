@@ -169,6 +169,8 @@ class Project extends HXProject
 
   static final FEATURE_DEBUG_DISPLAY:FeatureFlag = "FEATURE_DEBUG_DISPLAY";
 
+  static final FEATURE_ONLINE:FeatureFlag = "FEATURE_ONLINE";
+
   public function new()
   {
     super();
@@ -482,6 +484,8 @@ class Project extends HXProject
     FEATURE_COMPRESSED_TEXTURES.apply(this, isMobile() && isRelease() && !isIOSSimulator());
 
     FEATURE_DEBUG_DISPLAY.apply(this, !isMobile() || FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
+
+    FEATURE_ONLINE.apply(this, !isWeb());
 
     renderFlagsTable();
   }
