@@ -311,6 +311,11 @@ class FunkinDebugDisplay extends Sprite
 
     return backgroundOpacity = value;
   }
+
+  public function setOffsetX(value:Float):Void
+  {
+    this.x = Math.max(0, value);
+  }
 }
 
 enum abstract DebugDisplayMode(String) from String to String
