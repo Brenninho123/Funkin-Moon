@@ -226,6 +226,12 @@ class FunkinHitbox extends FlxTypedSpriteGroup<FunkinHint>
 
   var trackedInputs:Array<FlxActionInput> = [];
 
+  static final FOUR_LANES_CAP_HEIGHT_RATIO:Float = 0.012;
+  static final FOUR_LANES_CAP_INSET_RATIO:Float = 0.14;
+  static final FOUR_LANES_CAP_Y_RATIO:Float = 0.13;
+  static final FOUR_LANES_GLOW_HEIGHT_RATIO:Float = 0.22;
+  static final FOUR_LANES_PRESS_SCALE:Float = 1.015;
+
   public function new(?schemeOverride:String, ?showGradint:Bool = true, ?directionsOverride:Array<NoteDirection>, ?colorsOverride:Array<FlxColor>):Void
   {
     super();
@@ -244,8 +250,8 @@ class FunkinHitbox extends FlxTypedSpriteGroup<FunkinHint>
 
         for (i in 0...hintsNoteDirections.length)
         {
-          add(createHintLane(i * hintWidth, 0, hintsNoteDirections[i % hintsNoteDirections.length], hintWidth, hintHeight,
-            hintsColors[i % hintsColors.length], true, showGradint));
+          add(createHintLaneStylish(i * hintWidth, 0, hintsNoteDirections[i % hintsNoteDirections.length], hintWidth, hintHeight,
+            hintsColors[i % hintsColors.length], showGradint));
         }
       case FunkinHitboxControlSchemes.DoubleThumbTriangle:
         final screenHalf:Int = Math.floor(FlxG.width / 2);
@@ -336,6 +342,97 @@ class FunkinHitbox extends FlxTypedSpriteGroup<FunkinHint>
     });
 
     return result;
+  }
+
+  function createHintLaneStylish(x:Float, y:Float, noteDirection:NoteDirection, width:Int, height:Int, color:FlxColor = 0xFFFFFFFF,
+      gradient:Bool = true):FunkinHint
+  {
+    final hint:FunkinHint = new FunkinHint(x, y, noteDirection, createHintLaneAccentGraphic(width, height, color));
+    hint.loadGraphic(createHintLaneGraphicStylish(width, height, color, gradient));
+    hint.onDown.add(onHintDown.dispatch.bind(hint));
+    hint.onUp.add(onHintUp.dispatch.bind(hint));
+    hint.onOut.add(onHintUp.dispatch.bind(hint));
+    hint.initTween(INVISIBLE_TILL_PRESS);
+
+    hint.onDown.add(function()
+    {
+      FlxTween.cancelTweensOf(hint.scale);
+      FlxTween.tween(hint.scale, {x: FOUR_LANES_PRESS_SCALE, y: FOUR_LANES_PRESS_SCALE}, 0.08, {ease: FlxEase.quadOut});
+    });
+    hint.onUp.add(function()
+    {
+      FlxTween.cancelTweensOf(hint.scale);
+      FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
+    });
+    hint.onOut.add(function()
+    {
+      FlxTween.cancelTweensOf(hint.scale);
+      FlxTween.tween(hint.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
+    });
+
+    return hint;
+  }
+
+  function createHintLaneGraphicStylish(width:Int, height:Int, baseColor:FlxColor = 0xFFFFFFFF, gradient:Bool = true):FlxGraphic
+  {
+    final shape:Shape = new Shape();
+
+    var brighter:FlxColor = baseColor;
+    brighter.brightness += 0.35;
+
+    if (gradient)
+    {
+      final matrix:Matrix = new Matrix();
+      matrix.createGradientBox(width, height, Math.PI / 2, 0, 0);
+      shape.graphics.beginGradientFill(LINEAR, [baseColor.rgb, baseColor.rgb, baseColor.rgb],
+        [0, baseColor.alphaFloat * 0.25, baseColor.alphaFloat], [0, 170, 255], matrix, PAD, RGB, 0);
+    }
+    else
+    {
+      shape.graphics.beginFill(baseColor.rgb, baseColor.alphaFloat);
+    }
+
+    shape.graphics.drawRect(0, 0, width, height);
+    shape.graphics.endFill();
+
+    final capHeight:Float = Math.max(6, height * FOUR_LANES_CAP_HEIGHT_RATIO);
+    final capInset:Float = width * FOUR_LANES_CAP_INSET_RATIO;
+    final capY:Float = height - (height * FOUR_LANES_CAP_Y_RATIO);
+    final capWidth:Float = width - (capInset * 2);
+
+    shape.graphics.beginFill(brighter.rgb, 0.85);
+    shape.graphics.drawRoundRect(capInset, capY, capWidth, capHeight, capHeight, capHeight);
+    shape.graphics.endFill();
+
+    shape.graphics.beginFill(brighter.rgb, 0.16);
+    shape.graphics.drawRect(0, 0, 2, height);
+    shape.graphics.drawRect(width - 2, 0, 2, height);
+    shape.graphics.endFill();
+
+    final graphicData:BitmapData = new BitmapData(width, height, true, 0);
+    graphicData.draw(shape, true);
+    return FlxGraphic.fromBitmapData(graphicData, false, null, false);
+  }
+
+  function createHintLaneAccentGraphic(width:Int, height:Int, baseColor:FlxColor = 0xFFFFFFFF):FlxGraphic
+  {
+    final shape:Shape = new Shape();
+    shape.graphics.beginFill(0, 0);
+    shape.graphics.drawRect(0, 0, width, height);
+    shape.graphics.endFill();
+
+    final glowHeight:Float = height * FOUR_LANES_GLOW_HEIGHT_RATIO;
+    final glowY:Float = height - (height * FOUR_LANES_CAP_Y_RATIO) - (glowHeight * 0.5);
+
+    final matrix:Matrix = new Matrix();
+    matrix.createGradientBox(width, glowHeight, Math.PI / 2, 0, glowY);
+    shape.graphics.beginGradientFill(LINEAR, [baseColor.rgb, baseColor.rgb, baseColor.rgb], [0, baseColor.alphaFloat, 0], [0, 128, 255], matrix);
+    shape.graphics.drawRect(0, glowY, width, glowHeight);
+    shape.graphics.endFill();
+
+    final graphicData:BitmapData = new BitmapData(width, height, true, 0);
+    graphicData.draw(shape, true);
+    return FlxGraphic.fromBitmapData(graphicData, false, null, false);
   }
 
   function createHintLane(x:Float, y:Float, noteDirection:NoteDirection, width:Int, height:Int, color:FlxColor = 0xFFFFFFFF, label:Bool = true,
