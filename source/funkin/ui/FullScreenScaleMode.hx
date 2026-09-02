@@ -44,6 +44,8 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
 
   public static var enabled(default, set):Bool;
 
+  public static var eligibleForFullscreen(default, null):Bool = true;
+
   public static var hasFakeCutouts:Bool = false;
 
   @:noCompletion
@@ -55,7 +57,7 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
   @:noCompletion
   static var finishingAwait:Bool = false;
 
-  public function new(enable:Bool = true):Void
+  public function new(?enable:Bool):Void
   {
     super();
 
@@ -63,7 +65,7 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
 
     if (FlxG.stage != null) updateGameSize(FlxG.stage.stageWidth, FlxG.stage.stageHeight);
 
-    enabled = enable;
+    enabled = enable ?? #if mobile Preferences.fullscreenMode #else true #end;
   }
 
   override public function onMeasure(Width:Int, Height:Int):Void
@@ -435,9 +437,11 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
   @:noCompletion
   static function set_enabled(Value:Bool):Bool
   {
-    if (ratioAxis == FlxAxes.X #if android
+    eligibleForFullscreen = ratioAxis == FlxAxes.X #if android
       && (extension.androidtools.os.Build.VERSION.SDK_INT >= extension.androidtools.os.Build.VERSION_CODES.P
-        || extension.androidtools.Tools.isTablet()) #end)
+        || extension.androidtools.Tools.isTablet()) #end;
+
+    if (eligibleForFullscreen)
     {
       enabled = Value;
     }
