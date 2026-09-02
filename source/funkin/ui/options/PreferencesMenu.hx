@@ -134,6 +134,14 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       },
       Preferences.middlescroll, #if mobile ControlsHandler.hasExternalInputDevice
       || Preferences.controlsScheme != FunkinHitboxControlSchemes.Arrows #end);
+    #if mobile
+    createPrefItemCheckbox('Invisible Hitbox', 'When enabled, the touch hitbox buttons are invisible. Only applies to the Four Lanes hitbox mode.',
+      function(value:Bool):Void
+      {
+        Preferences.invisibleHitbox = value;
+      },
+      Preferences.invisibleHitbox, Preferences.controlsScheme != FunkinHitboxControlSchemes.Arrows);
+    #end
     createPrefItemPercentage('Strumline Background', 'Show a semi-transparent background behind the strumline.', function(value:Int):Void
     {
       Preferences.strumlineBackgroundOpacity = value;
