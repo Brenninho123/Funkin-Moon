@@ -29,6 +29,13 @@ class ControlsHandler
 
   public static final onInputDeviceChanged:FlxTypedSignal<Bool->Void> = new FlxTypedSignal<Bool->Void>();
 
+  static final DIRECTION_TO_CONTROL:Map<NoteDirection, Control> = [
+    NoteDirection.LEFT => Control.NOTE_LEFT,
+    NoteDirection.DOWN => Control.NOTE_DOWN,
+    NoteDirection.UP => Control.NOTE_UP,
+    NoteDirection.RIGHT => Control.NOTE_RIGHT,
+  ];
+
   public static function initInputTrackers():Void
   {
     FlxG.stage.addEventListener(KeyboardEvent.KEY_DOWN, (_) -> setLastInputTouch(false));
@@ -66,53 +73,52 @@ class ControlsHandler
 
     for (hint in hitbox.members)
     {
+      var control:Null<Control> = null;
+
       @:privateAccess
-      switch (hint.noteDirection)
+      control = DIRECTION_TO_CONTROL.get(hint.noteDirection);
+
+      if (control == null) continue;
+
+      controls.forEachBound(control, function(action:FlxActionDigital, state:FlxInputState):Void
       {
-        case NoteDirection.LEFT:
-          controls.forEachBound(Control.NOTE_LEFT, function(action:FlxActionDigital, state:FlxInputState):Void
-          {
-            addButton(action, hint, state, cachedInput);
-          });
-        case NoteDirection.DOWN:
-          controls.forEachBound(Control.NOTE_DOWN, function(action:FlxActionDigital, state:FlxInputState):Void
-          {
-            addButton(action, hint, state, cachedInput);
-          });
-        case NoteDirection.UP:
-          controls.forEachBound(Control.NOTE_UP, function(action:FlxActionDigital, state:FlxInputState):Void
-          {
-            addButton(action, hint, state, cachedInput);
-          });
-        case NoteDirection.RIGHT:
-          controls.forEachBound(Control.NOTE_RIGHT, function(action:FlxActionDigital, state:FlxInputState):Void
-          {
-            addButton(action, hint, state, cachedInput);
-          });
-      }
+        addButton(action, hint, state, cachedInput);
+      });
     }
   }
 
   public static function removeCachedInput(controls:Controls, cachedInput:Array<FlxActionInput>):Void
   {
+    if (controls == null || cachedInput == null || cachedInput.length == 0) return;
+
+    var cachedSet:Map<FlxActionInput, Bool> = new Map();
+    for (input in cachedInput) cachedSet.set(input, true);
+
     for (action in controls.digitalActions)
     {
       var i:Int = action.inputs.length;
 
       while (i-- > 0)
       {
-        var j:Int = cachedInput.length;
-
-        while (j-- > 0)
+        var input:FlxActionInput = action.inputs[i];
+        if (cachedSet.exists(input))
         {
-          if (cachedInput[j] == action.inputs[i])
-          {
-            action.remove(action.inputs[i]);
-            cachedInput.remove(cachedInput[j]);
-          }
+          action.remove(input);
         }
       }
     }
+
+    cachedInput.resize(0);
+  }
+
+  public static function getActiveInputLabel():String
+  {
+    if (usingExternalInputDevice)
+    {
+      return FlxG.gamepads.numActiveGamepads > 0 ? 'Gamepad' : 'Keyboard';
+    }
+
+    return 'Touch';
   }
 
   @:noCompletion
