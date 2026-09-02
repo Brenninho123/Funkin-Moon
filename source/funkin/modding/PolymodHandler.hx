@@ -198,7 +198,7 @@ class PolymodHandler
     });
   }
 
-  static function blacklistClasses(classes:Array<Class<Dynamic>>, ?skipIf:String->Bool):Void
+  static function blacklistClasses(classes:List<Class<Dynamic>>, ?skipIf:String->Bool):Void
   {
     for (cls in classes)
     {
