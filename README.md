@@ -1,4 +1,4 @@
-"docs/readme_images/moonlogo.png" width="800">
+<"docs/readme_images/moonlogo.png" width="800">
 
 Moon Engine is a Friday Night Funkin' Engine With Lua Support and more Modding
 
