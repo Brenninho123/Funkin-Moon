@@ -198,9 +198,9 @@ class PolymodHandler
     });
   }
 
-  static function blacklistPackage(packageName:String, ?skipIf:String->Bool):Void
+  static function blacklistClasses(classes:Array<Class<Dynamic>>, ?skipIf:String->Bool):Void
   {
-    for (cls in ClassMacro.listClassesInPackage(packageName))
+    for (cls in classes)
     {
       if (cls == null) continue;
       var className:String = Type.getClassName(cls);
@@ -264,8 +264,8 @@ class PolymodHandler
 
     Polymod.blacklistImport('lime.utils.AssetLibrary');
 
-    blacklistPackage('funkin.mobile.util');
-    blacklistPackage('extension');
+    blacklistClasses(ClassMacro.listClassesInPackage('funkin.mobile.util'));
+    blacklistClasses(ClassMacro.listClassesInPackage('extension'));
 
     Polymod.blacklistImport('lime.system.CFFI');
 
@@ -299,12 +299,12 @@ class PolymodHandler
     Polymod.blacklistInstanceFields(openfl.net.Socket, ['readObject']);
     Polymod.blacklistInstanceFields(openfl.utils.ByteArray.ByteArrayData, ['readObject']);
 
-    blacklistPackage('funkin.api', (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className));
-    blacklistPackage('polymod');
-    blacklistPackage('hscript');
-    blacklistPackage('io.newgrounds');
-    blacklistPackage('sys');
-    blacklistPackage('funkin.util.macro');
+    blacklistClasses(ClassMacro.listClassesInPackage('funkin.api'), (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className));
+    blacklistClasses(ClassMacro.listClassesInPackage('polymod'));
+    blacklistClasses(ClassMacro.listClassesInPackage('hscript'));
+    blacklistClasses(ClassMacro.listClassesInPackage('io.newgrounds'));
+    blacklistClasses(ClassMacro.listClassesInPackage('sys'));
+    blacklistClasses(ClassMacro.listClassesInPackage('funkin.util.macro'));
 
     Polymod.blacklistImport('funkin.external.android.CallbackUtil');
     Polymod.blacklistImport('funkin.external.android.DataFolderUtil');
