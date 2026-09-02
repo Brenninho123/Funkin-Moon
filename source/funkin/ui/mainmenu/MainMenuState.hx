@@ -35,6 +35,11 @@ import funkin.util.TouchUtil;
 import funkin.api.newgrounds.Referral;
 import funkin.ui.mainmenu.UpgradeSparkle;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
+import flixel.text.FlxText;
+#if FEATURE_ONLINE
+import funkin.online.FunkinOnline;
+import funkin.online.FunkinUser;
+#end
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -69,6 +74,14 @@ class MainMenuState extends MusicBeatState
 
   var hasUpgraded:Bool = false;
   var upgradeSparkles:FlxTypedSpriteGroup<UpgradeSparkle>;
+
+  #if FEATURE_ONLINE
+  var onlineBarBg:Null<FlxSprite> = null;
+  var onlineStatusText:Null<FlxText> = null;
+
+  static final ONLINE_SERVER_HOST:String = "your-server-address.example.com";
+  static final ONLINE_SERVER_PORT:Int = 7777;
+  #end
 
   public function new(_overrideMusic:Bool = false)
   {
@@ -292,7 +305,70 @@ class MainMenuState extends MusicBeatState
     super.create();
 
     initLeftWatermarkText();
+
+    #if FEATURE_ONLINE
+    initOnlineStatusBar();
+    initOnlineSystem();
+    #end
   }
+
+  #if FEATURE_ONLINE
+  function initOnlineStatusBar():Void
+  {
+    var barWidth:Int = 170;
+    var barHeight:Int = 46;
+    var barX:Float = FlxG.width - barWidth - 10;
+    var barY:Float = 10;
+
+    onlineBarBg = new FlxSprite(barX, barY);
+    onlineBarBg.makeGraphic(barWidth, barHeight, 0xCC000000);
+    onlineBarBg.scrollFactor.set(0, 0);
+    onlineBarBg.zIndex = 100000;
+    add(onlineBarBg);
+
+    onlineStatusText = new FlxText(barX + 8, barY + 6, barWidth - 16, '', 14);
+    onlineStatusText.setFormat('VCR OSD Mono', 14, FlxColor.WHITE, LEFT);
+    onlineStatusText.scrollFactor.set(0, 0);
+    onlineStatusText.zIndex = 100001;
+    add(onlineStatusText);
+
+    updateOnlineStatusBar();
+  }
+
+  function initOnlineSystem():Void
+  {
+    FunkinUser.instance.init(generateGuestId(), generateGuestName());
+
+    FunkinOnline.instance.onConnected.add(updateOnlineStatusBar);
+    FunkinOnline.instance.onDisconnected.add(updateOnlineStatusBar);
+    FunkinUser.instance.onActiveUsersChanged.add(updateOnlineStatusBar);
+
+    if (FunkinOnline.instance.state == Disconnected)
+    {
+      FunkinOnline.instance.connect(ONLINE_SERVER_HOST, ONLINE_SERVER_PORT);
+    }
+  }
+
+  function generateGuestId():String
+  {
+    return 'guest-${Std.int(Math.abs(Date.now().getTime()))}-${FlxG.random.int(1000, 9999)}';
+  }
+
+  function generateGuestName():String
+  {
+    return 'Guest${FlxG.random.int(1000, 9999)}';
+  }
+
+  function updateOnlineStatusBar():Void
+  {
+    if (onlineStatusText == null) return;
+
+    var status:String = FunkinOnline.instance.isConnected() ? 'Online' : 'Offline';
+    var userCount:Int = FunkinUser.instance.getActiveUserCount();
+
+    onlineStatusText.text = 'Status: $status\nUsers: $userCount';
+  }
+  #end
 
   function initLeftWatermarkText():Void
   {
@@ -336,16 +412,6 @@ class MainMenuState extends MusicBeatState
     item.centered = true;
     item.changeAnim('idle');
     menuItems.addItem(name, item);
-  }
-
-  var buttonGrp:Array<FlxSprite> = [];
-
-  function createMenuButtion(name:String, atlas:String, callback:Void->Void):Void
-  {
-    var item:FunkinButton = new FunkinButton(Math.round(FlxG.width * 0.8), Math.round(FlxG.height * 0.7));
-    item.makeGraphic(250, 250, FlxColor.BLUE);
-    item.onDown.add(callback);
-    buttonGrp.push(item);
   }
 
   override function closeSubState():Void
@@ -564,6 +630,17 @@ class MainMenuState extends MusicBeatState
     #end
 
     if (controls.BACK_P) goBack();
+  }
+
+  override public function destroy():Void
+  {
+    #if FEATURE_ONLINE
+    FunkinOnline.instance.onConnected.remove(updateOnlineStatusBar);
+    FunkinOnline.instance.onDisconnected.remove(updateOnlineStatusBar);
+    FunkinUser.instance.onActiveUsersChanged.remove(updateOnlineStatusBar);
+    #end
+
+    super.destroy();
   }
 
   function goOptions():Void
