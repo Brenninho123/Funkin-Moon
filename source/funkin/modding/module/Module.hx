@@ -5,6 +5,7 @@ import funkin.modding.IScriptedClass.IStateChangingScriptedClass;
 import funkin.modding.IScriptedClass.IFreeplayScriptedClass;
 import funkin.modding.IScriptedClass.ICharacterSelectScriptedClass;
 import funkin.modding.events.ScriptEvent;
+import flixel.util.FlxTimer;
 
 typedef ModuleParams =
 {
@@ -29,6 +30,7 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
     }
     else
     {
+      cancelTimers();
       onDisabled();
     }
 
@@ -50,6 +52,10 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
   }
 
   public var state:Null<Class<Dynamic>> = null;
+
+  var data:Map<String, Dynamic> = new Map();
+
+  var activeTimers:Array<FlxTimer> = [];
 
   public function new(moduleId:String, priority:Int = 1000, ?params:ModuleParams):Void
   {
@@ -92,6 +98,64 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
     return this.state == null || this.state == currentState;
   }
 
+  public function isCurrentlyActive():Bool
+  {
+    if (!active) return false;
+    if (state == null) return true;
+
+    return appliesToState(Type.getClass(FlxG.state));
+  }
+
+  public function setData(key:String, value:Dynamic):Void
+  {
+    data.set(key, value);
+  }
+
+  public function getData(key:String, ?defaultValue:Dynamic):Dynamic
+  {
+    return data.exists(key) ? data.get(key) : defaultValue;
+  }
+
+  public function hasData(key:String):Bool
+  {
+    return data.exists(key);
+  }
+
+  public function clearData():Void
+  {
+    data.clear();
+  }
+
+  public function runLater(seconds:Float, callback:Void->Void):FlxTimer
+  {
+    var timer:FlxTimer = null;
+
+    timer = new FlxTimer().start(seconds, (_) ->
+    {
+      activeTimers.remove(timer);
+      if (active) callback();
+    });
+
+    activeTimers.push(timer);
+    return timer;
+  }
+
+  public function cancelTimers():Void
+  {
+    for (timer in activeTimers) timer.cancel();
+    activeTimers.resize(0);
+  }
+
+  public function bringToFront():Void
+  {
+    this.priority = 1;
+  }
+
+  public function sendToBack():Void
+  {
+    this.priority = 10000;
+  }
+
   public function onEnabled():Void
   {
   }
@@ -110,6 +174,7 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
 
   public function onDestroy(event:ScriptEvent)
   {
+    cancelTimers();
   }
 
   public function onUpdate(event:UpdateScriptEvent)
