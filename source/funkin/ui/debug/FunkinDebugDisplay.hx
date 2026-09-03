@@ -14,6 +14,8 @@ class FunkinDebugDisplay extends Sprite
   static final INNER_RECT_DIFF:Int = 3;
   static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 245];
   static final OTHERS_OFFSET:Int = 8;
+  static final FPS_HISTORY_SIZE:Int = 30;
+  static final STUTTER_THRESHOLD_MS:Float = 33.3;
 
   public var isAdvanced(default, set):Bool = false;
 
@@ -25,17 +27,21 @@ class FunkinDebugDisplay extends Sprite
   var color:Int;
   var fps:Int;
   var fpsPeak:Int;
+  var frameTimeMs:Float;
+  var stutterCount:Int;
   var gcMem:Float;
   var gcMemPeak:Float;
   var taskMem:Float;
   var taskMemPeak:Float;
   var background:Shape;
+  var statusIndicator:Shape;
   var fpsGraph:FunkinStatsGraph;
   var gcMemGraph:FunkinStatsGraph;
   var taskMemGraph:FunkinStatsGraph;
   var infoDisplay:TextField;
   var osInfo:String;
   var lastFpsColorTier:Int = -1;
+  var fpsHistory:Array<Int> = [];
 
   static final FPS_GOOD_THRESHOLD:Int = 50;
   static final FPS_OK_THRESHOLD:Int = 30;
@@ -57,6 +63,8 @@ class FunkinDebugDisplay extends Sprite
 
     this.fps = 0;
     this.fpsPeak = 0;
+    this.frameTimeMs = 0.0;
+    this.stutterCount = 0;
     this.gcMem = 0.0;
     this.gcMemPeak = 0.0;
     this.taskMem = 0.0;
@@ -109,15 +117,15 @@ class FunkinDebugDisplay extends Sprite
       bgWidthMultiplier = 1;
     }
 
-    var bgHeightMultiplier:Float = advanced ? 0.45 : 0.15;
+    var bgHeightMultiplier:Float = advanced ? 0.45 : 0.2;
 
     if (MemoryUtil.supportsGCMem() && MemoryUtil.supportsTaskMem())
     {
-      bgHeightMultiplier = advanced ? 1 : 0.3;
+      bgHeightMultiplier = advanced ? 1 : 0.35;
     }
     else if (MemoryUtil.supportsGCMem() || MemoryUtil.supportsTaskMem())
     {
-      bgHeightMultiplier = advanced ? 0.7 : 0.2;
+      bgHeightMultiplier = advanced ? 0.7 : 0.25;
     }
 
     background = new Shape();
@@ -130,6 +138,11 @@ class FunkinDebugDisplay extends Sprite
     background.graphics.endFill();
     background.alpha = backgroundOpacity;
     addChild(background);
+
+    statusIndicator = new Shape();
+    statusIndicator.x = (OUTER_RECT_DIMENSIONS[0] * bgWidthMultiplier) + (INNER_RECT_DIFF * 2) - 12;
+    statusIndicator.y = 8;
+    addChild(statusIndicator);
 
     if (advanced)
     {
@@ -189,6 +202,9 @@ class FunkinDebugDisplay extends Sprite
   {
     if (backgroundOpacity <= 0) return;
 
+    frameTimeMs = deltaTime;
+    if (deltaTime > STUTTER_THRESHOLD_MS) stutterCount++;
+
     frameCounter++;
     fpsAccumTime += deltaTime;
 
@@ -199,6 +215,8 @@ class FunkinDebugDisplay extends Sprite
       fpsAccumTime -= Constants.MS_PER_SEC;
 
       if (fps > fpsPeak) fpsPeak = fps;
+
+      pushFpsHistory(fps);
     }
 
     if (deltaTimeout < UPDATE_DELAY)
@@ -233,17 +251,51 @@ class FunkinDebugDisplay extends Sprite
     deltaTimeout = 0.0;
   }
 
+  function pushFpsHistory(value:Int):Void
+  {
+    fpsHistory.push(value);
+
+    if (fpsHistory.length > FPS_HISTORY_SIZE) fpsHistory.shift();
+  }
+
+  function formatFrameTime():Float
+  {
+    var clamped:Float = frameTimeMs < 100 ? frameTimeMs : 99.9;
+    return Math.round(clamped * 10) / 10;
+  }
+
+  function getAverageFps():Int
+  {
+    if (fpsHistory.length == 0) return fps;
+
+    var total:Int = 0;
+    for (value in fpsHistory) total += value;
+
+    return Math.round(total / fpsHistory.length);
+  }
+
+  function getLowFps():Int
+  {
+    if (fpsHistory.length == 0) return fps;
+
+    var lowest:Int = fpsHistory[0];
+    for (value in fpsHistory) if (value < lowest) lowest = value;
+
+    return lowest;
+  }
+
   function updateAdvancedDisplay():Void
   {
     updateFPSGraph();
     updateGcMemGraph();
     updateTaskMemGraph();
 
-    var fpsLine:String = 'FPS: $fps';
+    var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
     var info:Array<String> = [];
     info.push(fpsLine);
-    info.push('AVG FPS: ${Math.floor(fpsGraph.average())}');
-    info.push('1% LOW FPS: ${Math.floor(fpsGraph.lowest())}');
+    info.push('AVG FPS: ${getAverageFps()}');
+    info.push('1% LOW FPS: ${getLowFps()}');
+    info.push('STUTTERS: $stutterCount');
     info.push('OS: $osInfo');
     var newFpsText:String = info.join('\n');
     var textChanged:Bool = fpsGraph.textDisplay.text != newFpsText;
@@ -253,6 +305,7 @@ class FunkinDebugDisplay extends Sprite
     if (textChanged || currentTier != lastFpsColorTier)
     {
       fpsGraph.textDisplay.setTextFormat(new TextFormat(null, null, getFpsColor(fps), true), 0, fpsLine.length);
+      redrawStatusIndicator(getFpsColor(fps));
       lastFpsColorTier = currentTier;
     }
 
@@ -275,8 +328,9 @@ class FunkinDebugDisplay extends Sprite
 
     var info:Array<String> = [];
 
-    var fpsLine:String = 'FPS: $fps';
+    var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
     info.push(fpsLine);
+    info.push('AVG: ${getAverageFps()}  LOW: ${getLowFps()}');
 
     if (MemoryUtil.supportsGCMem())
     {
@@ -298,8 +352,22 @@ class FunkinDebugDisplay extends Sprite
     if (textChanged || currentTier != lastFpsColorTier)
     {
       infoDisplay.setTextFormat(new TextFormat(null, null, getFpsColor(fps), true), 0, fpsLine.length);
+      redrawStatusIndicator(getFpsColor(fps));
       lastFpsColorTier = currentTier;
     }
+  }
+
+  function redrawStatusIndicator(fpsColor:Int):Void
+  {
+    if (statusIndicator == null) return;
+
+    statusIndicator.graphics.clear();
+    statusIndicator.graphics.beginFill(0x000000, 0.35);
+    statusIndicator.graphics.drawCircle(5, 5, 5.5);
+    statusIndicator.graphics.endFill();
+    statusIndicator.graphics.beginFill(fpsColor, 1);
+    statusIndicator.graphics.drawCircle(4, 4, 4);
+    statusIndicator.graphics.endFill();
   }
 
   function updateFPSGraph():Void
@@ -343,6 +411,15 @@ class FunkinDebugDisplay extends Sprite
   public function setOffsetX(value:Float):Void
   {
     this.x = Math.max(0, value);
+  }
+
+  public function resetStats():Void
+  {
+    fpsPeak = fps;
+    stutterCount = 0;
+    fpsHistory = [];
+    gcMemPeak = gcMem;
+    taskMemPeak = taskMem;
   }
 
   function getFpsColor(value:Int):Int
