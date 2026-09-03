@@ -13,13 +13,16 @@ permissions:
 env:
   HAXE_VERSION: "4.3.7"
   HMM_VERSION: "3.1.0"
+
   ANDROID_NDK_VERSION: "27.2.12479018"
   ANDROID_PLATFORM: "android-35"
   ANDROID_BUILD_TOOLS: "35.0.0"
+
   HXCPP_VERBOSE: "1"
   HAXE_NO_COLOR: "1"
+
+  CFLAGS: "-O3"
   CXXFLAGS: "-O3 -std=c++20"
-  CPPFLAGS: "-O3"
 
 jobs:
 
@@ -77,44 +80,57 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Haxe
+      - name: Initialize Haxe environment
         run: |
           set -euxo pipefail
+
+          unset HAXE_STD_PATH
 
           HAXE_BIN="$(command -v haxe)"
-          HAXE_DIR="$(dirname "$HAXE_BIN")"
+          HAXE_LIB="$(command -v haxelib)"
+          HAXE_REPO="$(haxelib config)"
 
-          HAXELIB_CONFIG="$(haxelib config)"
-
-          echo "HAXEPATH=$HAXE_DIR" >> "$GITHUB_ENV"
-
-          unset HAXE_STD_PATH
+          echo "HAXEPATH=$HAXE_REPO" >> "$GITHUB_ENV"
           echo "HAXE_STD_PATH=" >> "$GITHUB_ENV"
 
-          echo "Haxe executable:"
-          which haxe
+          echo "========================================"
+          echo "HAXE INFORMATION"
+          echo "========================================"
 
-          echo "Haxe version:"
+          echo "Haxe executable: $HAXE_BIN"
+          echo "Haxelib executable: $HAXE_LIB"
+          echo "Haxelib repository: $HAXE_REPO"
+
           haxe --version
-
-          echo "Haxelib:"
           haxelib version
+          haxelib config
 
-          echo "Haxelib config:"
-          echo "$HAXELIB_CONFIG"
+          echo "========================================"
+          echo "HAXE INSTALLATION"
+          echo "========================================"
 
-      - name: Validate Haxe
+          "$HAXE_BIN" -v 2>&1 | head -40 || true
+
+      - name: Verify Haxe standard library
         run: |
           set -euxo pipefail
 
           unset HAXE_STD_PATH
 
-          haxe --version
-          haxelib version
+          cat > /tmp/haxe_test.hx <<'EOF'
+          class HaxeTest {
+            static function main() {
+              var value:Array<Int> = [1, 2, 3];
+              Sys.println(value.length);
+            }
+          }
+          EOF
 
-          HAXEPATH="$HAXEPATH" haxe --version
+          haxe -main HaxeTest \
+            -cp /tmp \
+            --interp
 
-      - name: Configure local Haxelib repository
+      - name: Configure Haxelib
         run: |
           set -euxo pipefail
 
@@ -122,7 +138,8 @@ jobs:
 
           haxelib --never newrepo
 
-          test -d ".haxelib"
+          echo "Project Haxelib:"
+          haxelib config
 
       - name: Install HMM
         run: |
@@ -132,8 +149,8 @@ jobs:
 
           haxelib install hmm "$HMM_VERSION" --quiet
 
-          HAXEPATH="$HAXEPATH" \
-          haxelib run hmm help
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm help
 
       - name: Install project dependencies
         run: |
@@ -141,14 +158,20 @@ jobs:
 
           unset HAXE_STD_PATH
 
-          HAXEPATH="$HAXEPATH" \
-          haxelib run hmm install --force
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm install --force
 
-      - name: Inspect installed libraries
+      - name: Inspect dependencies
         run: |
           set -euxo pipefail
 
           haxelib list
+
+          echo "hxcpp:"
+          ls -la .haxelib/hxcpp/git || true
+
+          echo "lime:"
+          ls -la .haxelib/lime/git || true
 
           test -d ".haxelib/hxcpp/git"
           test -d ".haxelib/lime/git"
@@ -159,14 +182,21 @@ jobs:
 
           unset HAXE_STD_PATH
 
-          HXCPP_TOOLS=".haxelib/hxcpp/git/tools/hxcpp"
+          HAXEPATH="$(haxelib config)"
 
-          test -d "$HXCPP_TOOLS"
+          cd ".haxelib/hxcpp/git/tools/hxcpp"
 
-          cd "$HXCPP_TOOLS"
-
-          HAXEPATH="$HAXEPATH" \
           haxe compile.hxml
+
+      - name: Verify hxcpp tools
+        run: |
+          set -euxo pipefail
+
+          find ".haxelib/hxcpp/git/tools/hxcpp" \
+            -maxdepth 3 \
+            -type f \
+            -executable \
+            -print || true
 
       - name: Rebuild Lime
         run: |
@@ -233,22 +263,49 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Haxe
+      - name: Initialize Haxe environment
         shell: pwsh
         run: |
-          $Haxe = (Get-Command haxe).Source
-          $HaxeDir = Split-Path $Haxe
+          $HaxeRepo = haxelib config
 
-          "HAXEPATH=$HaxeDir" | Out-File $env:GITHUB_ENV -Append
-          "HAXE_STD_PATH=" | Out-File $env:GITHUB_ENV -Append
+          "HAXEPATH=$HaxeRepo" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Append
 
-          Write-Host "Haxe: $Haxe"
-          Write-Host "HAXEPATH: $HaxeDir"
+          "HAXE_STD_PATH=" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Append
 
+          Write-Host "Haxe:"
           haxe --version
+
+          Write-Host "Haxelib:"
           haxelib version
 
-      - name: Configure local Haxelib repository
+          Write-Host "Haxelib repository:"
+          haxelib config
+
+      - name: Verify Haxe
+        shell: pwsh
+        run: |
+          Remove-Item Env:HAXE_STD_PATH -ErrorAction SilentlyContinue
+
+          $testFile = Join-Path $env:TEMP "HaxeTest.hx"
+
+          @"
+          class HaxeTest {
+            static function main() {
+              var value:Array<Int> = [1, 2, 3];
+              Sys.println(value.length);
+            }
+          }
+          "@ | Set-Content $testFile
+
+          haxe -main HaxeTest `
+            -cp $env:TEMP `
+            --interp
+
+      - name: Configure Haxelib
         shell: pwsh
         run: |
           if (Test-Path ".haxelib") {
@@ -260,37 +317,44 @@ jobs:
       - name: Install HMM
         shell: pwsh
         run: |
-          $env:HAXE_STD_PATH = ""
+          Remove-Item Env:HAXE_STD_PATH -ErrorAction SilentlyContinue
 
           haxelib install hmm $env:HMM_VERSION --quiet
+
+          $env:HAXEPATH = haxelib config
+
           haxelib run hmm help
 
       - name: Install project dependencies
         shell: pwsh
         run: |
-          $env:HAXE_STD_PATH = ""
+          Remove-Item Env:HAXE_STD_PATH -ErrorAction SilentlyContinue
+
+          $env:HAXEPATH = haxelib config
 
           haxelib run hmm install --force
 
-      - name: Inspect libraries
+      - name: Inspect dependencies
         shell: pwsh
         run: |
           haxelib list
 
           if (!(Test-Path ".haxelib/hxcpp/git")) {
-            Write-Error "hxcpp not installed"
+            Write-Error "hxcpp was not installed"
             exit 1
           }
 
           if (!(Test-Path ".haxelib/lime/git")) {
-            Write-Error "lime not installed"
+            Write-Error "lime was not installed"
             exit 1
           }
 
       - name: Prepare hxcpp
         shell: pwsh
         run: |
-          $env:HAXE_STD_PATH = ""
+          Remove-Item Env:HAXE_STD_PATH -ErrorAction SilentlyContinue
+
+          $env:HAXEPATH = haxelib config
 
           Push-Location ".haxelib/hxcpp/git/tools/hxcpp"
 
@@ -306,10 +370,13 @@ jobs:
       - name: Verify Lime
         shell: pwsh
         run: |
-          Get-ChildItem ".haxelib/lime/git/ndll" -Recurse -Filter "lime.ndll"
+          Get-ChildItem `
+            ".haxelib/lime/git/ndll" `
+            -Recurse `
+            -Filter "lime.ndll"
 
           if (!(Test-Path ".haxelib/lime/git/ndll/Windows64/lime.ndll")) {
-            Write-Error "Windows64 lime.ndll not generated"
+            Write-Error "Windows64 lime.ndll was not generated"
             exit 1
           }
 
@@ -363,10 +430,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      - name: Install Android components
+      - name: Install Android SDK and NDK
         run: |
           set -euxo pipefail
 
@@ -378,7 +445,7 @@ jobs:
 
           yes | sdkmanager --licenses || true
 
-      - name: Configure Android toolchain
+      - name: Configure Android
         run: |
           set -euxo pipefail
 
@@ -393,9 +460,11 @@ jobs:
 
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
           echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
           echo "ANDROID_LLVM=$LLVM" >> "$GITHUB_ENV"
 
           echo "$BIN" >> "$GITHUB_PATH"
@@ -404,15 +473,48 @@ jobs:
           echo "NDK=$NDK"
           echo "LLVM=$LLVM"
 
-      - name: Verify Android compiler
+      - name: Verify Android NDK
         run: |
           set -euxo pipefail
 
-          command -v aarch64-linux-android35-clang
-          command -v aarch64-linux-android35-clang++
+          cat "$ANDROID_NDK_DIR/source.properties"
 
-          aarch64-linux-android35-clang --version
-          aarch64-linux-android35-clang++ --version
+          test -x \
+            "$ANDROID_LLVM/bin/aarch64-linux-android35-clang"
+
+          test -x \
+            "$ANDROID_LLVM/bin/aarch64-linux-android35-clang++"
+
+          "$ANDROID_LLVM/bin/aarch64-linux-android35-clang" \
+            --version
+
+          "$ANDROID_LLVM/bin/aarch64-linux-android35-clang++" \
+            --version
+
+      - name: Discover Android C headers
+        run: |
+          set -euxo pipefail
+
+          echo "stdlib.h:"
+          find "$ANDROID_NDK_DIR" \
+            -type f \
+            -name "stdlib.h" \
+            -print \
+            | head -30
+
+          echo "stdint.h:"
+          find "$ANDROID_NDK_DIR" \
+            -type f \
+            -name "stdint.h" \
+            -print \
+            | head -30
+
+          echo "stddef.h:"
+          find "$ANDROID_NDK_DIR" \
+            -type f \
+            -name "stddef.h" \
+            -print \
+            | head -30
 
       - name: Create Android compiler aliases
         run: |
@@ -438,51 +540,43 @@ jobs:
 
           aarch64-linux-android-g++ --version
 
-      - name: Test Android headers
+      - name: Test Android standard headers
         run: |
           set -euxo pipefail
 
-          find "$ANDROID_NDK_DIR" \
-            -type f \
-            -name "stdlib.h" \
-            -print | head -20
-
-          find "$ANDROID_NDK_DIR" \
-            -type f \
-            -name "stdint.h" \
-            -print | head -20
-
-          find "$ANDROID_NDK_DIR" \
-            -type f \
-            -name "stddef.h" \
-            -print | head -20
-
-      - name: Test Android C++ compiler
-        run: |
-          set -euxo pipefail
-
-          cat > /tmp/funkin_test.cpp <<'EOF'
+          cat > /tmp/funkin_android_test.cpp <<'EOF'
           #include <stdlib.h>
           #include <stdint.h>
           #include <stddef.h>
+          #include <string.h>
 
           int main() {
+            void* p = malloc(16);
+
+            if (p != nullptr) {
+              memset(p, 0, 16);
+              free(p);
+            }
+
             return 0;
           }
           EOF
 
-          aarch64-linux-android35-clang++ \
+          "$ANDROID_LLVM/bin/aarch64-linux-android35-clang++" \
             --target=aarch64-linux-android28 \
+            --sysroot="$ANDROID_LLVM/sysroot" \
             -std=c++20 \
             -O3 \
             -c \
-            /tmp/funkin_test.cpp \
-            -o /tmp/funkin_test.o
+            /tmp/funkin_android_test.cpp \
+            -o /tmp/funkin_android_test.o
 
-          file /tmp/funkin_test.o
+          file /tmp/funkin_android_test.o
 
       - name: Install native dependencies
         run: |
+          set -euxo pipefail
+
           sudo apt-get update
 
           sudo apt-get install -y \
@@ -520,24 +614,52 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Haxe
+      - name: Initialize Haxe environment
         run: |
           set -euxo pipefail
 
-          HAXE_BIN="$(command -v haxe)"
-          HAXE_DIR="$(dirname "$HAXE_BIN")"
+          unset HAXE_STD_PATH
 
-          echo "HAXEPATH=$HAXE_DIR" >> "$GITHUB_ENV"
+          HAXE_REPO="$(haxelib config)"
+
+          echo "HAXEPATH=$HAXE_REPO" >> "$GITHUB_ENV"
           echo "HAXE_STD_PATH=" >> "$GITHUB_ENV"
 
+          echo "Haxe:"
           haxe --version
+
+          echo "Haxelib:"
           haxelib version
 
-      - name: Configure local Haxelib
+          echo "Haxelib repository:"
+          haxelib config
+
+      - name: Verify Haxe standard library
+        run: |
+          set -euxo pipefail
+
+          unset HAXE_STD_PATH
+
+          cat > /tmp/HaxeTest.hx <<'EOF'
+          class HaxeTest {
+            static function main() {
+              var values:Array<Int> = [1, 2, 3];
+              Sys.println(values.length);
+            }
+          }
+          EOF
+
+          haxe \
+            -main HaxeTest \
+            -cp /tmp \
+            --interp
+
+      - name: Configure Haxelib
         run: |
           set -euxo pipefail
 
           rm -rf .haxelib
+
           haxelib --never newrepo
 
       - name: Install HMM
@@ -547,7 +669,9 @@ jobs:
           unset HAXE_STD_PATH
 
           haxelib install hmm "$HMM_VERSION" --quiet
-          haxelib run hmm help
+
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm help
 
       - name: Install project dependencies
         run: |
@@ -555,9 +679,10 @@ jobs:
 
           unset HAXE_STD_PATH
 
-          haxelib run hmm install --force
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm install --force
 
-      - name: Verify dependencies
+      - name: Inspect hxcpp and Lime
         run: |
           set -euxo pipefail
 
@@ -565,6 +690,23 @@ jobs:
 
           test -d ".haxelib/hxcpp/git"
           test -d ".haxelib/lime/git"
+
+          git -C ".haxelib/hxcpp/git" rev-parse HEAD || true
+          git -C ".haxelib/lime/git" rev-parse HEAD || true
+
+      - name: Inspect hxcpp Android support
+        run: |
+          set -euxo pipefail
+
+          grep -R \
+            "ANDROID_NDK_DIR" \
+            ".haxelib/hxcpp/git/tools/hxcpp" \
+            | head -30 || true
+
+          grep -R \
+            "HXCPP_ANDROID_PLATFORM" \
+            ".haxelib/hxcpp/git/tools/hxcpp" \
+            | head -30 || true
 
       - name: Prepare hxcpp
         run: |
@@ -576,8 +718,10 @@ jobs:
 
           haxe compile.hxml
 
-      - name: Clean Lime
+      - name: Clean Lime Android
         run: |
+          set -euxo pipefail
+
           rm -rf .haxelib/lime/git/ndll/Android
           rm -rf .haxelib/lime/git/ndll/Android64
           rm -rf .haxelib/lime/git/ndll/Android-arm64
@@ -606,6 +750,8 @@ jobs:
           echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_LLVM=$ANDROID_LLVM" >> "$GITHUB_ENV"
+
           echo "$ANDROID_LLVM/bin" >> "$GITHUB_PATH"
 
       - name: Rebuild Lime Android
@@ -614,13 +760,17 @@ jobs:
 
           haxelib run lime rebuild android -clean
 
-      - name: Verify Android Lime
+      - name: Verify Lime Android
         run: |
           set -euxo pipefail
 
           find ".haxelib/lime/git/ndll" \
             -type f \
-            \( -name "liblime*.so" -o -name "lime.ndll" \) \
+            \( \
+              -name "liblime*.so" \
+              -o \
+              -name "lime.ndll" \
+            \) \
             -print
 
       - name: Build Android
@@ -631,7 +781,7 @@ jobs:
             -release \
             -DGITHUB_BUILD
 
-      - name: Locate APK
+      - name: Find APK
         run: |
           set -euxo pipefail
 
@@ -661,6 +811,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
+
           brew install \
             pkg-config \
             neko \
@@ -673,21 +824,44 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Haxe
+      - name: Initialize Haxe
         run: |
           set -euxo pipefail
 
-          HAXE_BIN="$(command -v haxe)"
-          HAXE_DIR="$(dirname "$HAXE_BIN")"
+          unset HAXE_STD_PATH
 
-          echo "HAXEPATH=$HAXE_DIR" >> "$GITHUB_ENV"
+          HAXE_REPO="$(haxelib config)"
+
+          echo "HAXEPATH=$HAXE_REPO" >> "$GITHUB_ENV"
           echo "HAXE_STD_PATH=" >> "$GITHUB_ENV"
 
           haxe --version
           haxelib version
+          haxelib config
+
+      - name: Verify Haxe
+        run: |
+          set -euxo pipefail
+
+          unset HAXE_STD_PATH
+
+          cat > /tmp/HaxeTest.hx <<'EOF'
+          class HaxeTest {
+            static function main() {
+              Sys.println("Haxe OK");
+            }
+          }
+          EOF
+
+          haxe \
+            -main HaxeTest \
+            -cp /tmp \
+            --interp
 
       - name: Configure Haxelib
         run: |
+          set -euxo pipefail
+
           rm -rf .haxelib
           haxelib --never newrepo
 
@@ -698,15 +872,26 @@ jobs:
           unset HAXE_STD_PATH
 
           haxelib install hmm "$HMM_VERSION" --quiet
-          haxelib run hmm help
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm help
 
-      - name: Install project dependencies
+      - name: Install dependencies
         run: |
           set -euxo pipefail
 
           unset HAXE_STD_PATH
 
-          haxelib run hmm install --force
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm install --force
+
+      - name: Inspect dependencies
+        run: |
+          set -euxo pipefail
+
+          haxelib list
+
+          test -d ".haxelib/hxcpp/git"
+          test -d ".haxelib/lime/git"
 
       - name: Prepare hxcpp
         run: |
@@ -760,7 +945,7 @@ jobs:
             | head -1)"
 
           if [ -z "$APP" ]; then
-            echo "macOS application not found"
+            echo "macOS application was not generated"
             find export -maxdepth 6 -print
             exit 1
           fi
@@ -796,14 +981,15 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Haxe
+      - name: Initialize Haxe
         run: |
           set -euxo pipefail
 
-          HAXE_BIN="$(command -v haxe)"
-          HAXE_DIR="$(dirname "$HAXE_BIN")"
+          unset HAXE_STD_PATH
 
-          echo "HAXEPATH=$HAXE_DIR" >> "$GITHUB_ENV"
+          HAXE_REPO="$(haxelib config)"
+
+          echo "HAXEPATH=$HAXE_REPO" >> "$GITHUB_ENV"
           echo "HAXE_STD_PATH=" >> "$GITHUB_ENV"
 
           haxe --version
@@ -811,6 +997,8 @@ jobs:
 
       - name: Configure Haxelib
         run: |
+          set -euxo pipefail
+
           rm -rf .haxelib
           haxelib --never newrepo
 
@@ -821,15 +1009,26 @@ jobs:
           unset HAXE_STD_PATH
 
           haxelib install hmm "$HMM_VERSION" --quiet
-          haxelib run hmm help
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm help
 
-      - name: Install project dependencies
+      - name: Install dependencies
         run: |
           set -euxo pipefail
 
           unset HAXE_STD_PATH
 
-          haxelib run hmm install --force
+          HAXEPATH="$(haxelib config)" \
+            haxelib run hmm install --force
+
+      - name: Inspect dependencies
+        run: |
+          set -euxo pipefail
+
+          haxelib list
+
+          test -d ".haxelib/hxcpp/git"
+          test -d ".haxelib/lime/git"
 
       - name: Prepare hxcpp
         run: |
@@ -841,7 +1040,7 @@ jobs:
 
           haxe compile.hxml
 
-      - name: Clean Lime
+      - name: Clean Lime iOS
         run: |
           rm -rf .haxelib/lime/git/ndll/iPhone
           rm -rf .haxelib/lime/git/ndll/iPhone64
