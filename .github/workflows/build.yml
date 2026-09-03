@@ -9,9 +9,12 @@ on:
 permissions:
   contents: read
 
+env:
+  HAXE_VERSION: 4.3.7
+
 jobs:
-  android:
-    name: Android
+  linux:
+    name: Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -21,45 +24,21 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.2.12479018"
-
-      - name: Configure Android
-        shell: bash
-        run: |
-          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
-
-      - name: Install Linux dependencies
-        shell: bash
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            git \
+            curl \
             libdbus-1-dev \
+            libxss-dev \
             libasound2-dev \
             libudev-dev \
             libpipewire-0.3-dev \
-            libpulse-dev \
             libxkbcommon-dev \
+            libpulse-dev \
             libwayland-dev \
             libwayland-bin \
             wayland-protocols \
@@ -69,60 +48,49 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
-            libxss-dev \
             libgl1-mesa-dev \
-            libglu1-mesa-dev \
-            pkg-config
+            libglu1-mesa-dev
 
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
-        shell: bash
-        run: haxelib install hmm --quiet
+        run: |
+          haxelib install hmm --quiet
+          haxelib run hmm --help > /dev/null
 
-      - name: Install dependencies
-        shell: bash
+      - name: Install Haxe dependencies
         run: |
           rm -rf .haxelib
           haxelib run hmm install
 
       - name: Build hxcpp
-        shell: bash
         run: |
-          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
-          cd "$HXCPP_PATH/tools/hxcpp"
-          haxe compile.hxml
+          haxelib run hxcpp build
 
       - name: Rebuild Lime
-        shell: bash
-        run: haxelib run lime rebuild cpp
-
-      - name: Setup Lime Android
-        shell: bash
         run: |
-          haxelib run lime setup android <<EOF
-          $ANDROID_SDK_ROOT
-          $ANDROID_NDK_ROOT
-          $JAVA_HOME
-          EOF
+          haxelib run lime rebuild cpp
 
-      - name: Rebuild Lime Android
-        shell: bash
-        run: haxelib run lime rebuild android
+      - name: Build Linux
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          haxelib run lime build linux -release -64 -DGITHUB_BUILD
 
-      - name: Build Android
-        shell: bash
-        run: haxelib run lime build android -release -DGITHUB_BUILD
+      - name: Package
+        run: |
+          cd export/release/linux/bin
+          zip -9 -r ../../../../Funkin-Moon-Linux.zip .
 
-      - name: Upload Android
+      - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-android
-          path: export/release/android/**/*.apk
-          if-no-files-found: error
+          name: Funkin-Moon-Linux
+          path: Funkin-Moon-Linux.zip
           compression-level: 0
 
   windows:
@@ -139,46 +107,57 @@ jobs:
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
         shell: pwsh
-        run: haxelib install hmm --quiet
+        run: |
+          haxelib install hmm --quiet
+          haxelib run hmm --help | Out-Null
 
-      - name: Install dependencies
+      - name: Install Haxe dependencies
         shell: pwsh
         run: |
           if (Test-Path ".haxelib") {
             Remove-Item ".haxelib" -Recurse -Force
           }
-
           haxelib run hmm install
 
       - name: Build hxcpp
         shell: pwsh
         run: |
-          $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
-          Set-Location "$HXCPP_PATH\tools\hxcpp"
-          haxe compile.hxml
+          haxelib run hxcpp build
 
-      - name: Rebuild Lime Windows
+      - name: Rebuild Lime
         shell: pwsh
-        run: haxelib run lime rebuild cpp
+        run: |
+          haxelib run lime rebuild cpp
 
       - name: Build Windows
         shell: pwsh
-        run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          haxelib run lime build windows -release -64 -DGITHUB_BUILD
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "export/release/windows/bin/*" `
+            -DestinationPath "Funkin-Moon-Windows.zip" `
+            -CompressionLevel Optimal
 
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-windows
-          path: export/release/windows/bin
-          if-no-files-found: error
-          compression-level: 6
+          name: Funkin-Moon-Windows
+          path: Funkin-Moon-Windows.zip
+          compression-level: 0
 
-  linux:
-    name: Linux
+  android:
+    name: Android
     runs-on: ubuntu-latest
 
     steps:
@@ -188,17 +167,37 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018"
+
       - name: Install Linux dependencies
-        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            git \
+            curl \
             libdbus-1-dev \
+            libxss-dev \
             libasound2-dev \
             libudev-dev \
             libpipewire-0.3-dev \
-            libpulse-dev \
             libxkbcommon-dev \
+            libpulse-dev \
             libwayland-dev \
             libwayland-bin \
             wayland-protocols \
@@ -208,45 +207,66 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
-            libxss-dev \
             libgl1-mesa-dev \
-            libglu1-mesa-dev \
-            pkg-config
+            libglu1-mesa-dev
 
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Configure Android
+        run: |
+          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Install HMM
-        shell: bash
-        run: haxelib install hmm --quiet
+        run: |
+          haxelib install hmm --quiet
+          haxelib run hmm --help > /dev/null
 
-      - name: Install dependencies
-        shell: bash
+      - name: Install Haxe dependencies
         run: |
           rm -rf .haxelib
           haxelib run hmm install
 
       - name: Build hxcpp
-        shell: bash
         run: |
-          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
-          cd "$HXCPP_PATH/tools/hxcpp"
-          haxe compile.hxml
+          haxelib run hxcpp build
 
-      - name: Rebuild Lime Linux
-        shell: bash
-        run: haxelib run lime rebuild cpp
+      - name: Rebuild Lime C++
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          haxelib run lime rebuild cpp
 
-      - name: Build Linux
-        shell: bash
-        run: haxelib run lime build linux -release -64 -DGITHUB_BUILD
+      - name: Setup Lime Android
+        run: |
+          printf "n\n%s\n%s\n%s\n" \
+            "$ANDROID_SDK_ROOT" \
+            "$ANDROID_NDK_ROOT" \
+            "$JAVA_HOME" | haxelib run lime setup android
 
-      - name: Upload Linux
+      - name: Rebuild Lime Android
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          haxelib run lime rebuild android
+
+      - name: Build Android
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          haxelib run lime build android -release -DGITHUB_BUILD
+
+      - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-linux
-          path: export/release/linux/bin
-          if-no-files-found: error
-          compression-level: 6
+          name: Funkin-Moon-Android
+          path: export/release/android/**/*.apk
+          compression-level: 0
