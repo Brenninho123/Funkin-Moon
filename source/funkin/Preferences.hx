@@ -140,6 +140,21 @@ class Preferences
     return value;
   }
 
+  public static var cameraMovement(get, set):Bool;
+
+  static function get_cameraMovement():Bool
+  {
+    return Save?.instance?.options?.cameraMovement ?? true;
+  }
+
+  static function set_cameraMovement(value:Bool):Bool
+  {
+    var save:Save = Save.instance;
+    save.options.cameraMovement = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var zoomCamera(get, set):Bool;
 
   static function get_zoomCamera():Bool
