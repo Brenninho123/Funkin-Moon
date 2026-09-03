@@ -26,11 +26,12 @@ class FunkinCameraMovement
   {
     this.camera = camera;
     this.movementDistance = movementDistance;
+    this.enabled = Preferences.cameraMovement;
   }
 
   public function onNoteHit(direction:NoteDirection, ?distanceOverride:Float):Void
   {
-    if (!enabled) return;
+    if (!enabled || !Preferences.cameraMovement) return;
 
     var distance:Float = distanceOverride ?? movementDistance;
 
