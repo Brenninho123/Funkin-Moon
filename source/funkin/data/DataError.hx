@@ -7,70 +7,90 @@ import json2object.Error;
 @:nullSafety
 class DataError
 {
+  public static var errorCount(default, null):Int = 0;
+
+  public static function resetErrorCount():Void
+  {
+    errorCount = 0;
+  }
+
   public static function printError(error:Error):Void
   {
-    switch (error)
-    {
-      case IncorrectType(vari, expected, pos):
-        trace(' ERROR '.error() + 'Expected field "$vari" to be of type "$expected".');
-        printPos(pos);
-      case IncorrectEnumValue(value, expected, pos):
-        trace(' ERROR '.error() + 'Invalid enum value (expected "$expected", got "$value")');
-        printPos(pos);
-      case InvalidEnumConstructor(value, expected, pos):
-        trace(' ERROR '.error() + 'Invalid enum constructor (epxected "$expected", got "$value")');
-        printPos(pos);
-      case UninitializedVariable(vari, pos):
-        trace(' ERROR '.error() + 'Uninitialized variable "$vari"');
-        printPos(pos);
-      case UnknownVariable(vari, pos):
-        trace(' ERROR '.error() + 'Unknown variable "$vari"');
-        printPos(pos);
-      case ParserError(message, pos):
-        trace(' ERROR '.error() + 'Parsing error: ${message}');
-        printPos(pos);
-      case CustomFunctionException(e, pos):
-        if (Std.isOfType(e, String))
-        {
-          trace(' ERROR '.error() + '${e}');
-        }
-        else
-        {
-          printUnknownError(e);
-        }
-        printPos(pos);
-      default:
-        printUnknownError(error);
-    }
+    FlxG.log.error(formatError(error));
+  }
+
+  public static function printErrors(errors:Array<Error>):Void
+  {
+    for (error in errors) printError(error);
   }
 
   public static function printUnknownError(e:Dynamic):Void
   {
-    switch (Type.typeof(e))
+    FlxG.log.error(formatUnknownError(e));
+  }
+
+  public static function formatError(error:Error):String
+  {
+    errorCount++;
+
+    return switch (error)
     {
-      case TClass(c):
-        trace(' ERROR '.error() + '(${Type.getClassName(c)}) ${e.toString()}');
-      case TEnum(c):
-        trace(' ERROR '.error() + '(${Type.getEnumName(c)}) ${e.toString()}');
+      case IncorrectType(vari, expected, pos):
+        'Expected field "$vari" to be of type "$expected".${formatPos(pos)}';
+      case IncorrectEnumValue(value, expected, pos):
+        'Invalid enum value (expected "$expected", got "$value")${formatPos(pos)}';
+      case InvalidEnumConstructor(value, expected, pos):
+        'Invalid enum constructor (expected "$expected", got "$value")${formatPos(pos)}';
+      case UninitializedVariable(vari, pos):
+        'Uninitialized variable "$vari"${formatPos(pos)}';
+      case UnknownVariable(vari, pos):
+        'Unknown variable "$vari"${formatPos(pos)}';
+      case ParserError(message, pos):
+        'Parsing error: ${message}${formatPos(pos)}';
+      case CustomFunctionException(e, pos):
+        '${Std.isOfType(e, String) ? Std.string(e) : formatUnknownError(e)}${formatPos(pos)}';
       default:
-        trace(' ERROR '.error() + '(${Type.typeof(e)}) ${Std.string(e)}');
+        formatUnknownError(error);
     }
   }
 
-  /**
-   * TODO: Figure out the nicest way to print this.
-   * Maybe look up how other JSON parsers format their errors?
-   * @see https://github.com/elnabo/json2object/blob/master/src/json2object/Position.hx
-   */
-  static function printPos(pos:Position):Void
+  public static function formatErrors(errors:Array<Error>, separator:String = '\n'):String
   {
-    if (pos.lines[0].number == pos.lines[pos.lines.length - 1].number)
+    var lines:Array<String> = [];
+    for (error in errors) lines.push(formatError(error));
+    return lines.join(separator);
+  }
+
+  public static function formatUnknownError(e:Dynamic):String
+  {
+    errorCount++;
+
+    return switch (Type.typeof(e))
     {
-      trace('   at ${(pos.file == '') ? 'line ' : '${pos.file}:'}${pos.lines[0].number}');
+      case TClass(c):
+        '(${Type.getClassName(c)}) ${Std.string(e)}';
+      case TEnum(c):
+        '(${Type.getEnumName(c)}) ${Std.string(e)}';
+      default:
+        '(${Type.typeof(e)}) ${Std.string(e)}';
+    }
+  }
+
+  static function formatPos(pos:Null<Position>):String
+  {
+    if (pos == null || pos.lines == null || pos.lines.length == 0) return '';
+
+    var location:String = (pos.file == '') ? 'line ' : '${pos.file}:';
+    var startLine:Int = pos.lines[0].number;
+    var endLine:Int = pos.lines[pos.lines.length - 1].number;
+
+    return if (startLine == endLine)
+    {
+      '\n   at $location$startLine';
     }
     else
     {
-      trace('   at ${(pos.file == '') ? 'line ' : '${pos.file}:'}${pos.lines[0].number}-${pos.lines[pos.lines.length - 1].number}');
+      '\n   at $location$startLine-$endLine';
     }
   }
 }
