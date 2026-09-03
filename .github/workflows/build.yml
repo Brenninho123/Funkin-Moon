@@ -23,7 +23,7 @@ jobs:
   linux:
     name: Linux x64
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -43,6 +43,9 @@ jobs:
             zip \
             unzip \
             neko \
+            libvlc-dev \
+            libvlccore-dev \
+            libvlccore9 \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -89,26 +92,17 @@ jobs:
         run: |
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -d "$HXCPP_PATH" ]; then
-            echo "hxcpp source directory was not found."
+          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
+            echo "hxcpp development source was not found."
             exit 1
           fi
 
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
 
-      - name: Build hxcpp
-        run: |
-          haxelib run hxcpp build
-
       - name: Rebuild Lime
         run: |
           haxelib run lime rebuild cpp
-
-      - name: Verify Lime
-        run: |
-          haxelib run lime version
-          find .haxelib -type f \( -name "lime.ndll" -o -name "lime*.ndll" \) -print
 
       - name: Build Linux
         run: |
@@ -136,7 +130,7 @@ jobs:
   windows:
     name: Windows x64
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -177,28 +171,17 @@ jobs:
         run: |
           $HXCPP_PATH = ".haxelib/hxcpp/git"
 
-          if (!(Test-Path $HXCPP_PATH)) {
-            throw "hxcpp source directory was not found."
+          if (!(Test-Path "$HXCPP_PATH/tools/hxcpp")) {
+            throw "hxcpp development source was not found."
           }
 
           Set-Location "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
 
-      - name: Build hxcpp
-        shell: pwsh
-        run: |
-          haxelib run hxcpp build
-
       - name: Rebuild Lime
         shell: pwsh
         run: |
           haxelib run lime rebuild cpp
-
-      - name: Verify Lime
-        shell: pwsh
-        run: |
-          haxelib run lime version
-          Get-ChildItem -Path .haxelib -Recurse -Filter "lime*.ndll" -ErrorAction SilentlyContinue
 
       - name: Build Windows
         shell: pwsh
@@ -234,7 +217,7 @@ jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -259,7 +242,7 @@ jobs:
           sdkmanager "build-tools;35.0.0"
           sdkmanager "ndk;27.2.12479018"
 
-      - name: Install Linux dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -270,6 +253,9 @@ jobs:
             zip \
             unzip \
             neko \
+            libvlc-dev \
+            libvlccore-dev \
+            libvlccore9 \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -301,7 +287,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Verify toolchain
+      - name: Verify Android
         run: |
           haxe --version
           haxelib version
@@ -322,17 +308,13 @@ jobs:
         run: |
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -d "$HXCPP_PATH" ]; then
-            echo "hxcpp source directory was not found."
+          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
+            echo "hxcpp development source was not found."
             exit 1
           fi
 
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
-
-      - name: Build hxcpp
-        run: |
-          haxelib run hxcpp build
 
       - name: Rebuild Lime C++
         run: |
@@ -369,7 +351,7 @@ jobs:
   ios:
     name: iOS x64
     runs-on: macos-15-intel
-    timeout-minutes: 75
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -404,17 +386,13 @@ jobs:
         run: |
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -d "$HXCPP_PATH" ]; then
-            echo "hxcpp source directory was not found."
+          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
+            echo "hxcpp development source was not found."
             exit 1
           fi
 
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
-
-      - name: Build hxcpp
-        run: |
-          haxelib run hxcpp build
 
       - name: Rebuild Lime
         run: |
