@@ -88,6 +88,19 @@ class FunkinLua
     Lua.register(lua, 'randomFloat', cpp.Function.fromStaticFunction(cb_randomFloat));
     Lua.register(lua, 'randomInt', cpp.Function.fromStaticFunction(cb_randomInt));
     Lua.register(lua, 'triggerCameraMovement', cpp.Function.fromStaticFunction(cb_triggerCameraMovement));
+    Lua.register(lua, 'getSongId', cpp.Function.fromStaticFunction(cb_getSongId));
+    Lua.register(lua, 'getDifficultyId', cpp.Function.fromStaticFunction(cb_getDifficultyId));
+    Lua.register(lua, 'getVariationId', cpp.Function.fromStaticFunction(cb_getVariationId));
+    Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
+    Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
+    Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
+    Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
+    Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
+    Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
+    Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
+    #if mobile
+    Lua.register(lua, 'vibrate', cpp.Function.fromStaticFunction(cb_vibrate));
+    #end
     #if FEATURE_ONLINE
     Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
     Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
@@ -509,6 +522,103 @@ class FunkinLua
     if (messageType == '') return 0;
 
     funkin.online.FunkinOnline.instance.send(messageType);
+    return 0;
+  }
+  #end
+
+  static function cb_getSongId(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushstring(l, PlayState.instance?.currentSong?.id ?? '');
+    return 1;
+  }
+
+  static function cb_getDifficultyId(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushstring(l, PlayState.instance?.currentDifficulty ?? '');
+    return 1;
+  }
+
+  static function cb_getVariationId(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushstring(l, PlayState.instance?.currentVariation ?? '');
+    return 1;
+  }
+
+  static function cb_setHealth(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.health = value;
+    return 0;
+  }
+
+  static function cb_setScore(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.songScore = value;
+    return 0;
+  }
+
+  static function cb_getCameraX(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, PlayState.instance?.camGame?.scroll?.x ?? 0.0);
+    return 1;
+  }
+
+  static function cb_getCameraY(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, PlayState.instance?.camGame?.scroll?.y ?? 0.0);
+    return 1;
+  }
+
+  static function cb_setCameraZoom(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+    Lua.pop(l, n);
+
+    if (PlayState.instance?.camGame != null) PlayState.instance.camGame.zoom = value;
+    return 0;
+  }
+
+  static function cb_setMusicVolume(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+    Lua.pop(l, n);
+
+    if (FlxG.sound.music != null) FlxG.sound.music.volume = value;
+    return 0;
+  }
+
+  static function cb_getDirectionName(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var dir:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
+    Lua.pop(l, n);
+
+    Lua.pushstring(l, funkin.play.notes.NoteDirection.fromInt(dir).name);
+    return 1;
+  }
+
+  #if mobile
+  static function cb_vibrate(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var intensity:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.4;
+    Lua.pop(l, n);
+
+    funkin.mobile.util.HapticUtil.vibrate(0, 0.01, intensity);
     return 0;
   }
   #end
