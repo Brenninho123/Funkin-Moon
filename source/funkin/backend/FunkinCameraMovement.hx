@@ -11,21 +11,27 @@ class FunkinCameraMovement
 
   public var movementDistance:Float = 20.0;
 
-  public var attackSpeed:Float = 16.0;
+  public var stiffness:Float = 220.0;
 
-  public var decaySpeed:Float = 5.0;
+  public var damping:Float = 24.0;
+
+  public var enableTilt:Bool = true;
+
+  public var maxTiltDegrees:Float = 0.6;
 
   public var lockX:Bool = false;
   public var lockY:Bool = false;
 
-  var targetOffsetX:Float = 0.0;
-  var targetOffsetY:Float = 0.0;
-
-  var currentOffsetX:Float = 0.0;
-  var currentOffsetY:Float = 0.0;
+  var posX:Float = 0.0;
+  var posY:Float = 0.0;
+  var velX:Float = 0.0;
+  var velY:Float = 0.0;
 
   var appliedOffsetX:Float = 0.0;
   var appliedOffsetY:Float = 0.0;
+
+  static final SETTLE_THRESHOLD:Float = 0.05;
+  static final MAX_STEP_SECONDS:Float = 1.0 / 30.0;
 
   public function new(camera:FlxCamera, movementDistance:Float = 20.0)
   {
@@ -39,17 +45,18 @@ class FunkinCameraMovement
     if (!enabled || !Preferences.cameraMovement) return;
 
     var distance:Float = (distanceOverride ?? movementDistance) * intensity;
+    var impulse:Float = distance * Math.sqrt(stiffness);
 
     switch (direction)
     {
       case LEFT:
-        if (!lockX) targetOffsetX = -distance;
+        if (!lockX) velX -= impulse;
       case RIGHT:
-        if (!lockX) targetOffsetX = distance;
+        if (!lockX) velX += impulse;
       case UP:
-        if (!lockY) targetOffsetY = -distance;
+        if (!lockY) velY -= impulse;
       case DOWN:
-        if (!lockY) targetOffsetY = distance;
+        if (!lockY) velY += impulse;
     }
   }
 
@@ -60,34 +67,47 @@ class FunkinCameraMovement
     camera.scroll.x -= appliedOffsetX;
     camera.scroll.y -= appliedOffsetY;
 
-    targetOffsetX = decayTowardZero(targetOffsetX, elapsed);
-    targetOffsetY = decayTowardZero(targetOffsetY, elapsed);
+    var dt:Float = Math.min(elapsed, MAX_STEP_SECONDS);
 
-    currentOffsetX = smoothTo(currentOffsetX, targetOffsetX, elapsed);
-    currentOffsetY = smoothTo(currentOffsetY, targetOffsetY, elapsed);
+    stepSpring(dt);
 
-    appliedOffsetX = currentOffsetX;
-    appliedOffsetY = currentOffsetY;
+    appliedOffsetX = posX;
+    appliedOffsetY = posY;
 
     camera.scroll.x += appliedOffsetX;
     camera.scroll.y += appliedOffsetY;
+
+    if (enableTilt)
+    {
+      var tiltRatio:Float = movementDistance > 0 ? posX / movementDistance : 0;
+      if (tiltRatio > 1) tiltRatio = 1;
+      if (tiltRatio < -1) tiltRatio = -1;
+
+      camera.angle = tiltRatio * maxTiltDegrees;
+    }
   }
 
-  function smoothTo(current:Float, target:Float, elapsed:Float):Float
+  function stepSpring(dt:Float):Void
   {
-    var t:Float = Math.min(1, attackSpeed * elapsed);
-    var result:Float = current + (target - current) * t;
+    var accelX:Float = (-stiffness * posX) - (damping * velX);
+    velX += accelX * dt;
+    posX += velX * dt;
 
-    return (Math.abs(result) < 0.02 && target == 0) ? 0 : result;
-  }
+    var accelY:Float = (-stiffness * posY) - (damping * velY);
+    velY += accelY * dt;
+    posY += velY * dt;
 
-  function decayTowardZero(value:Float, elapsed:Float):Float
-  {
-    if (value == 0) return 0;
+    if (Math.abs(posX) < SETTLE_THRESHOLD && Math.abs(velX) < SETTLE_THRESHOLD)
+    {
+      posX = 0;
+      velX = 0;
+    }
 
-    var newValue:Float = value - (value * Math.min(1, decaySpeed * elapsed));
-
-    return Math.abs(newValue) < 0.05 ? 0 : newValue;
+    if (Math.abs(posY) < SETTLE_THRESHOLD && Math.abs(velY) < SETTLE_THRESHOLD)
+    {
+      posY = 0;
+      velY = 0;
+    }
   }
 
   public function reset():Void
@@ -96,12 +116,13 @@ class FunkinCameraMovement
     {
       camera.scroll.x -= appliedOffsetX;
       camera.scroll.y -= appliedOffsetY;
+      camera.angle = 0;
     }
 
-    targetOffsetX = 0.0;
-    targetOffsetY = 0.0;
-    currentOffsetX = 0.0;
-    currentOffsetY = 0.0;
+    posX = 0.0;
+    posY = 0.0;
+    velX = 0.0;
+    velY = 0.0;
     appliedOffsetX = 0.0;
     appliedOffsetY = 0.0;
   }
