@@ -11,13 +11,18 @@ class FunkinCameraMovement
 
   public var movementDistance:Float = 20.0;
 
-  public var decaySpeed:Float = 6.0;
+  public var attackSpeed:Float = 16.0;
+
+  public var decaySpeed:Float = 5.0;
 
   public var lockX:Bool = false;
   public var lockY:Bool = false;
 
-  var offsetX:Float = 0.0;
-  var offsetY:Float = 0.0;
+  var targetOffsetX:Float = 0.0;
+  var targetOffsetY:Float = 0.0;
+
+  var currentOffsetX:Float = 0.0;
+  var currentOffsetY:Float = 0.0;
 
   var appliedOffsetX:Float = 0.0;
   var appliedOffsetY:Float = 0.0;
@@ -29,22 +34,22 @@ class FunkinCameraMovement
     this.enabled = Preferences.cameraMovement;
   }
 
-  public function onNoteHit(direction:NoteDirection, ?distanceOverride:Float):Void
+  public function onNoteHit(direction:NoteDirection, ?distanceOverride:Float, intensity:Float = 1.0):Void
   {
     if (!enabled || !Preferences.cameraMovement) return;
 
-    var distance:Float = distanceOverride ?? movementDistance;
+    var distance:Float = (distanceOverride ?? movementDistance) * intensity;
 
     switch (direction)
     {
       case LEFT:
-        if (!lockX) offsetX = -distance;
+        if (!lockX) targetOffsetX = -distance;
       case RIGHT:
-        if (!lockX) offsetX = distance;
+        if (!lockX) targetOffsetX = distance;
       case UP:
-        if (!lockY) offsetY = -distance;
+        if (!lockY) targetOffsetY = -distance;
       case DOWN:
-        if (!lockY) offsetY = distance;
+        if (!lockY) targetOffsetY = distance;
     }
   }
 
@@ -55,14 +60,25 @@ class FunkinCameraMovement
     camera.scroll.x -= appliedOffsetX;
     camera.scroll.y -= appliedOffsetY;
 
-    offsetX = decayTowardZero(offsetX, elapsed);
-    offsetY = decayTowardZero(offsetY, elapsed);
+    targetOffsetX = decayTowardZero(targetOffsetX, elapsed);
+    targetOffsetY = decayTowardZero(targetOffsetY, elapsed);
 
-    appliedOffsetX = offsetX;
-    appliedOffsetY = offsetY;
+    currentOffsetX = smoothTo(currentOffsetX, targetOffsetX, elapsed);
+    currentOffsetY = smoothTo(currentOffsetY, targetOffsetY, elapsed);
+
+    appliedOffsetX = currentOffsetX;
+    appliedOffsetY = currentOffsetY;
 
     camera.scroll.x += appliedOffsetX;
     camera.scroll.y += appliedOffsetY;
+  }
+
+  function smoothTo(current:Float, target:Float, elapsed:Float):Float
+  {
+    var t:Float = Math.min(1, attackSpeed * elapsed);
+    var result:Float = current + (target - current) * t;
+
+    return (Math.abs(result) < 0.02 && target == 0) ? 0 : result;
   }
 
   function decayTowardZero(value:Float, elapsed:Float):Float
@@ -82,8 +98,10 @@ class FunkinCameraMovement
       camera.scroll.y -= appliedOffsetY;
     }
 
-    offsetX = 0.0;
-    offsetY = 0.0;
+    targetOffsetX = 0.0;
+    targetOffsetY = 0.0;
+    currentOffsetX = 0.0;
+    currentOffsetY = 0.0;
     appliedOffsetX = 0.0;
     appliedOffsetY = 0.0;
   }
