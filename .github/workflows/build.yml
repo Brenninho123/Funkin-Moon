@@ -15,6 +15,7 @@ concurrency:
 
 env:
   HAXE_VERSION: 4.3.7
+  ANDROID_NDK_VERSION: 27.2.12479018
   CXXFLAGS: -O3 -std=c++20
   CFLAGS: -O3
 
@@ -45,7 +46,6 @@ jobs:
             neko \
             libvlc-dev \
             libvlccore-dev \
-            libvlccore9 \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -108,17 +108,17 @@ jobs:
         run: |
           haxelib run lime build linux -release -64 -DGITHUB_BUILD
 
-      - name: Verify output
+      - name: Verify Linux
         run: |
           test -d export/release/linux/bin
           find export/release/linux/bin -maxdepth 2 -type f -print
 
-      - name: Package
+      - name: Package Linux
         run: |
           cd export/release/linux/bin
           zip -9 -r ../../../../Funkin-Moon-Linux-x64.zip .
 
-      - name: Upload
+      - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-Linux-x64
@@ -188,7 +188,7 @@ jobs:
         run: |
           haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
-      - name: Verify output
+      - name: Verify Windows
         shell: pwsh
         run: |
           if (!(Test-Path "export/release/windows/bin")) {
@@ -197,7 +197,7 @@ jobs:
 
           Get-ChildItem "export/release/windows/bin" -Recurse
 
-      - name: Package
+      - name: Package Windows
         shell: pwsh
         run: |
           Compress-Archive `
@@ -205,7 +205,7 @@ jobs:
             -DestinationPath "Funkin-Moon-Windows-x64.zip" `
             -CompressionLevel Optimal
 
-      - name: Upload
+      - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-Windows-x64
@@ -215,9 +215,9 @@ jobs:
 
 
   android:
-    name: Android
+    name: Android ARM64
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -237,12 +237,79 @@ jobs:
 
       - name: Install Android SDK
         run: |
+          yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platform-tools"
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
-          sdkmanager "ndk;27.2.12479018"
+          sdkmanager "ndk;${ANDROID_NDK_VERSION}"
 
-      - name: Install dependencies
+      - name: Detect Android NDK
+        shell: bash
+        run: |
+          set -e
+
+          SDK="${ANDROID_SDK_ROOT}"
+          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
+
+          if [ ! -d "$NDK" ]; then
+            echo "Android NDK was not found:"
+            echo "$NDK"
+            find "$SDK/ndk" -maxdepth 2 -type d 2>/dev/null || true
+            exit 1
+          fi
+
+          if [ ! -f "$NDK/source.properties" ]; then
+            echo "NDK source.properties was not found."
+            exit 1
+          fi
+
+          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+          echo "Android SDK: $SDK"
+          echo "Android NDK: $NDK"
+
+      - name: Verify Android NDK
+        shell: bash
+        run: |
+          set -e
+
+          echo "ANDROID_SDK=$ANDROID_SDK"
+          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+
+          test -d "$ANDROID_NDK_DIR"
+          test -f "$ANDROID_NDK_DIR/source.properties"
+
+          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          test -d "$LLVM"
+
+          echo "LLVM directory:"
+          ls -la "$LLVM" | head -40
+
+          echo "Checking ARM64 compiler:"
+          command -v aarch64-linux-android-g++ || true
+          command -v aarch64-linux-android-clang++ || true
+          command -v clang++ || true
+
+          if [ -x "$LLVM/aarch64-linux-android-g++" ]; then
+            "$LLVM/aarch64-linux-android-g++" --version
+          elif [ -x "$LLVM/aarch64-linux-android-clang++" ]; then
+            "$LLVM/aarch64-linux-android-clang++" --version
+          else
+            echo "No ARM64 Android compiler was found."
+            exit 1
+          fi
+
+          "$ANDROID_NDK_DIR/ndk-build" --version
+
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -255,7 +322,6 @@ jobs:
             neko \
             libvlc-dev \
             libvlccore-dev \
-            libvlccore9 \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -280,20 +346,10 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Configure Android
-        run: |
-          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-
-      - name: Verify Android
+      - name: Verify Haxe
         run: |
           haxe --version
           haxelib version
-          java -version
-          adb version
-          "$ANDROID_NDK_ROOT/ndk-build" --version
 
       - name: Install HMM
         run: |
@@ -320,30 +376,98 @@ jobs:
         run: |
           haxelib run lime rebuild cpp
 
-      - name: Setup Lime Android
+      - name: Configure Lime Android
+        shell: bash
         run: |
+          set -e
+
           printf "n\n%s\n%s\n%s\n" \
-            "$ANDROID_SDK_ROOT" \
-            "$ANDROID_NDK_ROOT" \
+            "$ANDROID_SDK" \
+            "$ANDROID_NDK_DIR" \
             "$JAVA_HOME" | haxelib run lime setup android
 
-      - name: Rebuild Lime Android
+          echo "ANDROID_SDK=$ANDROID_SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
+
+      - name: Revalidate Android paths
+        shell: bash
         run: |
+          set -e
+
+          test -d "$ANDROID_NDK_DIR"
+          test -f "$ANDROID_NDK_DIR/source.properties"
+
+          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
+
+          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          test -d "$LLVM"
+
+          export PATH="$LLVM:$PATH"
+
+          if command -v aarch64-linux-android-g++ >/dev/null 2>&1; then
+            aarch64-linux-android-g++ --version
+          elif command -v aarch64-linux-android-clang++ >/dev/null 2>&1; then
+            aarch64-linux-android-clang++ --version
+          else
+            echo "Android ARM64 compiler is unavailable."
+            exit 1
+          fi
+
+      - name: Rebuild Lime Android
+        shell: bash
+        env:
+          ANDROID_NDK_DIR: ${{ env.ANDROID_NDK_DIR }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
+        run: |
+          export PATH="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+
+          test -d "$ANDROID_NDK_DIR"
+          test -f "$ANDROID_NDK_DIR/source.properties"
+
           haxelib run lime rebuild android
 
       - name: Build Android
+        shell: bash
+        env:
+          ANDROID_NDK_DIR: ${{ env.ANDROID_NDK_DIR }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
         run: |
+          export PATH="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+
           haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Verify APK
         run: |
           find export -type f -name "*.apk" -print
 
-      - name: Upload APK
+      - name: Package Android
+        run: |
+          mkdir -p android-package
+          find export -type f -name "*.apk" -exec cp {} android-package/ \;
+
+          if [ -z "$(find android-package -type f -name "*.apk" -print -quit)" ]; then
+            echo "No APK was generated."
+            exit 1
+          fi
+
+          cd android-package
+          zip -9 -r ../Funkin-Moon-Android.zip .
+
+      - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-Android
-          path: export/release/android/**/*.apk
+          path: Funkin-Moon-Android.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -351,7 +475,7 @@ jobs:
   ios:
     name: iOS x64
     runs-on: macos-15-intel
-    timeout-minutes: 100
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -365,7 +489,7 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Verify toolchain
+      - name: Verify Apple toolchain
         run: |
           haxe --version
           haxelib version
@@ -403,6 +527,9 @@ jobs:
           haxelib run lime setup ios
 
       - name: Build iOS
+        env:
+          CXXFLAGS: -O3 -std=c++20
+          CFLAGS: -O3
         run: |
           haxelib run lime build ios -release -DGITHUB_BUILD
 
