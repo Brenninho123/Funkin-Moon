@@ -1,9 +1,6 @@
 name: Funkin-Moon Build
 
-"on":
-push:
-pull_request:
-workflow_dispatch:
+on: push
 
 jobs:
 android:
@@ -11,8 +8,6 @@ runs-on: ubuntu-latest
 
 steps:
   - uses: actions/checkout@v4
-    with:
-      submodules: recursive
 
   - uses: krdlab/setup-haxe@v2
     with:
@@ -23,23 +18,15 @@ steps:
       sudo apt-get update
       sudo apt-get install -y libvlc-dev libvlccore-dev
       haxelib install hmm
+      echo "HAXEPATH=$(haxelib config)" >> "$GITHUB_ENV"
       haxelib --global run hmm install
 
-  - name: Setup Android
-    uses: android-actions/setup-android@v3
-
-  - name: Install NDK
-    run: sdkmanager "ndk;27.2.12479018"
-
-  - name: Setup Haxe
-    run: |
-      echo "HAXEPATH=$(haxelib config)" >> "$GITHUB_ENV"
-      haxelib --always run lime setup
-
   - name: Build Android
-    run: haxelib run lime build android -release
+    run: |
+      haxelib --always run lime setup
+      haxelib run lime build android -release
 
-  - name: Upload APK
+  - name: Upload Android
     uses: actions/upload-artifact@v4
     with:
       name: Funkin-Moon-Android
@@ -50,8 +37,6 @@ runs-on: windows-latest
 
 steps:
   - uses: actions/checkout@v4
-    with:
-      submodules: recursive
 
   - uses: krdlab/setup-haxe@v2
     with:
@@ -61,17 +46,14 @@ steps:
     shell: pwsh
     run: |
       haxelib install hmm
-      haxelib --global run hmm install
-
-  - name: Setup Haxe
-    shell: pwsh
-    run: |
       "HAXEPATH=$(haxelib config)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      haxelib --always run lime setup
+      haxelib --global run hmm install
 
   - name: Build Windows
     shell: pwsh
-    run: haxelib run lime build windows -release
+    run: |
+      haxelib --always run lime setup
+      haxelib run lime build windows -release
 
   - name: Upload Windows
     uses: actions/upload-artifact@v4
