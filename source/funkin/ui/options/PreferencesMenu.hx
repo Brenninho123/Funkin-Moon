@@ -180,6 +180,10 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       {
         Preferences.flashingLights = value;
       }, Preferences.flashingLights);
+    createPrefItemCheckbox('Camera Movement', 'When enabled, the camera nudges slightly in the direction of the note you hit.', function(value:Bool):Void
+    {
+      Preferences.cameraMovement = value;
+    }, Preferences.cameraMovement);
     createPrefItemCheckbox('Camera Zooms', 'When enabled, the camera bounces during songs.', function(value:Bool):Void
     {
       Preferences.zoomCamera = value;
