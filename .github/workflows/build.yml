@@ -1,4 +1,4 @@
-name: Build
+name: Funkin-Moon Build
 
 on:
   push:
@@ -9,13 +9,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: funkin-moon-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   HAXE_VERSION: 4.3.7
+  BUILD_TYPE: release
+  CXXFLAGS: -O3 -std=c++20
+  CFLAGS: -O3
 
 jobs:
   linux:
-    name: Linux
+    name: Linux x64
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -32,6 +40,8 @@ jobs:
             pkg-config \
             git \
             curl \
+            zip \
+            unzip \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -56,10 +66,16 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
+      - name: Verify toolchain
+        run: |
+          haxe --version
+          haxelib version
+          gcc --version
+          g++ --version
+
       - name: Install HMM
         run: |
-          haxelib install hmm --quiet
-          haxelib run hmm --help > /dev/null
+          haxelib install hmm
 
       - name: Install Haxe dependencies
         run: |
@@ -74,28 +90,31 @@ jobs:
         run: |
           haxelib run lime rebuild cpp
 
+      - name: Verify Lime
+        run: |
+          haxelib run lime version
+          find .haxelib -name "lime.ndll" -o -name "lime*.ndll" | head -20
+
       - name: Build Linux
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
           haxelib run lime build linux -release -64 -DGITHUB_BUILD
 
       - name: Package
         run: |
           cd export/release/linux/bin
-          zip -9 -r ../../../../Funkin-Moon-Linux.zip .
+          zip -9 -r ../../../../Funkin-Moon-Linux-x64.zip .
 
-      - name: Upload Linux
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Funkin-Moon-Linux
-          path: Funkin-Moon-Linux.zip
+          name: Funkin-Moon-Linux-x64
+          path: Funkin-Moon-Linux-x64.zip
           compression-level: 0
 
   windows:
-    name: Windows
+    name: Windows x64
     runs-on: windows-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -109,11 +128,16 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          haxe --version
+          haxelib version
+
       - name: Install HMM
         shell: pwsh
         run: |
-          haxelib install hmm --quiet
-          haxelib run hmm --help | Out-Null
+          haxelib install hmm
 
       - name: Install Haxe dependencies
         shell: pwsh
@@ -133,11 +157,14 @@ jobs:
         run: |
           haxelib run lime rebuild cpp
 
+      - name: Verify Lime
+        shell: pwsh
+        run: |
+          haxelib run lime version
+          Get-ChildItem -Path .haxelib -Recurse -Filter "lime*.ndll" -ErrorAction SilentlyContinue
+
       - name: Build Windows
         shell: pwsh
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
           haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
@@ -146,19 +173,20 @@ jobs:
         run: |
           Compress-Archive `
             -Path "export/release/windows/bin/*" `
-            -DestinationPath "Funkin-Moon-Windows.zip" `
+            -DestinationPath "Funkin-Moon-Windows-x64.zip" `
             -CompressionLevel Optimal
 
-      - name: Upload Windows
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Funkin-Moon-Windows
-          path: Funkin-Moon-Windows.zip
+          name: Funkin-Moon-Windows-x64
+          path: Funkin-Moon-Windows-x64.zip
           compression-level: 0
 
   android:
     name: Android
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -178,10 +206,10 @@ jobs:
 
       - name: Install Android SDK
         run: |
-          sdkmanager "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.2.12479018"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "ndk;27.2.12479018"
 
       - name: Install Linux dependencies
         run: |
@@ -191,6 +219,8 @@ jobs:
             pkg-config \
             git \
             curl \
+            zip \
+            unzip \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -222,10 +252,17 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Verify Android
+        run: |
+          haxe --version
+          haxelib version
+          java -version
+          adb version
+          "$ANDROID_NDK_ROOT/ndk-build" --version
+
       - name: Install HMM
         run: |
-          haxelib install hmm --quiet
-          haxelib run hmm --help > /dev/null
+          haxelib install hmm
 
       - name: Install Haxe dependencies
         run: |
@@ -237,9 +274,6 @@ jobs:
           haxelib run hxcpp build
 
       - name: Rebuild Lime C++
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
           haxelib run lime rebuild cpp
 
@@ -251,22 +285,94 @@ jobs:
             "$JAVA_HOME" | haxelib run lime setup android
 
       - name: Rebuild Lime Android
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
           haxelib run lime rebuild android
 
       - name: Build Android
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
           haxelib run lime build android -release -DGITHUB_BUILD
 
-      - name: Upload Android
+      - name: Find APK
+        run: |
+          find export -type f -name "*.apk" -print
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-Android
           path: export/release/android/**/*.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Verify toolchain
+        run: |
+          haxe --version
+          haxelib version
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Install HMM
+        run: |
+          haxelib install hmm
+
+      - name: Install Haxe dependencies
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Build hxcpp
+        run: |
+          haxelib run hxcpp build
+
+      - name: Rebuild Lime
+        run: |
+          haxelib run lime rebuild cpp
+
+      - name: Setup Lime iOS
+        run: |
+          haxelib run lime setup ios
+
+      - name: Build iOS
+        run: |
+          haxelib run lime build ios -release -DGITHUB_BUILD
+
+      - name: Find iOS output
+        run: |
+          find export -maxdepth 6 -type f \( -name "*.ipa" -o -name "*.app" \) -print
+
+      - name: Package iOS
+        run: |
+          mkdir -p ios-package
+
+          if find export -type f -name "*.ipa" | grep -q .; then
+            find export -type f -name "*.ipa" -exec cp {} ios-package/ \;
+          else
+            find export -type d -name "*.app" -exec cp -R {} ios-package/ \;
+          fi
+
+          cd ios-package
+          zip -9 -r ../Funkin-Moon-iOS.zip .
+
+      - name: Upload iOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: Funkin-Moon-iOS
+          path: Funkin-Moon-iOS.zip
           compression-level: 0
