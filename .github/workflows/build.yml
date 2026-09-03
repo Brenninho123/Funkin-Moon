@@ -81,8 +81,7 @@ jobs:
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: bash
@@ -99,8 +98,7 @@ jobs:
 
       - name: Rebuild Lime
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
 
       - name: Setup Lime Android
         shell: bash
@@ -113,13 +111,11 @@ jobs:
 
       - name: Rebuild Lime Android
         shell: bash
-        run: |
-          haxelib run lime rebuild android
+        run: haxelib run lime rebuild android
 
       - name: Build Android
         shell: bash
-        run: |
-          haxelib run lime build android -release -DGITHUB_BUILD
+        run: haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Upload Android
         uses: actions/upload-artifact@v4
@@ -147,8 +143,7 @@ jobs:
 
       - name: Install HMM
         shell: pwsh
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: pwsh
@@ -168,18 +163,90 @@ jobs:
 
       - name: Rebuild Lime Windows
         shell: pwsh
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
 
       - name: Build Windows
         shell: pwsh
-        run: |
-          haxelib run lime build windows -release -64 -DGITHUB_BUILD
+        run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
           name: funkin-moon-windows
           path: export/release/windows/bin
+          if-no-files-found: error
+          compression-level: 6
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Linux dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libasound2-dev \
+            libudev-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxss-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            pkg-config
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: 4.3.7
+
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Build hxcpp
+        shell: bash
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime Linux
+        shell: bash
+        run: haxelib run lime rebuild cpp
+
+      - name: Build Linux
+        shell: bash
+        run: haxelib run lime build linux -release -64 -DGITHUB_BUILD
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-linux
+          path: export/release/linux/bin
           if-no-files-found: error
           compression-level: 6
