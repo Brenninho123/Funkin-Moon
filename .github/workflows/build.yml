@@ -1,322 +1,44 @@
-name: Funkin-Moon Build
+name: Build Funkin-Moon
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
-concurrency:
-  group: funkin-moon-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  HAXE_VERSION: 4.3.7
-  ANDROID_NDK_VERSION: 27.2.12479018
-  CXXFLAGS: -O3 -std=c++20
-  CFLAGS: -O3
+  HAXE_VERSION: "4.3.7"
+  ANDROID_PLATFORM: "android-35"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  ANDROID_NDK_VERSION: "27.2.12479018"
 
 jobs:
 
   linux:
-    name: Linux x64
+    name: Linux
     runs-on: ubuntu-latest
-    timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             build-essential \
             pkg-config \
             git \
             curl \
-            zip \
-            unzip \
-            neko \
-            libvlc-dev \
-            libvlccore-dev \
-            libdbus-1-dev \
-            libxss-dev \
-            libasound2-dev \
-            libudev-dev \
-            libpipewire-0.3-dev \
-            libxkbcommon-dev \
-            libpulse-dev \
-            libwayland-dev \
-            libwayland-bin \
-            wayland-protocols \
-            libx11-dev \
-            libxext-dev \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcursor-dev \
-            libxi-dev \
-            libgl1-mesa-dev \
-            libglu1-mesa-dev
-
-      - name: Setup Haxe
-        uses: krdlab/setup-haxe@v2
-        with:
-          haxe-version: ${{ env.HAXE_VERSION }}
-
-      - name: Verify toolchain
-        run: |
-          haxe --version
-          haxelib version
-          neko -version
-          gcc --version
-          g++ --version
-          uname -m
-
-      - name: Install HMM
-        run: |
-          haxelib install hmm
-
-      - name: Install Haxe dependencies
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
-
-      - name: Prepare hxcpp
-        run: |
-          HXCPP_PATH=".haxelib/hxcpp/git"
-
-          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
-            echo "hxcpp development source was not found."
-            exit 1
-          fi
-
-          cd "$HXCPP_PATH/tools/hxcpp"
-          haxe compile.hxml
-
-      - name: Rebuild Lime
-        run: |
-          haxelib run lime rebuild cpp
-
-      - name: Build Linux
-        run: |
-          haxelib run lime build linux -release -64 -DGITHUB_BUILD
-
-      - name: Verify Linux
-        run: |
-          test -d export/release/linux/bin
-          find export/release/linux/bin -maxdepth 2 -type f -print
-
-      - name: Package Linux
-        run: |
-          cd export/release/linux/bin
-          zip -9 -r ../../../../Funkin-Moon-Linux-x64.zip .
-
-      - name: Upload Linux
-        uses: actions/upload-artifact@v4
-        with:
-          name: Funkin-Moon-Linux-x64
-          path: Funkin-Moon-Linux-x64.zip
-          if-no-files-found: error
-          compression-level: 0
-
-
-  windows:
-    name: Windows x64
-    runs-on: windows-latest
-    timeout-minutes: 90
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Setup Haxe
-        uses: krdlab/setup-haxe@v2
-        with:
-          haxe-version: ${{ env.HAXE_VERSION }}
-
-      - name: Verify toolchain
-        shell: pwsh
-        run: |
-          haxe --version
-          haxelib version
-          gcc --version
-          g++ --version
-
-      - name: Install HMM
-        shell: pwsh
-        run: |
-          haxelib install hmm
-
-      - name: Install Haxe dependencies
-        shell: pwsh
-        run: |
-          if (Test-Path ".haxelib") {
-            Remove-Item ".haxelib" -Recurse -Force
-          }
-
-          haxelib run hmm install
-
-      - name: Prepare hxcpp
-        shell: pwsh
-        run: |
-          $HXCPP_PATH = ".haxelib/hxcpp/git"
-
-          if (!(Test-Path "$HXCPP_PATH/tools/hxcpp")) {
-            throw "hxcpp development source was not found."
-          }
-
-          Set-Location "$HXCPP_PATH/tools/hxcpp"
-          haxe compile.hxml
-
-      - name: Rebuild Lime
-        shell: pwsh
-        run: |
-          haxelib run lime rebuild cpp
-
-      - name: Build Windows
-        shell: pwsh
-        run: |
-          haxelib run lime build windows -release -64 -DGITHUB_BUILD
-
-      - name: Verify Windows
-        shell: pwsh
-        run: |
-          if (!(Test-Path "export/release/windows/bin")) {
-            throw "Windows build output was not generated."
-          }
-
-          Get-ChildItem "export/release/windows/bin" -Recurse
-
-      - name: Package Windows
-        shell: pwsh
-        run: |
-          Compress-Archive `
-            -Path "export/release/windows/bin/*" `
-            -DestinationPath "Funkin-Moon-Windows-x64.zip" `
-            -CompressionLevel Optimal
-
-      - name: Upload Windows
-        uses: actions/upload-artifact@v4
-        with:
-          name: Funkin-Moon-Windows-x64
-          path: Funkin-Moon-Windows-x64.zip
-          if-no-files-found: error
-          compression-level: 0
-
-
-  android:
-    name: Android ARM64
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Android
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
-          sdkmanager "ndk;${ANDROID_NDK_VERSION}"
-
-      - name: Detect Android NDK
-        shell: bash
-        run: |
-          set -e
-
-          SDK="${ANDROID_SDK_ROOT}"
-          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
-
-          if [ ! -d "$NDK" ]; then
-            echo "Android NDK was not found:"
-            echo "$NDK"
-            find "$SDK/ndk" -maxdepth 2 -type d 2>/dev/null || true
-            exit 1
-          fi
-
-          if [ ! -f "$NDK/source.properties" ]; then
-            echo "NDK source.properties was not found."
-            exit 1
-          fi
-
-          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
-
-          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
-
-          echo "Android SDK: $SDK"
-          echo "Android NDK: $NDK"
-
-      - name: Verify Android NDK
-        shell: bash
-        run: |
-          set -e
-
-          echo "ANDROID_SDK=$ANDROID_SDK"
-          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
-
-          test -d "$ANDROID_NDK_DIR"
-          test -f "$ANDROID_NDK_DIR/source.properties"
-
-          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
-
-          test -d "$LLVM"
-
-          echo "LLVM directory:"
-          ls -la "$LLVM" | head -40
-
-          echo "Checking ARM64 compiler:"
-          command -v aarch64-linux-android-g++ || true
-          command -v aarch64-linux-android-clang++ || true
-          command -v clang++ || true
-
-          if [ -x "$LLVM/aarch64-linux-android-g++" ]; then
-            "$LLVM/aarch64-linux-android-g++" --version
-          elif [ -x "$LLVM/aarch64-linux-android-clang++" ]; then
-            "$LLVM/aarch64-linux-android-clang++" --version
-          else
-            echo "No ARM64 Android compiler was found."
-            exit 1
-          fi
-
-          "$ANDROID_NDK_DIR/ndk-build" --version
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            git \
-            curl \
+            wget \
             zip \
             unzip \
             neko \
@@ -348,170 +70,29 @@ jobs:
 
       - name: Verify Haxe
         run: |
+          set -e
           haxe --version
           haxelib version
+          neko -version
 
       - name: Install HMM
         run: |
-          haxelib install hmm
+          set -e
+          haxelib install hmm --quiet
 
-      - name: Install Haxe dependencies
+      - name: Reset Haxelib
         run: |
+          set -e
           rm -rf .haxelib
           haxelib run hmm install
 
       - name: Prepare hxcpp
         run: |
+          set -e
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
-            echo "hxcpp development source was not found."
-            exit 1
-          fi
-
-          cd "$HXCPP_PATH/tools/hxcpp"
-          haxe compile.hxml
-
-      - name: Rebuild Lime C++
-        run: |
-          haxelib run lime rebuild cpp
-
-      - name: Configure Lime Android
-        shell: bash
-        run: |
-          set -e
-
-          printf "n\n%s\n%s\n%s\n" \
-            "$ANDROID_SDK" \
-            "$ANDROID_NDK_DIR" \
-            "$JAVA_HOME" | haxelib run lime setup android
-
-          echo "ANDROID_SDK=$ANDROID_SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_DIR" >> "$GITHUB_ENV"
-
-      - name: Revalidate Android paths
-        shell: bash
-        run: |
-          set -e
-
-          test -d "$ANDROID_NDK_DIR"
-          test -f "$ANDROID_NDK_DIR/source.properties"
-
-          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
-
-          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
-
-          test -d "$LLVM"
-
-          export PATH="$LLVM:$PATH"
-
-          if command -v aarch64-linux-android-g++ >/dev/null 2>&1; then
-            aarch64-linux-android-g++ --version
-          elif command -v aarch64-linux-android-clang++ >/dev/null 2>&1; then
-            aarch64-linux-android-clang++ --version
-          else
-            echo "Android ARM64 compiler is unavailable."
-            exit 1
-          fi
-
-      - name: Rebuild Lime Android
-        shell: bash
-        env:
-          ANDROID_NDK_DIR: ${{ env.ANDROID_NDK_DIR }}
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
-        run: |
-          export PATH="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-
-          test -d "$ANDROID_NDK_DIR"
-          test -f "$ANDROID_NDK_DIR/source.properties"
-
-          haxelib run lime rebuild android
-
-      - name: Build Android
-        shell: bash
-        env:
-          ANDROID_NDK_DIR: ${{ env.ANDROID_NDK_DIR }}
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
-        run: |
-          export PATH="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-
-          haxelib run lime build android -release -DGITHUB_BUILD
-
-      - name: Verify APK
-        run: |
-          find export -type f -name "*.apk" -print
-
-      - name: Package Android
-        run: |
-          mkdir -p android-package
-          find export -type f -name "*.apk" -exec cp {} android-package/ \;
-
-          if [ -z "$(find android-package -type f -name "*.apk" -print -quit)" ]; then
-            echo "No APK was generated."
-            exit 1
-          fi
-
-          cd android-package
-          zip -9 -r ../Funkin-Moon-Android.zip .
-
-      - name: Upload Android
-        uses: actions/upload-artifact@v4
-        with:
-          name: Funkin-Moon-Android
-          path: Funkin-Moon-Android.zip
-          if-no-files-found: error
-          compression-level: 0
-
-
-  ios:
-    name: iOS x64
-    runs-on: macos-15-intel
-    timeout-minutes: 120
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Setup Haxe
-        uses: krdlab/setup-haxe@v2
-        with:
-          haxe-version: ${{ env.HAXE_VERSION }}
-
-      - name: Verify Apple toolchain
-        run: |
-          haxe --version
-          haxelib version
-          xcodebuild -version
-          xcode-select -p
-          uname -m
-
-      - name: Install HMM
-        run: |
-          haxelib install hmm
-
-      - name: Install Haxe dependencies
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
-
-      - name: Prepare hxcpp
-        run: |
-          HXCPP_PATH=".haxelib/hxcpp/git"
-
-          if [ ! -d "$HXCPP_PATH/tools/hxcpp" ]; then
-            echo "hxcpp development source was not found."
+          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
+            echo "hxcpp compile.hxml was not found"
             exit 1
           fi
 
@@ -520,51 +101,529 @@ jobs:
 
       - name: Rebuild Lime
         run: |
+          set -e
           haxelib run lime rebuild cpp
 
-      - name: Setup Lime iOS
+      - name: Build Linux
+        env:
+          HAXEFLAGS: "-D GITHUB_BUILD"
         run: |
-          haxelib run lime setup ios
+          set -e
+          haxelib run lime build linux -release -64 -DGITHUB_BUILD
+
+      - name: Package Linux
+        run: |
+          set -e
+          mkdir -p artifacts/linux
+          find export -type f -exec cp --parents {} artifacts/linux/ \; || true
+          cd artifacts
+          zip -r ../Funkin-Moon-Linux.zip linux
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: Funkin-Moon-Linux
+          path: Funkin-Moon-Linux.zip
+
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Verify Haxe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          haxe --version
+          haxelib version
+
+      - name: Install HMM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          haxelib install hmm --quiet
+
+      - name: Reset Haxelib
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Test-Path ".haxelib") {
+            Remove-Item ".haxelib" -Recurse -Force
+          }
+
+          haxelib run hmm install
+
+      - name: Prepare hxcpp
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $hxcpp = ".haxelib/hxcpp/git/tools/hxcpp"
+
+          if (!(Test-Path "$hxcpp/compile.hxml")) {
+            Write-Error "hxcpp compile.hxml was not found"
+          }
+
+          Set-Location $hxcpp
+          haxe compile.hxml
+
+      - name: Rebuild Lime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          haxelib run lime rebuild cpp
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          haxelib run lime build windows -release -64 -DGITHUB_BUILD
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+
+          if (Test-Path "export") {
+            Compress-Archive -Path "export\*" -DestinationPath "artifacts\Funkin-Moon-Windows.zip" -Force
+          } else {
+            Write-Error "Windows export directory was not generated"
+          }
+
+      - name: Upload Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: Funkin-Moon-Windows
+          path: artifacts/Funkin-Moon-Windows.zip
+
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+
+    env:
+      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17/x64
+      ANDROID_PLATFORM: android-35
+      ANDROID_BUILD_TOOLS: 35.0.0
+      ANDROID_NDK_VERSION: 27.2.12479018
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          set -e
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;${ANDROID_PLATFORM}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Configure Android environment
+        run: |
+          set -e
+
+          SDK="${ANDROID_SDK_ROOT}"
+          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
+          LLVM="${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          if [ ! -d "$SDK" ]; then
+            echo "Android SDK does not exist: $SDK"
+            exit 1
+          fi
+
+          if [ ! -d "$NDK" ]; then
+            echo "Android NDK does not exist: $NDK"
+            exit 1
+          fi
+
+          if [ ! -f "$NDK/source.properties" ]; then
+            echo "Invalid Android NDK installation"
+            exit 1
+          fi
+
+          if [ ! -d "$LLVM" ]; then
+            echo "LLVM directory does not exist: $LLVM"
+            exit 1
+          fi
+
+          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+          echo "$LLVM" >> "$GITHUB_PATH"
+
+      - name: Create Android compiler compatibility aliases
+        run: |
+          set -e
+
+          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          if [ ! -f "$LLVM/aarch64-linux-android35-clang" ]; then
+            echo "ARM64 clang compiler not found"
+            exit 1
+          fi
+
+          if [ ! -f "$LLVM/aarch64-linux-android35-clang++" ]; then
+            echo "ARM64 clang++ compiler not found"
+            exit 1
+          fi
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang" \
+            "$LLVM/aarch64-linux-android-gcc"
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang++" \
+            "$LLVM/aarch64-linux-android-g++"
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang" \
+            "$LLVM/aarch64-linux-android-gcc-35"
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang++" \
+            "$LLVM/aarch64-linux-android-g++-35"
+
+          echo "Android compiler aliases created"
+
+      - name: Verify Android toolchain
+        run: |
+          set -e
+
+          echo "ANDROID_SDK=$ANDROID_SDK"
+          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+
+          command -v aarch64-linux-android35-clang
+          command -v aarch64-linux-android35-clang++
+
+          command -v aarch64-linux-android-gcc
+          command -v aarch64-linux-android-g++
+
+          aarch64-linux-android35-clang --version
+          aarch64-linux-android35-clang++ --version
+          aarch64-linux-android-gcc --version
+          aarch64-linux-android-g++ --version
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            git \
+            curl \
+            wget \
+            zip \
+            unzip \
+            neko \
+            libvlc-dev \
+            libvlccore-dev \
+            libdbus-1-dev \
+            libxss-dev \
+            libasound2-dev \
+            libudev-dev \
+            libpipewire-0.3-dev \
+            libxkbcommon-dev \
+            libpulse-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Verify Haxe
+        run: |
+          set -e
+          haxe --version
+          haxelib version
+          neko -version
+
+      - name: Install HMM
+        run: |
+          set -e
+          haxelib install hmm --quiet
+
+      - name: Reset Haxelib
+        run: |
+          set -e
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Prepare hxcpp
+        run: |
+          set -e
+
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
+            echo "hxcpp compile.hxml was not found"
+            exit 1
+          fi
+
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime C++
+        env:
+          CXXFLAGS: "-O3 -std=c++20"
+        run: |
+          set -e
+
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_DIR="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+
+          haxelib run lime rebuild cpp
+
+      - name: Configure Lime Android
+        run: |
+          set -e
+
+          SDK="$ANDROID_SDK_ROOT"
+          NDK="$ANDROID_NDK_DIR"
+
+          printf "n\n%s\n%s\n%s\n" \
+            "$SDK" \
+            "$NDK" \
+            "$JAVA_HOME" \
+            | haxelib run lime setup android || true
+
+      - name: Re-export Android environment
+        run: |
+          set -e
+
+          SDK="${ANDROID_SDK_ROOT}"
+          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
+          LLVM="${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          if [ ! -d "$NDK" ]; then
+            echo "NDK disappeared after Lime setup"
+            exit 1
+          fi
+
+          if [ ! -d "$LLVM" ]; then
+            echo "LLVM directory disappeared after Lime setup"
+            exit 1
+          fi
+
+          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+          echo "$LLVM" >> "$GITHUB_PATH"
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang" \
+            "$LLVM/aarch64-linux-android-gcc"
+
+          ln -sf \
+            "$LLVM/aarch64-linux-android35-clang++" \
+            "$LLVM/aarch64-linux-android-g++"
+
+      - name: Rebuild Lime Android
+        env:
+          CXXFLAGS: "-O3 -std=c++20"
+        run: |
+          set -e
+
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_DIR="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+
+          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export PATH="$LLVM:$PATH"
+
+          test -d "$ANDROID_NDK_DIR"
+          test -f "$ANDROID_NDK_DIR/source.properties"
+          test -x "$LLVM/aarch64-linux-android35-clang"
+          test -x "$LLVM/aarch64-linux-android35-clang++"
+          test -x "$LLVM/aarch64-linux-android-gcc"
+          test -x "$LLVM/aarch64-linux-android-g++"
+
+          aarch64-linux-android-g++ --version
+
+          haxelib run lime rebuild android
+
+      - name: Build Android
+        env:
+          CXXFLAGS: "-O3 -std=c++20"
+        run: |
+          set -e
+
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_DIR="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+
+          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export PATH="$LLVM:$PATH"
+
+          haxelib run lime build android -release -DGITHUB_BUILD
+
+      - name: Locate APK
+        run: |
+          set -e
+
+          mkdir -p artifacts
+
+          APK="$(find export -type f -name "*.apk" -print -quit 2>/dev/null || true)"
+
+          if [ -z "$APK" ]; then
+            APK="$(find . -type f -name "*.apk" -print -quit 2>/dev/null || true)"
+          fi
+
+          if [ -z "$APK" ]; then
+            echo "No APK was generated"
+            find export -maxdepth 5 -type f 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "APK: $APK"
+          cp "$APK" artifacts/Funkin-Moon.apk
+
+      - name: Upload Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: Funkin-Moon-Android
+          path: artifacts/Funkin-Moon.apk
+
+
+  ios:
+    name: iOS
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Verify environment
+        run: |
+          set -e
+          haxe --version
+          haxelib version
+          xcodebuild -version
+
+      - name: Install HMM
+        run: |
+          set -e
+          haxelib install hmm --quiet
+
+      - name: Reset Haxelib
+        run: |
+          set -e
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Prepare hxcpp
+        run: |
+          set -e
+
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
+            echo "hxcpp compile.hxml was not found"
+            exit 1
+          fi
+
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime
+        run: |
+          set -e
+          haxelib run lime rebuild cpp
+
+      - name: Configure Lime iOS
+        run: |
+          set -e
+          haxelib run lime setup ios || true
 
       - name: Build iOS
-        env:
-          CXXFLAGS: -O3 -std=c++20
-          CFLAGS: -O3
         run: |
+          set -e
           haxelib run lime build ios -release -DGITHUB_BUILD
-
-      - name: Verify iOS output
-        run: |
-          find export -type f -name "*.ipa" -print
-          find export -type d -name "*.app" -print
 
       - name: Package iOS
         run: |
-          rm -rf ios-package
-          mkdir -p ios-package
+          set -e
 
-          IPA=$(find export -type f -name "*.ipa" | head -n 1)
+          mkdir -p artifacts
+
+          APP="$(find export -type d -name "*.app" -print -quit 2>/dev/null || true)"
+          IPA="$(find export -type f -name "*.ipa" -print -quit 2>/dev/null || true)"
 
           if [ -n "$IPA" ]; then
-            cp "$IPA" ios-package/
+            cp "$IPA" artifacts/Funkin-Moon-iOS.ipa
+          elif [ -n "$APP" ]; then
+            cd "$(dirname "$APP")"
+            zip -r "$OLDPWD/artifacts/Funkin-Moon-iOS.app.zip" "$(basename "$APP")"
           else
-            APP=$(find export -type d -name "*.app" | head -n 1)
-
-            if [ -z "$APP" ]; then
-              echo "No iOS application was generated."
-              exit 1
-            fi
-
-            cp -R "$APP" ios-package/
+            echo "No iOS application was generated"
+            find export -maxdepth 6 -type f 2>/dev/null || true
+            find export -maxdepth 6 -type d -name "*.app" 2>/dev/null || true
+            exit 1
           fi
-
-          cd ios-package
-          zip -9 -r ../Funkin-Moon-iOS.zip .
 
       - name: Upload iOS
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-iOS
-          path: Funkin-Moon-iOS.zip
-          if-no-files-found: error
-          compression-level: 0
+          path: artifacts/*
