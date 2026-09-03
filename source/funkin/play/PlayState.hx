@@ -2230,6 +2230,8 @@ class PlayState extends MusicBeatSubState
 
         opponentStrumline.hitNote(note);
 
+        if (camMovement != null) camMovement.onNoteHit(note.noteData.getDirection(), null, 0.5);
+
         if (note.holdNoteSprite != null)
         {
           opponentStrumline.playNoteHoldCover(note.holdNoteSprite);
