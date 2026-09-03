@@ -97,9 +97,8 @@ class FunkinLua
     Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
     Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
     Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
-    #if mobile
-    Lua.register(lua, 'vibrate', cpp.Function.fromStaticFunction(cb_vibrate));
-    #end
+    // TODO: 'vibrate' disabled until the correct package path for HapticUtil is confirmed.
+    // Lua.register(lua, 'vibrate', cpp.Function.fromStaticFunction(cb_vibrate));
     #if FEATURE_ONLINE
     Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
     Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
@@ -600,17 +599,18 @@ class FunkinLua
     return 1;
   }
 
-  #if mobile
-  static function cb_vibrate(l:LuaState):Int
-  {
-    final n:Int = Lua.gettop(l);
-    var intensity:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.4;
-    Lua.pop(l, n);
-
-    funkin.mobile.util.HapticUtil.vibrate(0, 0.01, intensity);
-    return 0;
-  }
-  #end
+  // TODO: Re-enable once the correct package path for HapticUtil is confirmed.
+  // #if mobile
+  // static function cb_vibrate(l:LuaState):Int
+  // {
+  //   final n:Int = Lua.gettop(l);
+  //   var intensity:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.4;
+  //   Lua.pop(l, n);
+  //
+  //   funkin.mobile.util.HapticUtil.vibrate(0, 0.01, intensity);
+  //   return 0;
+  // }
+  // #end
 
   static function cb_triggerEvent(l:LuaState):Int
   {
