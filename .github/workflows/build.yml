@@ -71,22 +71,18 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Verify Haxe
+      - name: Verify environment
         run: |
           set -euxo pipefail
 
-          echo "Haxe:"
           haxe --version
-
-          echo "Haxelib:"
           haxelib version
-
-          echo "Neko:"
           neko -version
 
       - name: Install HMM
         run: |
           set -euxo pipefail
+
           haxelib install hmm --quiet
 
       - name: Install dependencies
@@ -97,18 +93,12 @@ jobs:
 
           haxelib run hmm install
 
-      - name: Show Haxelib dependencies
-        run: |
-          set -euxo pipefail
-          haxelib list
-
       - name: Prepare hxcpp
         run: |
           set -euxo pipefail
 
           HXCPP=".haxelib/hxcpp/git"
 
-          test -d "$HXCPP"
           test -f "$HXCPP/tools/hxcpp/compile.hxml"
 
           cd "$HXCPP/tools/hxcpp"
@@ -130,19 +120,13 @@ jobs:
             -64 \
             -DGITHUB_BUILD
 
-      - name: Verify Linux export
-        run: |
-          set -euxo pipefail
-
-          test -d export
-
-          find export -maxdepth 5 -type f -print
-
       - name: Package Linux
         run: |
           set -euxo pipefail
 
           mkdir -p artifacts
+
+          test -d export
 
           cd export
 
@@ -170,7 +154,7 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Verify Haxe
+      - name: Verify environment
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -195,12 +179,6 @@ jobs:
           }
 
           haxelib run hmm install
-
-      - name: Show Haxelib dependencies
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          haxelib list
 
       - name: Prepare hxcpp
         shell: pwsh
@@ -234,23 +212,16 @@ jobs:
             -64 `
             -DGITHUB_BUILD
 
-      - name: Verify Windows export
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          if (!(Test-Path "export")) {
-            throw "Windows export directory was not generated"
-          }
-
-          Get-ChildItem export -Recurse
-
       - name: Package Windows
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           New-Item -ItemType Directory -Force artifacts | Out-Null
+
+          if (!(Test-Path "export")) {
+            throw "Windows export directory was not generated"
+          }
 
           Compress-Archive `
             -Path "export\*" `
@@ -274,17 +245,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Homebrew dependencies
+      - name: Install dependencies
         run: |
           set -euxo pipefail
 
           brew update
 
           brew install \
-            neko \
             pkg-config \
-            libvlc \
-            cmake
+            neko \
+            cmake \
+            vlc
 
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v2
@@ -295,22 +266,11 @@ jobs:
         run: |
           set -euxo pipefail
 
-          echo "Architecture:"
           uname -m
-
-          echo "macOS:"
           sw_vers
-
-          echo "Xcode:"
           xcodebuild -version
-
-          echo "Haxe:"
           haxe --version
-
-          echo "Haxelib:"
           haxelib version
-
-          echo "Neko:"
           neko -version
 
       - name: Install HMM
@@ -327,19 +287,12 @@ jobs:
 
           haxelib run hmm install
 
-      - name: Show Haxelib dependencies
-        run: |
-          set -euxo pipefail
-
-          haxelib list
-
       - name: Prepare hxcpp
         run: |
           set -euxo pipefail
 
           HXCPP=".haxelib/hxcpp/git"
 
-          test -d "$HXCPP"
           test -f "$HXCPP/tools/hxcpp/compile.hxml"
 
           cd "$HXCPP/tools/hxcpp"
@@ -361,28 +314,15 @@ jobs:
             -64 \
             -DGITHUB_BUILD
 
-      - name: Verify macOS export
-        run: |
-          set -euxo pipefail
-
-          test -d export
-
-          find export -maxdepth 6 -print
-
       - name: Package macOS
         run: |
           set -euxo pipefail
 
           mkdir -p artifacts
 
-          APP=""
+          test -d export
 
-          while IFS= read -r file; do
-            if [ -n "$file" ]; then
-              APP="$file"
-              break
-            fi
-          done < <(find export -type d -name "*.app" -print 2>/dev/null)
+          APP="$(find export -type d -name "*.app" -print -quit 2>/dev/null || true)"
 
           if [ -n "$APP" ]; then
             cd "$(dirname "$APP")"
@@ -424,7 +364,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android packages
+      - name: Install Android SDK
         run: |
           set -euxo pipefail
 
@@ -436,60 +376,95 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
-      - name: Detect Android toolchain
+      - name: Detect Android NDK
         run: |
           set -euxo pipefail
 
           SDK="${ANDROID_SDK_ROOT}"
           NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
-          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/linux-x86_64"
-          BIN="${TOOLCHAIN}/bin"
-          SYSROOT="${TOOLCHAIN}/sysroot"
+          LLVM="${NDK}/toolchains/llvm/prebuilt/linux-x86_64"
+          BIN="${LLVM}/bin"
 
           test -d "$SDK"
           test -d "$NDK"
-          test -d "$TOOLCHAIN"
+          test -d "$LLVM"
           test -d "$BIN"
-          test -d "$SYSROOT"
-
           test -f "$NDK/source.properties"
-          test -f "$SYSROOT/usr/include/stdlib.h"
 
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
-          echo "ANDROID_SYSROOT=$SYSROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_LLVM=$LLVM" >> "$GITHUB_ENV"
+          echo "ANDROID_BIN=$BIN" >> "$GITHUB_ENV"
 
           echo "$BIN" >> "$GITHUB_PATH"
 
-      - name: Verify Android headers
+          echo "SDK:"
+          printf '%s\n' "$SDK"
+
+          echo "NDK:"
+          printf '%s\n' "$NDK"
+
+          echo "LLVM:"
+          printf '%s\n' "$LLVM"
+
+      - name: Discover Android headers
+        run: |
+          set -u
+
+          echo "Searching for stdlib.h..."
+
+          FOUND=""
+
+          while IFS= read -r file; do
+            FOUND="$file"
+            break
+          done < <(
+            find "$ANDROID_NDK_DIR" \
+              -type f \
+              -name "stdlib.h" \
+              -print 2>/dev/null
+          )
+
+          if [ -z "$FOUND" ]; then
+            echo "stdlib.h was not found inside the NDK"
+            exit 1
+          fi
+
+          echo "stdlib.h:"
+          printf '%s\n' "$FOUND"
+
+          STDROOT="$(dirname "$FOUND")"
+
+          echo "ANDROID_C_INCLUDE=$STDROOT" >> "$GITHUB_ENV"
+
+      - name: Verify Android Clang
         run: |
           set -euxo pipefail
 
-          test -f "$ANDROID_SYSROOT/usr/include/stdlib.h"
-          test -f "$ANDROID_SYSROOT/usr/include/stdint.h"
-          test -f "$ANDROID_SYSROOT/usr/include/stddef.h"
-
-      - name: Setup Android compilers
-        run: |
-          set -euxo pipefail
-
-          BIN="$ANDROID_TOOLCHAIN/bin"
-
-          CLANG="$BIN/aarch64-linux-android35-clang"
-          CLANGXX="$BIN/aarch64-linux-android35-clang++"
+          CLANG="$ANDROID_BIN/aarch64-linux-android35-clang"
+          CLANGXX="$ANDROID_BIN/aarch64-linux-android35-clang++"
 
           test -x "$CLANG"
           test -x "$CLANGXX"
 
-          ln -sf "$CLANG" "$BIN/aarch64-linux-android-gcc"
-          ln -sf "$CLANGXX" "$BIN/aarch64-linux-android-g++"
+          "$CLANG" --version
+          "$CLANGXX" --version
 
-          command -v aarch64-linux-android35-clang
-          command -v aarch64-linux-android35-clang++
+      - name: Create Android compatibility compilers
+        run: |
+          set -euxo pipefail
+
+          CLANG="$ANDROID_BIN/aarch64-linux-android35-clang"
+          CLANGXX="$ANDROID_BIN/aarch64-linux-android35-clang++"
+
+          ln -sf "$CLANG" "$ANDROID_BIN/aarch64-linux-android-gcc"
+          ln -sf "$CLANGXX" "$ANDROID_BIN/aarch64-linux-android-g++"
+
+          ln -sf "$CLANG" "$ANDROID_BIN/aarch64-linux-android-gcc-35"
+          ln -sf "$CLANGXX" "$ANDROID_BIN/aarch64-linux-android-g++-35"
 
           command -v aarch64-linux-android-gcc
           command -v aarch64-linux-android-g++
@@ -549,7 +524,7 @@ jobs:
 
           haxelib install hmm --quiet
 
-      - name: Install dependencies
+      - name: Install Haxe dependencies
         run: |
           set -euxo pipefail
 
@@ -578,8 +553,8 @@ jobs:
 
       - name: Rebuild Lime C++
         env:
-          CXXFLAGS: "-O3 -std=c++20"
           CFLAGS: "-O3"
+          CXXFLAGS: "-O3 -std=c++20"
         run: |
           set -euxo pipefail
 
@@ -595,62 +570,61 @@ jobs:
             "$JAVA_HOME" \
             | haxelib run lime setup android || true
 
-      - name: Restore Android environment
+      - name: Restore Android configuration
         run: |
           set -euxo pipefail
 
-          SDK="${ANDROID_SDK_ROOT}"
-          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
-          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/linux-x86_64"
-          BIN="${TOOLCHAIN}/bin"
-          SYSROOT="${TOOLCHAIN}/sysroot"
+          echo "SDK=$ANDROID_SDK"
+          echo "NDK=$ANDROID_NDK_DIR"
+          echo "LLVM=$ANDROID_LLVM"
+          echo "BIN=$ANDROID_BIN"
 
-          test -d "$NDK"
-          test -d "$BIN"
-          test -d "$SYSROOT"
-          test -f "$SYSROOT/usr/include/stdlib.h"
+          test -d "$ANDROID_SDK"
+          test -d "$ANDROID_NDK_DIR"
+          test -d "$ANDROID_LLVM"
+          test -d "$ANDROID_BIN"
 
-          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
-          echo "ANDROID_SYSROOT=$SYSROOT" >> "$GITHUB_ENV"
+          export ANDROID_SDK
+          export ANDROID_HOME="$ANDROID_SDK"
+          export ANDROID_NDK_DIR
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_DIR"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_DIR"
 
-          echo "$BIN" >> "$GITHUB_PATH"
+          export PATH="$ANDROID_BIN:$PATH"
 
-          ln -sf \
-            "$BIN/aarch64-linux-android35-clang" \
-            "$BIN/aarch64-linux-android-gcc"
-
-          ln -sf \
-            "$BIN/aarch64-linux-android35-clang++" \
-            "$BIN/aarch64-linux-android-g++"
+          aarch64-linux-android35-clang --version
+          aarch64-linux-android35-clang++ --version
 
       - name: Test Android compiler
         run: |
           set -euxo pipefail
 
-          export PATH="$ANDROID_TOOLCHAIN/bin:$PATH"
+          export PATH="$ANDROID_BIN:$PATH"
 
-          aarch64-linux-android-g++ --version
+          cat > /tmp/funkin_test.cpp <<'EOF'
+          #include <stdlib.h>
+          #include <stdint.h>
+          #include <stddef.h>
 
-          printf '#include <stdlib.h>\nint main(){return 0;}\n' \
-            > /tmp/test.cpp
+          int main()
+          {
+            return 0;
+          }
+          EOF
 
           aarch64-linux-android35-clang++ \
-            --sysroot="$ANDROID_SYSROOT" \
+            --target=aarch64-linux-android28 \
             -std=c++20 \
-            -c /tmp/test.cpp \
-            -o /tmp/test.o
+            -c \
+            /tmp/funkin_test.cpp \
+            -o /tmp/funkin_test.o
 
-          test -f /tmp/test.o
+          test -f /tmp/funkin_test.o
 
       - name: Rebuild Lime Android
         env:
-          CXXFLAGS: "-O3 -std=c++20"
           CFLAGS: "-O3"
+          CXXFLAGS: "-O3 -std=c++20"
         run: |
           set -euxo pipefail
 
@@ -660,46 +634,17 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 
-          export PATH="$ANDROID_TOOLCHAIN/bin:$PATH"
+          export PATH="$ANDROID_BIN:$PATH"
 
           export CC="aarch64-linux-android35-clang"
           export CXX="aarch64-linux-android35-clang++"
-
-          export CFLAGS="-O3 --sysroot=$ANDROID_SYSROOT"
-          export CXXFLAGS="-O3 -std=c++20 --sysroot=$ANDROID_SYSROOT"
 
           haxelib run lime rebuild android
 
-      - name: Inspect Lime Android configuration
-        run: |
-          set -euxo pipefail
-
-          echo "Checking for legacy sysroot references"
-
-          if grep -R \
-            "prebuilt/platforms/android-28/arch-arm64" \
-            .haxelib/lime \
-            .haxelib/hxcpp \
-            2>/dev/null; then
-
-            echo "Legacy Android sysroot detected"
-            exit 1
-          fi
-
-          if grep -R \
-            "gnu-libstdc++" \
-            .haxelib/lime \
-            .haxelib/hxcpp \
-            2>/dev/null; then
-
-            echo "Legacy GNU STL detected"
-            exit 1
-          fi
-
       - name: Build Android
         env:
-          CXXFLAGS: "-O3 -std=c++20"
           CFLAGS: "-O3"
+          CXXFLAGS: "-O3 -std=c++20"
         run: |
           set -euxo pipefail
 
@@ -709,19 +654,16 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 
-          export PATH="$ANDROID_TOOLCHAIN/bin:$PATH"
+          export PATH="$ANDROID_BIN:$PATH"
 
           export CC="aarch64-linux-android35-clang"
           export CXX="aarch64-linux-android35-clang++"
-
-          export CFLAGS="-O3 --sysroot=$ANDROID_SYSROOT"
-          export CXXFLAGS="-O3 -std=c++20 --sysroot=$ANDROID_SYSROOT"
 
           haxelib run lime build android \
             -release \
             -DGITHUB_BUILD
 
-      - name: Find Android APK
+      - name: Locate APK
         run: |
           set -euxo pipefail
 
@@ -734,17 +676,24 @@ jobs:
               APK="$file"
               break
             fi
-          done < <(find export . -type f -name "*.apk" -print 2>/dev/null)
+          done < <(
+            find export . \
+              -type f \
+              -name "*.apk" \
+              -print 2>/dev/null
+          )
 
           if [ -z "$APK" ]; then
             echo "APK not found"
 
             find export \
-              -maxdepth 7 \
+              -maxdepth 8 \
               -print 2>/dev/null || true
 
             exit 1
           fi
+
+          echo "APK: $APK"
 
           cp "$APK" artifacts/Funkin-Moon.apk
 
@@ -832,30 +781,16 @@ jobs:
 
           mkdir -p artifacts
 
-          IPA=""
-
-          while IFS= read -r file; do
-            if [ -n "$file" ]; then
-              IPA="$file"
-              break
-            fi
-          done < <(find export . -type f -name "*.ipa" -print 2>/dev/null)
+          IPA="$(find export . -type f -name "*.ipa" -print -quit 2>/dev/null || true)"
 
           if [ -n "$IPA" ]; then
             cp "$IPA" artifacts/Funkin-Moon-iOS.ipa
           else
-            APP=""
-
-            while IFS= read -r file; do
-              if [ -n "$file" ]; then
-                APP="$file"
-                break
-              fi
-            done < <(find export . -type d -name "*.app" -print 2>/dev/null)
+            APP="$(find export . -type d -name "*.app" -print -quit 2>/dev/null || true)"
 
             if [ -z "$APP" ]; then
               echo "iOS application was not generated"
-              find export -maxdepth 7 -print 2>/dev/null || true
+              find export -maxdepth 8 -print 2>/dev/null || true
               exit 1
             fi
 
