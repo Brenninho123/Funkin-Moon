@@ -274,6 +274,8 @@ class PlayState extends MusicBeatSubState
 
   public var camGame:FunkinCamera;
 
+  var camMovement:Null<funkin.backend.FunkinCameraMovement> = null;
+
   public var debugUnbindCameraZoom:Bool = false;
 
   public var camCutscene:FunkinCamera;
@@ -387,6 +389,7 @@ class PlayState extends MusicBeatSubState
     }
 
     camGame = new FunkinCamera('playStateCamGame');
+    camMovement = new funkin.backend.FunkinCameraMovement(camGame);
     camHUD = new FunkinCamera('playStateCamHUD');
     camCutscene = new FunkinCamera('playStateCamCutscene');
     camCutouts = new FunkinCamera('playStateCamCutouts');
@@ -629,6 +632,8 @@ class PlayState extends MusicBeatSubState
     super.update(elapsed);
 
     FunkinLow.update(elapsed);
+
+    if (camMovement != null) camMovement.update(elapsed);
 
     callLuaEvent('onUpdate', [elapsed]);
 
@@ -2480,6 +2485,8 @@ class PlayState extends MusicBeatSubState
       popUpScore(event.judgement);
     }
 
+    if (camMovement != null) camMovement.onNoteHit(note.noteData.getDirection());
+
     callLuaEvent('onNoteHit', [event.judgement, event.comboCount]);
   }
 
@@ -2971,6 +2978,12 @@ class PlayState extends MusicBeatSubState
     #if FEATURE_ONLINE
     funkin.online.FunkinUser.instance.setActivity('In Menu');
     #end
+
+    if (camMovement != null)
+    {
+      camMovement.reset();
+      camMovement = null;
+    }
 
     cancelAllCameraTweens();
 
