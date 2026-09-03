@@ -2060,6 +2060,10 @@ class PlayState extends MusicBeatSubState
   {
     startingSong = false;
 
+    #if FEATURE_ONLINE
+    funkin.online.FunkinUser.instance.setActivity('Playing: ${currentSong?.id ?? "Unknown"} [${currentDifficulty}]');
+    #end
+
     #if mobile
     if (hitbox != null) hitbox.visible = true;
     #end
@@ -2475,6 +2479,8 @@ class PlayState extends MusicBeatSubState
       applyScore(event.score, event.judgement, event.healthChange, event.isComboBreak);
       popUpScore(event.judgement);
     }
+
+    callLuaEvent('onNoteHit', [event.judgement, event.comboCount]);
   }
 
   function onNoteMiss(note:NoteSprite, playSound:Bool = false, healthChange:Float):Void
@@ -2491,6 +2497,8 @@ class PlayState extends MusicBeatSubState
     }
 
     applyScore(Scoring.getMissScore(), 'miss', healthChange, true);
+
+    callLuaEvent('onNoteMiss', [healthChange]);
 
     if (playSound)
     {
@@ -2513,6 +2521,8 @@ class PlayState extends MusicBeatSubState
 
     health += event.healthChange;
     songScore += event.scoreChange;
+
+    callLuaEvent('onNoteGhostMiss', [event.dir, event.playAnim]);
 
     if (!isPracticeMode)
     {
@@ -2706,6 +2716,15 @@ class PlayState extends MusicBeatSubState
     var event = new ScriptEvent(SONG_END, true);
     dispatchEvent(event);
     if (event.eventCanceled) return;
+
+    #if FEATURE_ONLINE
+    funkin.online.FunkinOnline.instance.send('songResult', {
+      songId: currentSong?.id ?? 'unknown',
+      difficulty: currentDifficulty,
+      score: songScore
+    });
+    funkin.online.FunkinUser.instance.setActivity('In Menu');
+    #end
 
     callLuaEvent('onSongEnd', []);
 
@@ -2948,6 +2967,10 @@ class PlayState extends MusicBeatSubState
   {
     if (cleanedUp) return;
     cleanedUp = true;
+
+    #if FEATURE_ONLINE
+    funkin.online.FunkinUser.instance.setActivity('In Menu');
+    #end
 
     cancelAllCameraTweens();
 
