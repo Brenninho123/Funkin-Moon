@@ -15,15 +15,15 @@ concurrency:
 
 env:
   HAXE_VERSION: 4.3.7
-  BUILD_TYPE: release
   CXXFLAGS: -O3 -std=c++20
   CFLAGS: -O3
 
 jobs:
+
   linux:
     name: Linux x64
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -62,7 +62,7 @@ jobs:
             libglu1-mesa-dev
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
@@ -72,6 +72,7 @@ jobs:
           haxelib version
           gcc --version
           g++ --version
+          uname -m
 
       - name: Install HMM
         run: |
@@ -93,11 +94,16 @@ jobs:
       - name: Verify Lime
         run: |
           haxelib run lime version
-          find .haxelib -name "lime.ndll" -o -name "lime*.ndll" | head -20
+          find .haxelib -type f \( -name "lime.ndll" -o -name "lime*.ndll" \) -print
 
       - name: Build Linux
         run: |
           haxelib run lime build linux -release -64 -DGITHUB_BUILD
+
+      - name: Verify output
+        run: |
+          test -d export/release/linux/bin
+          find export/release/linux/bin -maxdepth 2 -type f -print
 
       - name: Package
         run: |
@@ -109,12 +115,14 @@ jobs:
         with:
           name: Funkin-Moon-Linux-x64
           path: Funkin-Moon-Linux-x64.zip
+          if-no-files-found: error
           compression-level: 0
+
 
   windows:
     name: Windows x64
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -124,7 +132,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
@@ -133,6 +141,8 @@ jobs:
         run: |
           haxe --version
           haxelib version
+          gcc --version
+          g++ --version
 
       - name: Install HMM
         shell: pwsh
@@ -145,6 +155,7 @@ jobs:
           if (Test-Path ".haxelib") {
             Remove-Item ".haxelib" -Recurse -Force
           }
+
           haxelib run hmm install
 
       - name: Build hxcpp
@@ -168,6 +179,15 @@ jobs:
         run: |
           haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (!(Test-Path "export/release/windows/bin")) {
+            throw "Windows build output was not generated."
+          }
+
+          Get-ChildItem "export/release/windows/bin" -Recurse
+
       - name: Package
         shell: pwsh
         run: |
@@ -181,12 +201,14 @@ jobs:
         with:
           name: Funkin-Moon-Windows-x64
           path: Funkin-Moon-Windows-x64.zip
+          if-no-files-found: error
           compression-level: 0
+
 
   android:
     name: Android
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -241,7 +263,7 @@ jobs:
             libglu1-mesa-dev
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
@@ -252,7 +274,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Verify Android
+      - name: Verify toolchain
         run: |
           haxe --version
           haxelib version
@@ -292,7 +314,7 @@ jobs:
         run: |
           haxelib run lime build android -release -DGITHUB_BUILD
 
-      - name: Find APK
+      - name: Verify APK
         run: |
           find export -type f -name "*.apk" -print
 
@@ -304,10 +326,11 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+
   ios:
-    name: iOS
-    runs-on: macos-latest
-    timeout-minutes: 60
+    name: iOS x64
+    runs-on: macos-15-intel
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -317,7 +340,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
@@ -327,6 +350,7 @@ jobs:
           haxelib version
           xcodebuild -version
           xcode-select -p
+          uname -m
 
       - name: Install HMM
         run: |
@@ -353,18 +377,29 @@ jobs:
         run: |
           haxelib run lime build ios -release -DGITHUB_BUILD
 
-      - name: Find iOS output
+      - name: Verify iOS output
         run: |
-          find export -maxdepth 6 -type f \( -name "*.ipa" -o -name "*.app" \) -print
+          find export -type f -name "*.ipa" -print
+          find export -type d -name "*.app" -print
 
       - name: Package iOS
         run: |
+          rm -rf ios-package
           mkdir -p ios-package
 
-          if find export -type f -name "*.ipa" | grep -q .; then
-            find export -type f -name "*.ipa" -exec cp {} ios-package/ \;
+          IPA=$(find export -type f -name "*.ipa" | head -n 1)
+
+          if [ -n "$IPA" ]; then
+            cp "$IPA" ios-package/
           else
-            find export -type d -name "*.app" -exec cp -R {} ios-package/ \;
+            APP=$(find export -type d -name "*.app" | head -n 1)
+
+            if [ -z "$APP" ]; then
+              echo "No iOS application was generated."
+              exit 1
+            fi
+
+            cp -R "$APP" ios-package/
           fi
 
           cd ios-package
@@ -375,4 +410,5 @@ jobs:
         with:
           name: Funkin-Moon-iOS
           path: Funkin-Moon-iOS.zip
+          if-no-files-found: error
           compression-level: 0
