@@ -17,6 +17,7 @@ class FunkinLua
   public var lua:LuaState;
   public var scriptName:String;
   public var closed:Bool = false;
+  public var errorCount(default, null):Int = 0;
 
   public function new(scriptPath:String)
   {
@@ -82,6 +83,16 @@ class FunkinLua
     Lua.register(lua, 'playSound', cpp.Function.fromStaticFunction(cb_playSound));
     Lua.register(lua, 'setVar', cpp.Function.fromStaticFunction(cb_setVar));
     Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
+    Lua.register(lua, 'hasVar', cpp.Function.fromStaticFunction(cb_hasVar));
+    Lua.register(lua, 'getMisses', cpp.Function.fromStaticFunction(cb_getMisses));
+    Lua.register(lua, 'randomFloat', cpp.Function.fromStaticFunction(cb_randomFloat));
+    Lua.register(lua, 'randomInt', cpp.Function.fromStaticFunction(cb_randomInt));
+    Lua.register(lua, 'triggerCameraMovement', cpp.Function.fromStaticFunction(cb_triggerCameraMovement));
+    #if FEATURE_ONLINE
+    Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
+    Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
+    Lua.register(lua, 'sendOnlineMessage', cpp.Function.fromStaticFunction(cb_sendOnlineMessage));
+    #end
   }
 
   public function setString(name:String, value:String):Void
@@ -135,6 +146,17 @@ class FunkinLua
     var result:Dynamic = pullValue(-1);
     Lua.pop(lua, 1);
     return result;
+  }
+
+  public function hasFunction(funcName:String):Bool
+  {
+    if (closed) return false;
+
+    Lua.getglobal(lua, funcName);
+    var isFunc:Bool = Lua.isfunction(lua, -1) == 1;
+    Lua.pop(lua, 1);
+
+    return isFunc;
   }
 
   function pushValue(value:Dynamic):Void
@@ -196,6 +218,8 @@ class FunkinLua
 
   public function reportError():Void
   {
+    errorCount++;
+
     var message:String = (Lua.tostring(lua, -1) : String);
     FlxG.log.error('[$scriptName] $message');
   }
@@ -397,6 +421,97 @@ class FunkinLua
     lastCalledScript.pushValue(sharedVariables.get(name));
     return 1;
   }
+
+  static function cb_hasVar(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    Lua.pop(l, n);
+
+    Lua.pushboolean(l, sharedVariables.exists(name) ? 1 : 0);
+    return 1;
+  }
+
+  static function cb_getMisses(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, Highscore.tallies?.missed ?? 0);
+    return 1;
+  }
+
+  static function cb_randomFloat(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var min:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var max:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, FlxG.random.float(min, max));
+    return 1;
+  }
+
+  static function cb_randomInt(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var min:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
+    var max:Int = n >= 2 ? Std.int((Lua.tonumber(l, 2) : Float)) : 1;
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, FlxG.random.int(min, max));
+    return 1;
+  }
+
+  static function cb_triggerCameraMovement(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var directionStr:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var intensity:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+    Lua.pop(l, n);
+
+    var direction:Null<funkin.play.notes.NoteDirection> = switch (directionStr.toLowerCase())
+    {
+      case 'left': LEFT;
+      case 'down': DOWN;
+      case 'up': UP;
+      case 'right': RIGHT;
+      default: null;
+    }
+
+    if (direction == null || PlayState.instance == null) return 0;
+
+    @:privateAccess
+    if (PlayState.instance.camMovement != null) PlayState.instance.camMovement.onNoteHit(direction, null, intensity);
+
+    return 0;
+  }
+
+  #if FEATURE_ONLINE
+  static function cb_isOnline(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushboolean(l, funkin.online.FunkinOnline.instance.isConnected() ? 1 : 0);
+    return 1;
+  }
+
+  static function cb_getOnlineUserCount(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, funkin.online.FunkinUser.instance.getActiveUserCount());
+    return 1;
+  }
+
+  static function cb_sendOnlineMessage(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var messageType:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    Lua.pop(l, n);
+
+    if (messageType == '') return 0;
+
+    funkin.online.FunkinOnline.instance.send(messageType);
+    return 0;
+  }
+  #end
 
   static function cb_triggerEvent(l:LuaState):Int
   {
