@@ -42,6 +42,7 @@ jobs:
             curl \
             zip \
             unzip \
+            neko \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -70,6 +71,7 @@ jobs:
         run: |
           haxe --version
           haxelib version
+          neko -version
           gcc --version
           g++ --version
           uname -m
@@ -82,6 +84,18 @@ jobs:
         run: |
           rm -rf .haxelib
           haxelib run hmm install
+
+      - name: Prepare hxcpp
+        run: |
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          if [ ! -d "$HXCPP_PATH" ]; then
+            echo "hxcpp source directory was not found."
+            exit 1
+          fi
+
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
 
       - name: Build hxcpp
         run: |
@@ -157,6 +171,18 @@ jobs:
           }
 
           haxelib run hmm install
+
+      - name: Prepare hxcpp
+        shell: pwsh
+        run: |
+          $HXCPP_PATH = ".haxelib/hxcpp/git"
+
+          if (!(Test-Path $HXCPP_PATH)) {
+            throw "hxcpp source directory was not found."
+          }
+
+          Set-Location "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
 
       - name: Build hxcpp
         shell: pwsh
@@ -243,6 +269,7 @@ jobs:
             curl \
             zip \
             unzip \
+            neko \
             libdbus-1-dev \
             libxss-dev \
             libasound2-dev \
@@ -290,6 +317,18 @@ jobs:
         run: |
           rm -rf .haxelib
           haxelib run hmm install
+
+      - name: Prepare hxcpp
+        run: |
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          if [ ! -d "$HXCPP_PATH" ]; then
+            echo "hxcpp source directory was not found."
+            exit 1
+          fi
+
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
 
       - name: Build hxcpp
         run: |
@@ -360,6 +399,18 @@ jobs:
         run: |
           rm -rf .haxelib
           haxelib run hmm install
+
+      - name: Prepare hxcpp
+        run: |
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          if [ ! -d "$HXCPP_PATH" ]; then
+            echo "hxcpp source directory was not found."
+            exit 1
+          fi
+
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
 
       - name: Build hxcpp
         run: |
