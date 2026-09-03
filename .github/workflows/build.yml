@@ -32,7 +32,10 @@ jobs:
 
       - name: Install dependencies
         run: |
+          set -e
+
           sudo apt-get update
+
           sudo apt-get install -y \
             build-essential \
             pkg-config \
@@ -89,14 +92,13 @@ jobs:
       - name: Prepare hxcpp
         run: |
           set -e
+
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
-            echo "hxcpp compile.hxml was not found"
-            exit 1
-          fi
+          test -f "$HXCPP_PATH/tools/hxcpp/compile.hxml"
 
           cd "$HXCPP_PATH/tools/hxcpp"
+
           haxe compile.hxml
 
       - name: Rebuild Lime
@@ -105,8 +107,6 @@ jobs:
           haxelib run lime rebuild cpp
 
       - name: Build Linux
-        env:
-          HAXEFLAGS: "-D GITHUB_BUILD"
         run: |
           set -e
           haxelib run lime build linux -release -64 -DGITHUB_BUILD
@@ -114,16 +114,22 @@ jobs:
       - name: Package Linux
         run: |
           set -e
-          mkdir -p artifacts/linux
-          find export -type f -exec cp --parents {} artifacts/linux/ \; || true
-          cd artifacts
-          zip -r ../Funkin-Moon-Linux.zip linux
+
+          mkdir -p artifacts
+
+          if [ ! -d "export" ]; then
+            echo "Linux export directory was not generated"
+            exit 1
+          fi
+
+          cd export
+          zip -r ../artifacts/Funkin-Moon-Linux.zip .
 
       - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
           name: Funkin-Moon-Linux
-          path: Funkin-Moon-Linux.zip
+          path: artifacts/Funkin-Moon-Linux.zip
 
 
   windows:
@@ -145,6 +151,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           haxe --version
           haxelib version
 
@@ -152,12 +159,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           haxelib install hmm --quiet
 
       - name: Reset Haxelib
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           if (Test-Path ".haxelib") {
             Remove-Item ".haxelib" -Recurse -Force
           }
@@ -172,22 +181,25 @@ jobs:
           $hxcpp = ".haxelib/hxcpp/git/tools/hxcpp"
 
           if (!(Test-Path "$hxcpp/compile.hxml")) {
-            Write-Error "hxcpp compile.hxml was not found"
+            throw "hxcpp compile.hxml was not found"
           }
 
           Set-Location $hxcpp
+
           haxe compile.hxml
 
       - name: Rebuild Lime
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           haxelib run lime rebuild cpp
 
       - name: Build Windows
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           haxelib run lime build windows -release -64 -DGITHUB_BUILD
 
       - name: Package Windows
@@ -197,11 +209,14 @@ jobs:
 
           New-Item -ItemType Directory -Force artifacts | Out-Null
 
-          if (Test-Path "export") {
-            Compress-Archive -Path "export\*" -DestinationPath "artifacts\Funkin-Moon-Windows.zip" -Force
-          } else {
-            Write-Error "Windows export directory was not generated"
+          if (!(Test-Path "export")) {
+            throw "Windows export directory was not generated"
           }
+
+          Compress-Archive \
+            -Path "export\*" \
+            -DestinationPath "artifacts\Funkin-Moon-Windows.zip" \
+            -Force
 
       - name: Upload Windows
         uses: actions/upload-artifact@v4
@@ -213,12 +228,6 @@ jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
-
-    env:
-      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17/x64
-      ANDROID_PLATFORM: android-35
-      ANDROID_BUILD_TOOLS: 35.0.0
-      ANDROID_NDK_VERSION: 27.2.12479018
 
     steps:
       - name: Checkout
@@ -235,11 +244,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
           set -e
 
-          yes | sdkmanager --licenses >/dev/null || true
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
           sdkmanager \
             "platform-tools" \
@@ -247,97 +256,82 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
-      - name: Configure Android environment
+      - name: Configure Android toolchain
         run: |
           set -e
 
           SDK="${ANDROID_SDK_ROOT}"
           NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
-          LLVM="${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          HOST="linux-x86_64"
+          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/${HOST}"
+          BIN="${TOOLCHAIN}/bin"
+          SYSROOT="${TOOLCHAIN}/sysroot"
 
-          if [ ! -d "$SDK" ]; then
-            echo "Android SDK does not exist: $SDK"
-            exit 1
-          fi
+          test -d "$SDK"
+          test -d "$NDK"
+          test -d "$TOOLCHAIN"
+          test -d "$BIN"
+          test -d "$SYSROOT"
 
-          if [ ! -d "$NDK" ]; then
-            echo "Android NDK does not exist: $NDK"
-            exit 1
-          fi
-
-          if [ ! -f "$NDK/source.properties" ]; then
-            echo "Invalid Android NDK installation"
-            exit 1
-          fi
-
-          if [ ! -d "$LLVM" ]; then
-            echo "LLVM directory does not exist: $LLVM"
-            exit 1
-          fi
+          test -f "$NDK/source.properties"
+          test -f "$SYSROOT/usr/include/stdlib.h"
 
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
+          echo "ANDROID_SYSROOT=$SYSROOT" >> "$GITHUB_ENV"
 
-          echo "$LLVM" >> "$GITHUB_PATH"
+          echo "$BIN" >> "$GITHUB_PATH"
 
-      - name: Create Android compiler compatibility aliases
+          echo "SDK=$SDK"
+          echo "NDK=$NDK"
+          echo "TOOLCHAIN=$TOOLCHAIN"
+          echo "SYSROOT=$SYSROOT"
+
+      - name: Validate Android headers
         run: |
           set -e
 
-          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -f "$ANDROID_SYSROOT/usr/include/stdlib.h"
+          test -f "$ANDROID_SYSROOT/usr/include/stdint.h"
+          test -f "$ANDROID_SYSROOT/usr/include/stddef.h"
 
-          if [ ! -f "$LLVM/aarch64-linux-android35-clang" ]; then
-            echo "ARM64 clang compiler not found"
-            exit 1
-          fi
+          echo "Android C headers:"
+          printf '%s\n' \
+            "$ANDROID_SYSROOT/usr/include/stdlib.h" \
+            "$ANDROID_SYSROOT/usr/include/stdint.h" \
+            "$ANDROID_SYSROOT/usr/include/stddef.h"
 
-          if [ ! -f "$LLVM/aarch64-linux-android35-clang++" ]; then
-            echo "ARM64 clang++ compiler not found"
-            exit 1
-          fi
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang" \
-            "$LLVM/aarch64-linux-android-gcc"
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang++" \
-            "$LLVM/aarch64-linux-android-g++"
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang" \
-            "$LLVM/aarch64-linux-android-gcc-35"
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang++" \
-            "$LLVM/aarch64-linux-android-g++-35"
-
-          echo "Android compiler aliases created"
-
-      - name: Verify Android toolchain
+      - name: Create compiler compatibility layer
         run: |
           set -e
 
-          echo "ANDROID_SDK=$ANDROID_SDK"
-          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+          BIN="$ANDROID_TOOLCHAIN/bin"
 
-          command -v aarch64-linux-android35-clang
-          command -v aarch64-linux-android35-clang++
+          CLANG="$BIN/aarch64-linux-android35-clang"
+          CLANGXX="$BIN/aarch64-linux-android35-clang++"
+
+          test -x "$CLANG"
+          test -x "$CLANGXX"
+
+          ln -sf "$CLANG" "$BIN/aarch64-linux-android-gcc"
+          ln -sf "$CLANGXX" "$BIN/aarch64-linux-android-g++"
+
+          ln -sf "$CLANG" "$BIN/aarch64-linux-android-gcc-35"
+          ln -sf "$CLANGXX" "$BIN/aarch64-linux-android-g++-35"
 
           command -v aarch64-linux-android-gcc
           command -v aarch64-linux-android-g++
 
-          aarch64-linux-android35-clang --version
-          aarch64-linux-android35-clang++ --version
-          aarch64-linux-android-gcc --version
           aarch64-linux-android-g++ --version
 
-      - name: Install Linux dependencies
+      - name: Install native dependencies
         run: |
+          set -e
+
           sudo apt-get update
 
           sudo apt-get install -y \
@@ -378,6 +372,7 @@ jobs:
       - name: Verify Haxe
         run: |
           set -e
+
           haxe --version
           haxelib version
           neko -version
@@ -385,13 +380,28 @@ jobs:
       - name: Install HMM
         run: |
           set -e
+
           haxelib install hmm --quiet
 
       - name: Reset Haxelib
         run: |
           set -e
+
           rm -rf .haxelib
+
           haxelib run hmm install
+
+      - name: Validate hxcpp
+        run: |
+          set -e
+
+          HXCPP_PATH=".haxelib/hxcpp/git"
+
+          test -d "$HXCPP_PATH"
+          test -f "$HXCPP_PATH/tools/hxcpp/compile.hxml"
+
+          echo "hxcpp path:"
+          realpath "$HXCPP_PATH"
 
       - name: Prepare hxcpp
         run: |
@@ -399,17 +409,30 @@ jobs:
 
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
-            echo "hxcpp compile.hxml was not found"
-            exit 1
-          fi
-
           cd "$HXCPP_PATH/tools/hxcpp"
+
           haxe compile.hxml
+
+      - name: Clean old Android native configuration
+        run: |
+          set -e
+
+          rm -rf "$HOME/.lime"
+          rm -rf "$HOME/.haxelib/lime"
+
+          find .haxelib/lime -type f \
+            \( -name "*.xml" -o -name "*.hxml" -o -name "*.hx" -o -name "*.hxcpp" \) \
+            -print 2>/dev/null \
+            | while IFS= read -r file; do
+                if grep -q "gnu-libstdc++\|prebuilt/platforms/android-28/arch-arm64" "$file" 2>/dev/null; then
+                  echo "Legacy Android configuration found in $file"
+                fi
+              done || true
 
       - name: Rebuild Lime C++
         env:
           CXXFLAGS: "-O3 -std=c++20"
+          CFLAGS: "-O3"
         run: |
           set -e
 
@@ -425,52 +448,39 @@ jobs:
         run: |
           set -e
 
-          SDK="$ANDROID_SDK_ROOT"
-          NDK="$ANDROID_NDK_DIR"
-
           printf "n\n%s\n%s\n%s\n" \
-            "$SDK" \
-            "$NDK" \
+            "$ANDROID_SDK" \
+            "$ANDROID_NDK_DIR" \
             "$JAVA_HOME" \
             | haxelib run lime setup android || true
 
-      - name: Re-export Android environment
+      - name: Force Android environment
         run: |
           set -e
 
-          SDK="${ANDROID_SDK_ROOT}"
-          NDK="${SDK}/ndk/${ANDROID_NDK_VERSION}"
-          LLVM="${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_DIR="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 
-          if [ ! -d "$NDK" ]; then
-            echo "NDK disappeared after Lime setup"
-            exit 1
-          fi
+          echo "ANDROID_SDK=$ANDROID_SDK"
+          echo "ANDROID_NDK_DIR=$ANDROID_NDK_DIR"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
 
-          if [ ! -d "$LLVM" ]; then
-            echo "LLVM directory disappeared after Lime setup"
-            exit 1
-          fi
+          test -d "$ANDROID_NDK_DIR"
+          test -f "$ANDROID_NDK_DIR/source.properties"
 
-          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_DIR=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          test -d "$ANDROID_TOOLCHAIN"
+          test -d "$ANDROID_SYSROOT"
 
-          echo "$LLVM" >> "$GITHUB_PATH"
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang" \
-            "$LLVM/aarch64-linux-android-gcc"
-
-          ln -sf \
-            "$LLVM/aarch64-linux-android35-clang++" \
-            "$LLVM/aarch64-linux-android-g++"
+          test -f "$ANDROID_SYSROOT/usr/include/stdlib.h"
 
       - name: Rebuild Lime Android
         env:
           CXXFLAGS: "-O3 -std=c++20"
+          CFLAGS: "-O3"
+          ANDROID_STL: "c++_static"
         run: |
           set -e
 
@@ -480,23 +490,43 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 
-          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export PATH="$LLVM:$PATH"
+          export PATH="$ANDROID_TOOLCHAIN/bin:$PATH"
 
-          test -d "$ANDROID_NDK_DIR"
-          test -f "$ANDROID_NDK_DIR/source.properties"
-          test -x "$LLVM/aarch64-linux-android35-clang"
-          test -x "$LLVM/aarch64-linux-android35-clang++"
-          test -x "$LLVM/aarch64-linux-android-gcc"
-          test -x "$LLVM/aarch64-linux-android-g++"
+          export CXX="aarch64-linux-android35-clang++"
+          export CC="aarch64-linux-android35-clang"
 
-          aarch64-linux-android-g++ --version
+          export CXXFLAGS="-O3 -std=c++20 --sysroot=$ANDROID_SYSROOT"
+          export CFLAGS="-O3 --sysroot=$ANDROID_SYSROOT"
+
+          aarch64-linux-android35-clang \
+            --sysroot="$ANDROID_SYSROOT" \
+            -E -x c /dev/null \
+            -o /dev/null
 
           haxelib run lime rebuild android
+
+      - name: Verify generated Android flags
+        run: |
+          set -e
+
+          if grep -R \
+            "prebuilt/platforms/android-28/arch-arm64\|gnu-libstdc++" \
+            .haxelib/lime \
+            .haxelib/hxcpp \
+            2>/dev/null; then
+
+            echo "Legacy Android STL/sysroot configuration detected"
+
+            exit 1
+          fi
+
+          echo "No legacy GNU STL configuration detected"
 
       - name: Build Android
         env:
           CXXFLAGS: "-O3 -std=c++20"
+          CFLAGS: "-O3"
+          ANDROID_STL: "c++_static"
         run: |
           set -e
 
@@ -506,30 +536,46 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 
-          LLVM="$ANDROID_NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export PATH="$LLVM:$PATH"
+          export PATH="$ANDROID_TOOLCHAIN/bin:$PATH"
 
-          haxelib run lime build android -release -DGITHUB_BUILD
+          export CXX="aarch64-linux-android35-clang++"
+          export CC="aarch64-linux-android35-clang"
 
-      - name: Locate APK
+          export CXXFLAGS="-O3 -std=c++20 --sysroot=$ANDROID_SYSROOT"
+          export CFLAGS="-O3 --sysroot=$ANDROID_SYSROOT"
+
+          haxelib run lime build android \
+            -release \
+            -DGITHUB_BUILD
+
+      - name: Find APK
         run: |
           set -e
 
           mkdir -p artifacts
 
-          APK="$(find export -type f -name "*.apk" -print -quit 2>/dev/null || true)"
+          APK=""
+
+          while IFS= read -r file; do
+            if [ -n "$file" ]; then
+              APK="$file"
+              break
+            fi
+          done < <(find export . -type f -name "*.apk" -print 2>/dev/null)
 
           if [ -z "$APK" ]; then
-            APK="$(find . -type f -name "*.apk" -print -quit 2>/dev/null || true)"
-          fi
+            echo "APK was not generated"
 
-          if [ -z "$APK" ]; then
-            echo "No APK was generated"
-            find export -maxdepth 5 -type f 2>/dev/null || true
+            find export \
+              -maxdepth 6 \
+              -type f \
+              -print 2>/dev/null || true
+
             exit 1
           fi
 
-          echo "APK: $APK"
+          echo "APK=$APK"
+
           cp "$APK" artifacts/Funkin-Moon.apk
 
       - name: Upload Android
@@ -557,6 +603,7 @@ jobs:
       - name: Verify environment
         run: |
           set -e
+
           haxe --version
           haxelib version
           xcodebuild -version
@@ -569,7 +616,9 @@ jobs:
       - name: Reset Haxelib
         run: |
           set -e
+
           rm -rf .haxelib
+
           haxelib run hmm install
 
       - name: Prepare hxcpp
@@ -578,28 +627,31 @@ jobs:
 
           HXCPP_PATH=".haxelib/hxcpp/git"
 
-          if [ ! -f "$HXCPP_PATH/tools/hxcpp/compile.hxml" ]; then
-            echo "hxcpp compile.hxml was not found"
-            exit 1
-          fi
+          test -f "$HXCPP_PATH/tools/hxcpp/compile.hxml"
 
           cd "$HXCPP_PATH/tools/hxcpp"
+
           haxe compile.hxml
 
       - name: Rebuild Lime
         run: |
           set -e
+
           haxelib run lime rebuild cpp
 
-      - name: Configure Lime iOS
+      - name: Setup iOS
         run: |
           set -e
+
           haxelib run lime setup ios || true
 
       - name: Build iOS
         run: |
           set -e
-          haxelib run lime build ios -release -DGITHUB_BUILD
+
+          haxelib run lime build ios \
+            -release \
+            -DGITHUB_BUILD
 
       - name: Package iOS
         run: |
@@ -607,19 +659,37 @@ jobs:
 
           mkdir -p artifacts
 
-          APP="$(find export -type d -name "*.app" -print -quit 2>/dev/null || true)"
-          IPA="$(find export -type f -name "*.ipa" -print -quit 2>/dev/null || true)"
+          IPA=""
+
+          while IFS= read -r file; do
+            if [ -n "$file" ]; then
+              IPA="$file"
+              break
+            fi
+          done < <(find export . -type f -name "*.ipa" -print 2>/dev/null)
 
           if [ -n "$IPA" ]; then
             cp "$IPA" artifacts/Funkin-Moon-iOS.ipa
-          elif [ -n "$APP" ]; then
-            cd "$(dirname "$APP")"
-            zip -r "$OLDPWD/artifacts/Funkin-Moon-iOS.app.zip" "$(basename "$APP")"
           else
-            echo "No iOS application was generated"
-            find export -maxdepth 6 -type f 2>/dev/null || true
-            find export -maxdepth 6 -type d -name "*.app" 2>/dev/null || true
-            exit 1
+            APP=""
+
+            while IFS= read -r file; do
+              if [ -n "$file" ]; then
+                APP="$file"
+                break
+              fi
+            done < <(find export . -type d -name "*.app" -print 2>/dev/null)
+
+            if [ -z "$APP" ]; then
+              echo "No iOS application was generated"
+              exit 1
+            fi
+
+            cd "$(dirname "$APP")"
+
+            zip -r \
+              "$OLDPWD/artifacts/Funkin-Moon-iOS.app.zip" \
+              "$(basename "$APP")"
           fi
 
       - name: Upload iOS
