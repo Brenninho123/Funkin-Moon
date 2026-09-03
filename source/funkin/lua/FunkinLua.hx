@@ -91,7 +91,6 @@ class FunkinLua
     Lua.register(lua, 'getSongId', cpp.Function.fromStaticFunction(cb_getSongId));
     Lua.register(lua, 'getDifficultyId', cpp.Function.fromStaticFunction(cb_getDifficultyId));
     Lua.register(lua, 'getVariationId', cpp.Function.fromStaticFunction(cb_getVariationId));
-    Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
     Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
     Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
     Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
@@ -545,16 +544,6 @@ class FunkinLua
     Lua.pop(l, Lua.gettop(l));
     Lua.pushstring(l, PlayState.instance?.currentVariation ?? '');
     return 1;
-  }
-
-  static function cb_setHealth(l:LuaState):Int
-  {
-    final n:Int = Lua.gettop(l);
-    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
-    Lua.pop(l, n);
-
-    if (PlayState.instance != null) PlayState.instance.health = value;
-    return 0;
   }
 
   static function cb_setScore(l:LuaState):Int
