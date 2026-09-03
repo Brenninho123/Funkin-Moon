@@ -318,6 +318,70 @@ class Save implements ConsoleClass
     Save.system.flush();
   }
 
+  public function validateAndRepair():Bool
+  {
+    var repaired:Bool = false;
+
+    if (data.scores == null)
+    {
+      data.scores = {songs: [], levels: []};
+      repaired = true;
+    }
+    else
+    {
+      if (data.scores.songs == null)
+      {
+        data.scores.songs = [];
+        repaired = true;
+      }
+      if (data.scores.levels == null)
+      {
+        data.scores.levels = [];
+        repaired = true;
+      }
+    }
+
+    if (data.favoriteSongs == null)
+    {
+      data.favoriteSongs = [];
+      repaired = true;
+    }
+
+    if (data.unlocks == null)
+    {
+      data.unlocks = {charactersSeen: ["bf"], oldChar: false};
+      repaired = true;
+    }
+    else if (data.unlocks.charactersSeen == null)
+    {
+      data.unlocks.charactersSeen = ["bf"];
+      repaired = true;
+    }
+
+    if (data.mods == null)
+    {
+      data.mods = {enabledMods: [], modOptions: []};
+      repaired = true;
+    }
+    else
+    {
+      if (data.mods.enabledMods == null)
+      {
+        data.mods.enabledMods = [];
+        repaired = true;
+      }
+      if (data.mods.modOptions == null)
+      {
+        data.mods.modOptions = [];
+        repaired = true;
+      }
+    }
+
+    if (repaired) Save.system.flush();
+
+    return repaired;
+  }
+
   public function addCharacterSeen(character:String):Void
   {
     if (!data.unlocks.charactersSeen.contains(character))
@@ -451,6 +515,82 @@ class Save implements ConsoleClass
       }
     }
     return count;
+  }
+
+  public function getFullComboSongCount():Int
+  {
+    var count:Int = 0;
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score > 0 && score.tallies.missed == 0) count++;
+      }
+    }
+    return count;
+  }
+
+  public function getPerfectSongCount():Int
+  {
+    var count:Int = 0;
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score > 0 && score.tallies.missed == 0 && score.tallies.bad == 0 && score.tallies.shit == 0) count++;
+      }
+    }
+    return count;
+  }
+
+  public function getAverageScorePerSong():Float
+  {
+    var total:Int = 0;
+    var count:Int = 0;
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score <= 0) continue;
+        total += score.score;
+        count++;
+      }
+    }
+    return count == 0 ? 0.0 : total / count;
+  }
+
+  public function getCompletionPercentage(totalSongCount:Int):Float
+  {
+    if (totalSongCount <= 0) return 0.0;
+    return getSongsCompletedCount() / totalSongCount;
+  }
+
+  public function getHighestScoringSong():Null<
+    {
+      songId:String,
+      difficultyId:String,
+      score:SaveScoreData
+    }>
+  {
+    var best:Null<
+      {
+        songId:String,
+        difficultyId:String,
+        score:SaveScoreData
+      }> = null;
+
+    for (songId => song in data.scores.songs)
+    {
+      for (difficultyId => score in song)
+      {
+        if (best == null || score.score > best.score.score)
+        {
+          best = {songId: songId, difficultyId: difficultyId, score: score};
+        }
+      }
+    }
+
+    return best;
   }
 
   public function setSongScore(songId:String, difficultyId:String, score:SaveScoreData):Void
@@ -750,6 +890,40 @@ class Save implements ConsoleClass
       if (querySlot(i)) return i;
     }
     return -1;
+  }
+
+  public static function listUsedSlots(maxSlot:Int = 20):Array<Int>
+  {
+    var result:Array<Int> = [];
+    for (i in 0...maxSlot)
+    {
+      if (querySlot(i)) result.push(i);
+    }
+    return result;
+  }
+
+  public static function switchToSlot(slot:Int):Save
+  {
+    _instance = loadFromSlot(slot);
+    return _instance;
+  }
+
+  public static function duplicateSlot(fromSlot:Int, toSlot:Int):Bool
+  {
+    var raw:Null<Dynamic> = fetchFromSlotRaw(fromSlot);
+    if (raw == null) return false;
+
+    var targetSave:FlxSave = new FlxSave();
+    targetSave.bind(Constants.SAVE_NAME + toSlot, Constants.SAVE_PATH);
+    targetSave.mergeData(raw, true);
+    return true;
+  }
+
+  public static function deleteSlot(slot:Int):Void
+  {
+    var targetSave:FlxSave = new FlxSave();
+    targetSave.bind(Constants.SAVE_NAME + slot, Constants.SAVE_PATH);
+    targetSave.erase();
   }
 
   public function serializeJson(pretty:Bool = true):String
