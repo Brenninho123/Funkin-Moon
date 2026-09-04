@@ -97,6 +97,14 @@ class FunkinLua
     Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
     Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
     Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
+    Lua.register(lua, 'runLater', cpp.Function.fromStaticFunction(cb_runLater));
+    Lua.register(lua, 'getQualityTier', cpp.Function.fromStaticFunction(cb_getQualityTier));
+    Lua.register(lua, 'forceQualityTier', cpp.Function.fromStaticFunction(cb_forceQualityTier));
+    Lua.register(lua, 'resetQualityAuto', cpp.Function.fromStaticFunction(cb_resetQualityAuto));
+    Lua.register(lua, 'setCameraMovementEnabled', cpp.Function.fromStaticFunction(cb_setCameraMovementEnabled));
+    Lua.register(lua, 'getFullComboCount', cpp.Function.fromStaticFunction(cb_getFullComboCount));
+    Lua.register(lua, 'getPerfectSongCount', cpp.Function.fromStaticFunction(cb_getPerfectSongCount));
+    Lua.register(lua, 'getAverageScorePerSong', cpp.Function.fromStaticFunction(cb_getAverageScorePerSong));
     // TODO: 'vibrate' disabled until the correct package path for HapticUtil is confirmed.
     // Lua.register(lua, 'vibrate', cpp.Function.fromStaticFunction(cb_vibrate));
     #if FEATURE_ONLINE
@@ -611,6 +619,93 @@ class FunkinLua
   //   return 0;
   // }
   // #end
+
+  static function cb_runLater(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var delay:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var funcName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    Lua.pop(l, n);
+
+    if (funcName == '' || lastCalledScript == null) return 0;
+
+    var script:FunkinLua = lastCalledScript;
+
+    new flixel.util.FlxTimer().start(delay, (_) ->
+    {
+      if (script.closed) return;
+      script.call(funcName, []);
+    });
+
+    return 0;
+  }
+
+  static function cb_getQualityTier(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushstring(l, funkin.lowend.FunkinLow.getTierName());
+    return 1;
+  }
+
+  static function cb_forceQualityTier(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var tierName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    Lua.pop(l, n);
+
+    var tier:Null<funkin.lowend.FunkinQualityTier> = switch (tierName.toLowerCase())
+    {
+      case 'ultra': Ultra;
+      case 'high': High;
+      case 'medium': Medium;
+      case 'low': Low;
+      case 'potato': Potato;
+      default: null;
+    }
+
+    if (tier != null) funkin.lowend.FunkinLow.forceTier(tier);
+    return 0;
+  }
+
+  static function cb_resetQualityAuto(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    funkin.lowend.FunkinLow.resetToAuto();
+    return 0;
+  }
+
+  static function cb_setCameraMovementEnabled(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+    var value:Bool = n >= 1 ? (Lua.toboolean(l, 1) == 1) : true;
+    Lua.pop(l, n);
+
+    @:privateAccess
+    if (PlayState.instance?.camMovement != null) PlayState.instance.camMovement.enabled = value;
+
+    return 0;
+  }
+
+  static function cb_getFullComboCount(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, funkin.save.Save.instance.getFullComboSongCount());
+    return 1;
+  }
+
+  static function cb_getPerfectSongCount(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, funkin.save.Save.instance.getPerfectSongCount());
+    return 1;
+  }
+
+  static function cb_getAverageScorePerSong(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+    Lua.pushnumber(l, funkin.save.Save.instance.getAverageScorePerSong());
+    return 1;
+  }
 
   static function cb_triggerEvent(l:LuaState):Int
   {
