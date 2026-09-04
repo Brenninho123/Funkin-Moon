@@ -155,6 +155,21 @@ class Preferences
     return value;
   }
 
+  public static var storageType(get, set):String;
+
+  static function get_storageType():String
+  {
+    return Save?.instance?.options?.storageType ?? 'data';
+  }
+
+  static function set_storageType(value:String):String
+  {
+    var save:Save = Save.instance;
+    save.options.storageType = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var zoomCamera(get, set):Bool;
 
   static function get_zoomCamera():Bool
