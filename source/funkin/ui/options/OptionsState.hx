@@ -194,7 +194,7 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     });
     #end
     #if android
-    if (Preferences.storageType == 'data')
+    if (funkin.Preferences.storageType == 'data')
     {
       createItem('OPEN DATA FOLDER', function()
       {
