@@ -1051,10 +1051,13 @@ class Project extends HXProject
 
     if (isAndroid())
     {
-      adaptiveIcon = new AdaptiveIcon('art/icons/android/', true);
+      var adaptiveIconPath:String = 'docs/icons/android-moon/';
+      validateIconPath(adaptiveIconPath, 'Android adaptive icon');
+      adaptiveIcon = new AdaptiveIcon(adaptiveIconPath, true);
     }
     else if (isIOS())
     {
+      validateIconPath(ICON_MOBILE, 'iOS icon');
       addIcon(ICON_MOBILE, 40);
       addIcon(ICON_MOBILE, 60);
       addIcon(ICON_MOBILE, 29);
@@ -1068,6 +1071,7 @@ class Project extends HXProject
     }
     else
     {
+      validateIconPath(ICON_DESKTOP, 'Desktop icon');
       addIcon(ICON_DESKTOP, 16);
       addIcon(ICON_DESKTOP, 32);
       addIcon(ICON_DESKTOP, 64);
@@ -1075,6 +1079,14 @@ class Project extends HXProject
     }
 
     info('Done configuring icons.');
+  }
+
+  function validateIconPath(path:String, label:String):Void
+  {
+    if (!sys.FileSystem.exists(path))
+    {
+      info('  ! WARNING: $label path "$path" was not found. The build will likely fall back to a default/blank icon.');
+    }
   }
 
   function configureASTCTextures()
