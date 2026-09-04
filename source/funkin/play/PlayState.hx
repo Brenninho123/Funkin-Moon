@@ -1806,6 +1806,28 @@ class PlayState extends MusicBeatSubState
   }
   #end
 
+  function checkPsychOrigin():Void
+  {
+    #if sys
+    var songId:String = currentSong?.id ?? '';
+    if (songId == '') return;
+
+    for (dirName => report in funkin.modding.PolymodHandler.conversionReports)
+    {
+      if (!report.songsConverted.contains(songId)) continue;
+
+      FlxG.log.add('[PlayState] Song "$songId" was auto-converted from a Psych Engine mod ("$dirName") by FunkinConverter.');
+
+      if (report.errors.length > 0)
+      {
+        FlxG.log.warn('[PlayState] That conversion reported ${report.errors.length} issue(s) — check PolymodHandler.conversionReports["$dirName"] for details.');
+      }
+
+      break;
+    }
+    #end
+  }
+
   function initLuaScripts():Void
   {
     #if FEATURE_LUA_SCRIPTS
@@ -2064,6 +2086,8 @@ class PlayState extends MusicBeatSubState
   function startSong():Void
   {
     startingSong = false;
+
+    checkPsychOrigin();
 
     #if FEATURE_ONLINE
     funkin.online.FunkinUser.instance.setActivity('Playing: ${currentSong?.id ?? "Unknown"} [${currentDifficulty}]');
