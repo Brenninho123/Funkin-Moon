@@ -194,10 +194,13 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     });
     #end
     #if android
-    createItem('OPEN DATA FOLDER', function()
+    if (Preferences.storageType == 'data')
     {
-      funkin.external.android.DataFolderUtil.openDataFolder();
-    });
+      createItem('OPEN DATA FOLDER', function()
+      {
+        funkin.external.android.ExternalFolderUtil.openFolder();
+      });
+    }
     #end
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
