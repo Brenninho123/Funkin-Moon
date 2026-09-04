@@ -33,6 +33,11 @@ class FunkinCameraMovement
   static final SETTLE_THRESHOLD:Float = 0.05;
   static final MAX_STEP_SECONDS:Float = 1.0 / 30.0;
 
+  function isCameraValid():Bool
+  {
+    return camera != null && camera.scroll != null;
+  }
+
   public function new(camera:FlxCamera, movementDistance:Float = 20.0)
   {
     this.camera = camera;
@@ -62,7 +67,7 @@ class FunkinCameraMovement
 
   public function update(elapsed:Float):Void
   {
-    if (camera == null) return;
+    if (!isCameraValid()) return;
 
     camera.scroll.x -= appliedOffsetX;
     camera.scroll.y -= appliedOffsetY;
@@ -112,7 +117,7 @@ class FunkinCameraMovement
 
   public function reset():Void
   {
-    if (camera != null)
+    if (isCameraValid())
     {
       camera.scroll.x -= appliedOffsetX;
       camera.scroll.y -= appliedOffsetY;
