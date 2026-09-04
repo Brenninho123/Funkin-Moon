@@ -6,6 +6,7 @@ import flixel.FlxSubState;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
+import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.audio.FunkinSound;
 import flixel.util.FlxSort;
 import funkin.modding.PolymodHandler;
@@ -34,6 +35,10 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   public var leftWatermarkText:Null<FlxText> = null;
   public var rightWatermarkText:Null<FlxText> = null;
   public var conductorInUse(get, set):Conductor;
+
+  public var moduleErrorCount(default, null):Int = 0;
+
+  public var onModuleError:FlxTypedSignal<Dynamic->Void> = new FlxTypedSignal<Dynamic->Void>();
 
   var _conductorInUse:Null<Conductor>;
 
@@ -87,12 +92,7 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
       ?colorsOverride:Array<FlxColor>):Void
   {
-    if (hitbox != null)
-    {
-      hitbox.kill();
-      remove(hitbox);
-      hitbox.destroy();
-    }
+    removeHitbox();
 
     var cam:FunkinCamera = ensureControlsCamera();
 
@@ -104,10 +104,20 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     if (initInput) PreciseInputHandler.initializeHitbox(hitbox);
   }
 
+  public function removeHitbox():Void
+  {
+    if (hitbox == null) return;
+
+    hitbox.kill();
+    remove(hitbox);
+    hitbox.destroy();
+    hitbox = null;
+  }
+
   public function addBackButton(?xPos:Float = 0, ?yPos:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void = null,
       ?restOpacity:Float = 0.3, ?instant:Bool = false):Void
   {
-    if (backButton != null) remove(backButton);
+    removeBackButton();
 
     var cam:FunkinCamera = ensureControlsCamera();
 
@@ -116,15 +126,31 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     add(backButton);
   }
 
+  public function removeBackButton():Void
+  {
+    if (backButton == null) return;
+
+    remove(backButton);
+    backButton = null;
+  }
+
   public function addOptionsButton(?xPos:Float = 0, ?yPos:Float = 0, ?confirmCallback:Void->Void = null, ?instant:Bool = false):Void
   {
-    if (optionsButton != null) remove(optionsButton);
+    removeOptionsButton();
 
     var cam:FunkinCamera = ensureControlsCamera();
 
     optionsButton = new FunkinOptionsButton(xPos, yPos, confirmCallback, instant);
     optionsButton.cameras = [cam];
     add(optionsButton);
+  }
+
+  public function removeOptionsButton():Void
+  {
+    if (optionsButton == null) return;
+
+    remove(optionsButton);
+    optionsButton = null;
   }
   #end
 
@@ -205,7 +231,16 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
 
   public function dispatchEvent(event:ScriptEvent)
   {
-    ModuleHandler.callEvent(event);
+    try
+    {
+      ModuleHandler.callEvent(event);
+    }
+    catch (e:Dynamic)
+    {
+      moduleErrorCount++;
+      FlxG.log.error('[MusicBeatState] A module/script threw an error handling "${event.type}": $e');
+      onModuleError.dispatch(e);
+    }
   }
 
   function reloadAssets()
