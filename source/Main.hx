@@ -389,7 +389,7 @@ class Main extends Sprite
 
     var notchOffset:Float = Math.max(FullScreenScaleMode.notchSize.x, 10);
 
-    var targetX:Float = FlxG.game.x + notchOffset;
+    var targetX:Float = FlxG.game.x + notchOffset + Preferences.debugDisplayOffsetX;
     var targetY:Float = FlxG.game.y + (3 * scale);
 
     if (lerp)
