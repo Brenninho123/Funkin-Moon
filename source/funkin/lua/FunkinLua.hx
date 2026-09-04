@@ -653,7 +653,7 @@ class FunkinLua
     var tierName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
     Lua.pop(l, n);
 
-    var tier:Null<funkin.lowend.FunkinQualityTier> = switch (tierName.toLowerCase())
+    var tier:Null<funkin.lowend.FunkinLow.FunkinQualityTier> = switch (tierName.toLowerCase())
     {
       case 'ultra': Ultra;
       case 'high': High;
