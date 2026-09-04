@@ -81,9 +81,19 @@ class FunkinConverter
 
       var difficulties:Array<String> = [];
       var baseSong:Null<PsychSongMeta> = null;
+      var scriptsCopied:Int = 0;
 
       for (file in sys.FileSystem.readDirectory(songDir))
       {
+        if (StringTools.endsWith(file, '.lua'))
+        {
+          var scriptSrc:String = '$songDir/$file';
+          var scriptDest:String = '$outputRoot/songs/$entry/scripts/$file';
+          copySingleFile(scriptSrc, scriptDest, report);
+          scriptsCopied++;
+          continue;
+        }
+
         if (!StringTools.endsWith(file, '.json')) continue;
         if (file == 'dialogue.json') continue;
 
@@ -98,6 +108,11 @@ class FunkinConverter
 
         var chartJson:Dynamic = PsychSupport.toEngineChartJson(song);
         writeJsonFile('$outputRoot/data/$entry/$entry-$diffId-chart.json', chartJson, report);
+      }
+
+      if (scriptsCopied > 0)
+      {
+        FlxG.log.add('[FunkinConverter] Carried over $scriptsCopied Psych Lua script(s) for song "$entry". These use the Psych Lua API and may not run correctly against this engine\'s FunkinLua callbacks without adjustment.');
       }
 
       if (baseSong != null)
@@ -180,7 +195,7 @@ class FunkinConverter
 
   static function copyPassthroughAssets(modRoot:String, outputRoot:String, report:ConversionReport):Void
   {
-    var passthroughDirs:Array<String> = ['images', 'music', 'sounds', 'songs', 'videos', 'shaders'];
+    var passthroughDirs:Array<String> = ['images', 'music', 'sounds', 'songs', 'videos', 'shaders', 'scripts'];
 
     for (dirName in passthroughDirs)
     {
@@ -188,6 +203,22 @@ class FunkinConverter
       if (!sys.FileSystem.exists(src)) continue;
 
       copyDirectory(src, '$outputRoot/$dirName', report);
+    }
+  }
+
+  static function copySingleFile(src:String, dest:String, report:ConversionReport):Void
+  {
+    try
+    {
+      var lastSlash:Int = dest.lastIndexOf('/');
+      var dir:String = lastSlash >= 0 ? dest.substring(0, lastSlash) : '';
+      if (dir != '' && !sys.FileSystem.exists(dir)) createDirectoryRecursive(dir);
+
+      sys.io.File.copy(src, dest);
+    }
+    catch (e:Dynamic)
+    {
+      report.errors.push('Failed to copy script "$src" to "$dest": $e');
     }
   }
 
