@@ -271,6 +271,16 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       Preferences.enabledDiscordRPC = value;
     }, Preferences.enabledDiscordRPC);
     #end
+
+    #if mobile
+    createPrefItemEnum('Storage Type', 'Which folder the app uses for its files.', [
+      "Data" => "data",
+      "External" => "external"
+    ], (key:String, value:String) ->
+      {
+        Preferences.storageType = value;
+      }, Preferences.storageType);
+    #end
   }
 
   override function update(elapsed:Float):Void
