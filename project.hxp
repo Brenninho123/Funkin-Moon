@@ -205,6 +205,7 @@ class Project extends HXProject
     configureHaxelibs();
     configureASTCTextures();
     configureAssets();
+    configureBuildInfo();
 
     if (!isLinux())
     {
@@ -1045,20 +1046,81 @@ class Project extends HXProject
     sys.FileSystem.deleteDirectory(path);
   }
 
+  function configureBuildInfo():Void
+  {
+    info('Embedding build info...');
+
+    var buildInfo = {
+      commit: getGitShortHash(),
+      branch: getGitBranch(),
+      buildType: isDebug() ? 'debug' : 'release',
+      platform: targetPlatformName(),
+      builtAt: Date.now().toString()
+    };
+
+    var outputDir:String = 'assets/preload/data';
+    var outputPath:String = '$outputDir/build-info.json';
+
+    try
+    {
+      if (!sys.FileSystem.exists(outputDir)) sys.FileSystem.createDirectory(outputDir);
+      sys.io.File.saveContent(outputPath, haxe.Json.stringify(buildInfo, null, '  '));
+      info('  Build info written to $outputPath (commit ${buildInfo.commit}, ${buildInfo.buildType}, ${buildInfo.platform})');
+    }
+    catch (e:Dynamic)
+    {
+      info('  ! Failed to write build info: $e');
+    }
+  }
+
+  function getGitShortHash():String
+  {
+    try
+    {
+      var process = new sys.io.Process('git', ['rev-parse', '--short', 'HEAD']);
+      var output:String = StringTools.trim(process.stdout.readLine());
+      process.close();
+      return output == '' ? 'unknown' : output;
+    }
+    catch (e:Dynamic)
+    {
+      return 'unknown';
+    }
+  }
+
+  function getGitBranch():String
+  {
+    try
+    {
+      var process = new sys.io.Process('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+      var output:String = StringTools.trim(process.stdout.readLine());
+      process.close();
+      return output == '' ? 'unknown' : output;
+    }
+    catch (e:Dynamic)
+    {
+      return 'unknown';
+    }
+  }
+
+  function targetPlatformName():String
+  {
+    if (isAndroid()) return 'android';
+    if (isIOS()) return 'ios';
+    if (isWeb()) return 'web';
+    if (isMobile()) return 'mobile';
+    if (isLinux()) return 'linux';
+    return 'desktop';
+  }
+
   function configureIcons()
   {
     info('Configuring application icons...');
 
     if (isAndroid())
     {
-      requireIconPath(ICON_MOBILE, 'Android icon');
-      addIcon(ICON_MOBILE, 36);
-      addIcon(ICON_MOBILE, 48);
-      addIcon(ICON_MOBILE, 72);
-      addIcon(ICON_MOBILE, 96);
-      addIcon(ICON_MOBILE, 144);
-      addIcon(ICON_MOBILE, 192);
-      addIcon(ICON_MOBILE);
+      requireIconPath('art/icons/android/', 'Android adaptive icon');
+      adaptiveIcon = new AdaptiveIcon('art/icons/android/', true);
     }
     else if (isIOS())
     {
