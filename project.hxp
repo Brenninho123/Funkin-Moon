@@ -1088,21 +1088,6 @@ class Project extends HXProject
     }
   }
 
-  function getGitBranch():String
-  {
-    try
-    {
-      var process = new sys.io.Process('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
-      var output:String = StringTools.trim(process.stdout.readLine());
-      process.close();
-      return output == '' ? 'unknown' : output;
-    }
-    catch (e:Dynamic)
-    {
-      return 'unknown';
-    }
-  }
-
   function targetPlatformName():String
   {
     if (isAndroid()) return 'android';
