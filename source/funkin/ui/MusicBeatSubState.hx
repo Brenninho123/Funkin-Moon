@@ -5,6 +5,7 @@ import flixel.FlxSubState;
 import flixel.text.FlxText;
 import funkin.ui.mainmenu.MainMenuState;
 import flixel.util.FlxColor;
+import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.audio.FunkinSound;
 import funkin.modding.events.ScriptEvent;
 import funkin.modding.IScriptedClass.IEventHandler;
@@ -27,6 +28,10 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   public var leftWatermarkText:Null<FlxText> = null;
   public var rightWatermarkText:Null<FlxText> = null;
   public var conductorInUse(get, set):Conductor;
+
+  public var moduleErrorCount(default, null):Int = 0;
+
+  public var onModuleError:FlxTypedSignal<Dynamic->Void> = new FlxTypedSignal<Dynamic->Void>();
 
   var _conductorInUse:Null<Conductor>;
 
@@ -68,12 +73,7 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
       ?colorsOverride:Array<FlxColor>):Void
   {
-    if (hitbox != null)
-    {
-      hitbox.kill();
-      remove(hitbox);
-      hitbox.destroy();
-    }
+    removeHitbox();
 
     var cam:FunkinCamera = ensureControlsCamera();
 
@@ -85,16 +85,34 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
     if (initInput) PreciseInputHandler.initializeHitbox(hitbox);
   }
 
+  public function removeHitbox():Void
+  {
+    if (hitbox == null) return;
+
+    hitbox.kill();
+    remove(hitbox);
+    hitbox.destroy();
+    hitbox = null;
+  }
+
   public function addBackButton(?xPos:Float = 0, ?yPos:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void = null,
       ?restOpacity:Float = 0.3, ?instant:Bool = false):Void
   {
-    if (backButton != null) remove(backButton);
+    removeBackButton();
 
     var cam:FunkinCamera = ensureControlsCamera();
 
     backButton = new FunkinBackButton(xPos, yPos, color, confirmCallback, restOpacity, instant);
     backButton.cameras = [cam];
     add(backButton);
+  }
+
+  public function removeBackButton():Void
+  {
+    if (backButton == null) return;
+
+    remove(backButton);
+    backButton = null;
   }
   #end
 
@@ -146,8 +164,10 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
 
     if (FlxG.keys.justPressed.F4)
     {
+      this.close();
       FlxG.switchState(() -> new MainMenuState());
       WindowUtil.setWindowTitle('Friday Night Funkin\'');
+      return;
     }
 
     FlxG.watch.addQuick('musicTime', FlxG.sound.music?.time ?? 0.0);
@@ -214,7 +234,16 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
 
   public function dispatchEvent(event:ScriptEvent)
   {
-    ModuleHandler.callEvent(event);
+    try
+    {
+      ModuleHandler.callEvent(event);
+    }
+    catch (e:Dynamic)
+    {
+      moduleErrorCount++;
+      FlxG.log.error('[MusicBeatSubState] A module/script threw an error handling "${event.type}": $e');
+      onModuleError.dispatch(e);
+    }
   }
 
   function createWatermarkText():Void
