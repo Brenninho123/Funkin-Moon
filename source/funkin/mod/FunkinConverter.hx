@@ -1,10 +1,10 @@
 package funkin.mod;
 
 import funkin.mod.support.PsychSupport;
-import funkin.mod.support.PsychSongMeta;
-import funkin.mod.support.PsychCharacterData;
-import funkin.mod.support.PsychStageData;
-import funkin.mod.support.PsychWeekData;
+import funkin.mod.support.PsychSupport.PsychSongMeta;
+import funkin.mod.support.PsychSupport.PsychCharacterData;
+import funkin.mod.support.PsychSupport.PsychStageData;
+import funkin.mod.support.PsychSupport.PsychWeekData;
 
 enum abstract FunkinModFormat(String) from String to String
 {
