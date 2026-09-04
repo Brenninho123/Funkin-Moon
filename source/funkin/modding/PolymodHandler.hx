@@ -19,6 +19,9 @@ import funkin.data.character.CharacterData.CharacterDataParser;
 import funkin.save.Save;
 import funkin.util.FileUtil;
 import funkin.util.macro.ClassMacro;
+import funkin.mod.FunkinConverter;
+import funkin.mod.FunkinConverter.FunkinModFormat;
+import funkin.mod.FunkinConverter.ConversionReport;
 import polymod.backends.PolymodAssets.PolymodAssetType;
 import polymod.format.ParseRules.TextFileFormat;
 import polymod.Polymod;
@@ -48,6 +51,8 @@ class PolymodHandler
 
   public static final API_VERSION_RULE:String = '>=0.0.1 <=0.9.0';
 
+  static final CONVERTED_SUFFIX:String = '_psych_converted';
+
   static final MOD_FOLDER:String =
     #if (REDIRECT_ASSETS_FOLDER && mac)
     '../../../../../../../example_mods'
@@ -71,6 +76,10 @@ class PolymodHandler
   public static var loadedModIds:Array<String> = [];
 
   public static var modApiTiers:Map<String, ModApiTier> = new Map();
+
+  public static var modFormats:Map<String, FunkinModFormat> = new Map();
+
+  public static var conversionReports:Map<String, ConversionReport> = new Map();
 
   static var modFileSystem:Null<ZipFileSystem> = null;
 
@@ -111,11 +120,13 @@ class PolymodHandler
 
     refreshModCache();
 
+    var resolvedDirs:Array<String> = resolveModDirs(dirs);
+
     if (modFileSystem == null) modFileSystem = buildFileSystem();
 
     var loadedModList:Array<ModMetadata> = polymod.Polymod.init({
       modRoot: MOD_FOLDER,
-      dirs: dirs,
+      dirs: resolvedDirs,
       framework: OPENFL,
       apiVersionRule: API_VERSION_RULE,
       errorCallback: PolymodErrorHandler.onPolymodError,
@@ -153,6 +164,82 @@ class PolymodHandler
         }
       }
     }
+  }
+
+  #if sys
+  static function resolveModDirs(dirs:Array<String>):Array<String>
+  {
+    return [for (dir in dirs) resolveModDir(dir)];
+  }
+
+  static function resolveModDir(dirName:String):String
+  {
+    if (StringTools.endsWith(dirName, CONVERTED_SUFFIX)) return dirName;
+
+    var modPath:String = '$MOD_FOLDER/$dirName';
+    var format:FunkinModFormat = FunkinConverter.detectFormat(modPath);
+    modFormats.set(dirName, format);
+
+    if (format != Psych) return dirName;
+
+    var convertedDirName:String = '$dirName$CONVERTED_SUFFIX';
+    var convertedPath:String = '$MOD_FOLDER/$convertedDirName';
+
+    if (!sys.FileSystem.exists(convertedPath))
+    {
+      FlxG.log.add('[Polymod] Detected Psych Engine mod "$dirName", converting automatically...');
+
+      var report:ConversionReport = FunkinConverter.convertMod(modPath, convertedPath);
+      conversionReports.set(dirName, report);
+
+      FlxG.log.add('[Polymod] Converted "$dirName": ${report.songsConverted.length} songs, ${report.charactersConverted.length} characters, ${report.stagesConverted.length} stages, ${report.weeksConverted.length} weeks.');
+
+      for (error in report.errors)
+      {
+        FlxG.log.warn('[Polymod] Conversion issue for "$dirName": $error');
+      }
+    }
+
+    return convertedDirName;
+  }
+
+  public static function forceReconvertMod(dirName:String):Void
+  {
+    var convertedPath:String = '$MOD_FOLDER/$dirName$CONVERTED_SUFFIX';
+    if (sys.FileSystem.exists(convertedPath)) deleteDirectoryRecursive(convertedPath);
+    conversionReports.remove(dirName);
+  }
+
+  static function deleteDirectoryRecursive(path:String):Void
+  {
+    if (!sys.FileSystem.exists(path)) return;
+
+    for (entry in sys.FileSystem.readDirectory(path))
+    {
+      var full:String = '$path/$entry';
+      if (sys.FileSystem.isDirectory(full))
+      {
+        deleteDirectoryRecursive(full);
+      }
+      else
+      {
+        sys.FileSystem.deleteFile(full);
+      }
+    }
+
+    sys.FileSystem.deleteDirectory(path);
+  }
+  #else
+  static function resolveModDirs(dirs:Array<String>):Array<String>
+  {
+    return dirs;
+  }
+  #end
+
+  public static function getModFormat(dirName:String):FunkinModFormat
+  {
+    var format:Null<FunkinModFormat> = modFormats.get(dirName);
+    return format == null ? Native : format;
   }
 
   public static function classifyModApiVersion(version:Null<String>):ModApiTier
@@ -380,8 +467,10 @@ class PolymodHandler
       errorCallback: PolymodErrorHandler.onPolymodError
     });
 
-    cachedModMetadata = modMetadata;
-    return modMetadata;
+    var filtered:Array<ModMetadata> = [for (m in modMetadata) if (!StringTools.endsWith(m.dirName, CONVERTED_SUFFIX)) m];
+
+    cachedModMetadata = filtered;
+    return filtered;
   }
 
   public static function getAllModIds():Array<String>
