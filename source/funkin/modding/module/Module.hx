@@ -8,6 +8,7 @@ import funkin.modding.events.ScriptEvent;
 import flixel.util.FlxTimer;
 import funkin.graphics.FunkinCamera;
 import funkin.play.notes.Strumline;
+import funkin.play.PlayState;
 
 typedef ModuleParams =
 {
