@@ -490,7 +490,10 @@ class Project extends HXProject
 
     FEATURE_ONLINE.apply(this, !isWeb());
 
-    FEATURE_3D_RENDERING.apply(this, true);
+    // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
+    // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
+    // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
+    FEATURE_3D_RENDERING.apply(this, false);
 
     renderFlagsTable();
   }
