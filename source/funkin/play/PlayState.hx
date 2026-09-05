@@ -612,7 +612,9 @@ class PlayState extends MusicBeatSubState
 
     criticalFailure = true;
 
-    FlxG.log.error('PlayState encountered a critical error during update and had to stop: $e');
+    var songId:String = currentSong?.id ?? 'unknown';
+    var step:Int = Std.int(Conductor.instance?.currentStep ?? -1);
+    FlxG.log.error('PlayState encountered a critical error during update and had to stop: $e (song=$songId, difficulty=$currentDifficulty, step=$step)');
 
     try
     {
@@ -623,6 +625,20 @@ class PlayState extends MusicBeatSubState
     }
 
     FlxG.switchState(() -> new funkin.ui.mainmenu.MainMenuState());
+  }
+
+  function safeCall(fn:Void->Void):Void
+  {
+    if (criticalFailure) return;
+
+    try
+    {
+      fn();
+    }
+    catch (e:Dynamic)
+    {
+      handleCriticalFailure(e);
+    }
   }
 
   function updatePlayState(elapsed:Float):Void
@@ -2056,7 +2072,7 @@ class PlayState extends MusicBeatSubState
     if (currentConversation == null) return;
     if (!currentConversation.alive) currentConversation.revive();
 
-    currentConversation.completeCallback = onConversationComplete;
+    currentConversation.completeCallback = () -> safeCall(onConversationComplete);
     currentConversation.cameras = [camCutscene];
     currentConversation.zIndex = 1000;
     add(currentConversation);
@@ -3212,7 +3228,7 @@ class PlayState extends MusicBeatSubState
         ease: ease,
         onComplete: function(_)
         {
-          resetCamera(false, false);
+          safeCall(() -> resetCamera(false, false));
         }
       });
 
