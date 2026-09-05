@@ -169,6 +169,35 @@ class BaseCharacter extends Bopper
     return _data.flipX;
   }
 
+  public function applyPsychAnimations(animations:Array<funkin.mod.support.PsychSupport.PsychCharacterAnim>):Void
+  {
+    if (animations == null) return;
+
+    for (animData in animations)
+    {
+      if (animData == null || animData.anim == null || animData.anim == '') continue;
+
+      var symbolName:String = animData.name ?? animData.anim;
+      var fps:Int = animData.fps ?? 24;
+      var loop:Bool = animData.loop ?? false;
+
+      if (animData.indices != null && animData.indices.length > 0)
+      {
+        FlxG.log.warn('[BaseCharacter] Animation "${animData.anim}" for "$characterId" uses a Psych frame-index subset, which isn\'t supported yet; adding the full symbol instead.');
+      }
+
+      this.anim.addBySymbol(animData.anim, symbolName, fps, loop);
+
+      if (animData.offsets != null && animData.offsets.length >= 2)
+      {
+        this.animation.addOffset(animData.anim, animData.offsets[0], animData.offsets[1]);
+      }
+    }
+
+    this.comboNoteCounts = findCountAnimations('combo');
+    this.dropNoteCounts = findCountAnimations('drop');
+  }
+
   function findCountAnimations(prefix:String):Array<Int>
   {
     var animNames:Array<String> = this.animation.getNameList();
