@@ -1,6 +1,7 @@
 package funkin.backend;
 
 import flixel.FlxCamera;
+import flixel.math.FlxPoint;
 import funkin.play.notes.NoteDirection;
 
 class FunkinCameraMovement
@@ -15,9 +16,37 @@ class FunkinCameraMovement
 
   public var damping:Float = 24.0;
 
+  public var stiffnessX(get, set):Float;
+  public var stiffnessY(get, set):Float;
+  public var dampingX(get, set):Float;
+  public var dampingY(get, set):Float;
+
+  function get_stiffnessX():Float return _stiffnessX ?? stiffness;
+
+  function set_stiffnessX(value:Float):Float return _stiffnessX = value;
+
+  function get_stiffnessY():Float return _stiffnessY ?? stiffness;
+
+  function set_stiffnessY(value:Float):Float return _stiffnessY = value;
+
+  function get_dampingX():Float return _dampingX ?? damping;
+
+  function set_dampingX(value:Float):Float return _dampingX = value;
+
+  function get_dampingY():Float return _dampingY ?? damping;
+
+  function set_dampingY(value:Float):Float return _dampingY = value;
+
+  var _stiffnessX:Null<Float> = null;
+  var _stiffnessY:Null<Float> = null;
+  var _dampingX:Null<Float> = null;
+  var _dampingY:Null<Float> = null;
+
   public var enableTilt:Bool = true;
 
   public var maxTiltDegrees:Float = 0.6;
+
+  public var missShakeMultiplier:Float = 0.6;
 
   public var lockX:Bool = false;
   public var lockY:Bool = false;
@@ -26,6 +55,12 @@ class FunkinCameraMovement
   var posY:Float = 0.0;
   var velX:Float = 0.0;
   var velY:Float = 0.0;
+
+  var shakeTimeLeft:Float = 0.0;
+  var shakeDuration:Float = 0.0;
+  var shakeIntensity:Float = 0.0;
+  var shakeOffsetX:Float = 0.0;
+  var shakeOffsetY:Float = 0.0;
 
   var appliedOffsetX:Float = 0.0;
   var appliedOffsetY:Float = 0.0;
@@ -50,19 +85,29 @@ class FunkinCameraMovement
     if (!enabled || !Preferences.cameraMovement) return;
 
     var distance:Float = (distanceOverride ?? movementDistance) * intensity;
-    var impulse:Float = distance * Math.sqrt(stiffness);
+    var offset:FlxPoint = direction.getOffsetVector(distance);
 
-    switch (direction)
-    {
-      case LEFT:
-        if (!lockX) velX -= impulse;
-      case RIGHT:
-        if (!lockX) velX += impulse;
-      case UP:
-        if (!lockY) velY -= impulse;
-      case DOWN:
-        if (!lockY) velY += impulse;
-    }
+    if (!lockX) velX += offset.x * Math.sqrt(stiffnessX);
+    if (!lockY) velY += offset.y * Math.sqrt(stiffnessY);
+  }
+
+  public function onNoteMiss(intensity:Float = 1.0):Void
+  {
+    if (!enabled || !Preferences.cameraMovement) return;
+
+    var jitter:Float = movementDistance * missShakeMultiplier * intensity;
+
+    if (!lockX) velX += FlxG.random.float(-1, 1) * jitter * Math.sqrt(stiffnessX);
+    if (!lockY) velY += FlxG.random.float(-1, 1) * jitter * Math.sqrt(stiffnessY);
+  }
+
+  public function shake(intensity:Float, duration:Float):Void
+  {
+    if (!enabled || !Preferences.cameraMovement || duration <= 0) return;
+
+    shakeIntensity = intensity;
+    shakeDuration = duration;
+    shakeTimeLeft = duration;
   }
 
   public function update(elapsed:Float):Void
@@ -75,9 +120,10 @@ class FunkinCameraMovement
     var dt:Float = Math.min(elapsed, MAX_STEP_SECONDS);
 
     stepSpring(dt);
+    stepShake(dt);
 
-    appliedOffsetX = posX;
-    appliedOffsetY = posY;
+    appliedOffsetX = posX + shakeOffsetX;
+    appliedOffsetY = posY + shakeOffsetY;
 
     camera.scroll.x += appliedOffsetX;
     camera.scroll.y += appliedOffsetY;
@@ -90,15 +136,19 @@ class FunkinCameraMovement
 
       camera.angle = tiltRatio * maxTiltDegrees;
     }
+    else
+    {
+      camera.angle = 0;
+    }
   }
 
   function stepSpring(dt:Float):Void
   {
-    var accelX:Float = (-stiffness * posX) - (damping * velX);
+    var accelX:Float = (-stiffnessX * posX) - (dampingX * velX);
     velX += accelX * dt;
     posX += velX * dt;
 
-    var accelY:Float = (-stiffness * posY) - (damping * velY);
+    var accelY:Float = (-stiffnessY * posY) - (dampingY * velY);
     velY += accelY * dt;
     posY += velY * dt;
 
@@ -115,6 +165,30 @@ class FunkinCameraMovement
     }
   }
 
+  function stepShake(dt:Float):Void
+  {
+    if (shakeTimeLeft <= 0)
+    {
+      shakeOffsetX = 0;
+      shakeOffsetY = 0;
+      return;
+    }
+
+    shakeTimeLeft -= dt;
+
+    var falloff:Float = shakeDuration > 0 ? Math.max(shakeTimeLeft, 0) / shakeDuration : 0;
+
+    shakeOffsetX = FlxG.random.float(-1, 1) * shakeIntensity * falloff;
+    shakeOffsetY = FlxG.random.float(-1, 1) * shakeIntensity * falloff;
+
+    if (shakeTimeLeft <= 0)
+    {
+      shakeTimeLeft = 0;
+      shakeOffsetX = 0;
+      shakeOffsetY = 0;
+    }
+  }
+
   public function reset():Void
   {
     if (isCameraValid())
@@ -128,8 +202,23 @@ class FunkinCameraMovement
     posY = 0.0;
     velX = 0.0;
     velY = 0.0;
+    shakeTimeLeft = 0.0;
+    shakeDuration = 0.0;
+    shakeIntensity = 0.0;
+    shakeOffsetX = 0.0;
+    shakeOffsetY = 0.0;
     appliedOffsetX = 0.0;
     appliedOffsetY = 0.0;
+  }
+
+  public function getCurrentOffset():FlxPoint
+  {
+    return FlxPoint.get(appliedOffsetX, appliedOffsetY);
+  }
+
+  public function isSettled():Bool
+  {
+    return posX == 0 && posY == 0 && velX == 0 && velY == 0 && shakeTimeLeft <= 0;
   }
 
   public function setCamera(camera:FlxCamera):Void
