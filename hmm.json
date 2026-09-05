@@ -32,6 +32,11 @@
       "version": "2.2.2"
     },
     {
+      "name": "foxlite",
+      "type": "haxelib",
+      "version": "0.1.1"
+    },
+    {
       "name": "dox",
       "type": "haxelib",
       "version": "1.6.0"
