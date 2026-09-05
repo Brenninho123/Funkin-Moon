@@ -56,6 +56,8 @@ class FunkinCamera extends FlxCamera
 
   public var crossCameraBlending:Bool;
 
+  public var scene3D(default, null):Null<funkin.graphics.render3d.Funkin3D> = null;
+
   var _blendShader:RuntimeCustomBlendShader;
   var _backgroundFrame:FlxFrame;
   var _blendRenderTexture:RenderTexture;
@@ -82,6 +84,34 @@ class FunkinCamera extends FlxCamera
     _cameraTexture = FixedBitmapData.create(this.width, this.height);
 
     crossCameraBlending = false;
+  }
+
+  public function attach3DScene(?width:Int, ?height:Int):funkin.graphics.render3d.Funkin3D
+  {
+    if (scene3D != null) return scene3D;
+
+    var sceneWidth:Int = width ?? Std.int(this.width);
+    var sceneHeight:Int = height ?? Std.int(this.height);
+
+    scene3D = new funkin.graphics.render3d.Funkin3D(sceneWidth, sceneHeight);
+    scene3D.scene.cameras = [this];
+
+    return scene3D;
+  }
+
+  public function resize3DScene(width:Int, height:Int):Void
+  {
+    if (scene3D == null) return;
+
+    scene3D.resize(width, height);
+  }
+
+  public function detach3DScene():Void
+  {
+    if (scene3D == null) return;
+
+    scene3D.destroy();
+    scene3D = null;
   }
 
   override function drawPixels(?frame:FlxFrame, ?pixels:BitmapData, matrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode, ?smoothing:Bool = false,
@@ -229,6 +259,8 @@ class FunkinCamera extends FlxCamera
   override function destroy():Void
   {
     super.destroy();
+
+    detach3DScene();
 
     _blendRenderTexture.destroy();
     _backgroundRenderTexture.destroy();
