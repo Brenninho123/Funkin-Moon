@@ -274,6 +274,10 @@ class PlayState extends MusicBeatSubState
 
   public var camGame:FunkinCamera;
 
+  #if FEATURE_3D_RENDERING
+  var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
+  #end
+
   var camMovement:Null<funkin.backend.FunkinCameraMovement> = null;
 
   public var debugUnbindCameraZoom:Bool = false;
@@ -1432,6 +1436,35 @@ class PlayState extends MusicBeatSubState
 
     return true;
   }
+
+  #if FEATURE_3D_RENDERING
+  public function enable3DStage(modelPath:String, binary:Bool = false):Void
+  {
+    if (scene3D != null) return;
+
+    scene3D = camGame.attach3DScene(FlxG.width, FlxG.height);
+
+    if (binary)
+    {
+      scene3D.loadGLTFBinary(modelPath);
+    }
+    else
+    {
+      scene3D.loadGLTFModel(modelPath);
+    }
+
+    add(scene3D.scene);
+  }
+
+  public function disable3DStage():Void
+  {
+    if (scene3D == null) return;
+
+    remove(scene3D.scene);
+    camGame.detach3DScene();
+    scene3D = null;
+  }
+  #end
 
   override public function destroy():Void
   {
@@ -3026,6 +3059,10 @@ class PlayState extends MusicBeatSubState
       camMovement.reset();
       camMovement = null;
     }
+
+    #if FEATURE_3D_RENDERING
+    disable3DStage();
+    #end
 
     cancelAllCameraTweens();
 
