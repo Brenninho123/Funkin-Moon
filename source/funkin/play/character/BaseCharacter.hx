@@ -190,7 +190,7 @@ class BaseCharacter extends Bopper
 
       if (animData.offsets != null && animData.offsets.length >= 2)
       {
-        this.animation.addOffset(animData.anim, animData.offsets[0], animData.offsets[1]);
+        this.anim.addOffset(animData.anim, animData.offsets[0], animData.offsets[1]);
       }
     }
 
