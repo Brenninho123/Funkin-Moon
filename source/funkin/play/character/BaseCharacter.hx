@@ -188,9 +188,9 @@ class BaseCharacter extends Bopper
 
       this.anim.addBySymbol(animData.anim, symbolName, fps, loop);
 
-      if (animData.offsets != null && animData.offsets.length >= 2)
+      if (animData.offsets != null && animData.offsets.length >= 2 && (animData.offsets[0] != 0 || animData.offsets[1] != 0))
       {
-        this.anim.addOffset(animData.anim, animData.offsets[0], animData.offsets[1]);
+        FlxG.log.warn('[BaseCharacter] Animation "${animData.anim}" for "$characterId" has a Psych offset (${animData.offsets[0]}, ${animData.offsets[1]}) that could not be applied - the correct API for per-animation offsets on this engine is not confirmed yet.');
       }
     }
 
