@@ -57,6 +57,8 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
 
   var activeTimers:Array<FlxTimer> = [];
 
+  final createdAt:Float = haxe.Timer.stamp();
+
   public function new(moduleId:String, priority:Int = 1000, ?params:ModuleParams):Void
   {
     this.moduleId = moduleId;
@@ -66,6 +68,11 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
     {
       this.state = params.state ?? null;
     }
+  }
+
+  public static function fromLuaScript(scriptPath:String, moduleId:String, priority:Int = 1000, ?params:ModuleParams):Module
+  {
+    return new funkin.lua.module.LuaModule(scriptPath, moduleId, priority, params);
   }
 
   public function toString():String
@@ -154,6 +161,28 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
   public function sendToBack():Void
   {
     this.priority = 10000;
+  }
+
+  public function getSourceDescription():String
+  {
+    return 'Native (Haxe)';
+  }
+
+  public function isLuaBacked():Bool
+  {
+    return false;
+  }
+
+  public function getUptime():Float
+  {
+    return haxe.Timer.stamp() - createdAt;
+  }
+
+  public function toDebugString():String
+  {
+    var dataKeys:Array<String> = [for (key in data.keys()) key];
+
+    return '$moduleId [priority=$priority, active=$active, source=${getSourceDescription()}, uptime=${Math.round(getUptime())}s, data=${dataKeys.length} key(s)]';
   }
 
   public function onEnabled():Void
