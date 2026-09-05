@@ -171,6 +171,8 @@ class Project extends HXProject
 
   static final FEATURE_ONLINE:FeatureFlag = "FEATURE_ONLINE";
 
+  static final FEATURE_3D_RENDERING:FeatureFlag = "FEATURE_3D_RENDERING";
+
   public function new()
   {
     super();
@@ -488,6 +490,8 @@ class Project extends HXProject
 
     FEATURE_ONLINE.apply(this, !isWeb());
 
+    FEATURE_3D_RENDERING.apply(this, true);
+
     renderFlagsTable();
   }
 
@@ -788,6 +792,11 @@ class Project extends HXProject
 
     addHaxelib('polymod');
     addHaxelib('flixel-animate');
+
+    if (FEATURE_3D_RENDERING.isEnabled(this))
+    {
+      addHaxelib('foxlite');
+    }
 
     if (FEATURE_LUA_SCRIPTS.isEnabled(this))
     {
