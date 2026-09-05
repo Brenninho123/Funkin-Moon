@@ -310,6 +310,8 @@ class MainMenuState extends MusicBeatState
     initOnlineStatusBar();
     initOnlineSystem();
     #end
+
+    checkModConversions();
   }
 
   #if FEATURE_ONLINE
@@ -338,6 +340,7 @@ class MainMenuState extends MusicBeatState
   function initOnlineSystem():Void
   {
     FunkinUser.instance.init(generateGuestId(), generateGuestName());
+    FunkinUser.instance.setActivity('In Menu');
 
     FunkinOnline.instance.onConnected.add(updateOnlineStatusBar);
     FunkinOnline.instance.onDisconnected.add(updateOnlineStatusBar);
@@ -369,6 +372,40 @@ class MainMenuState extends MusicBeatState
     onlineStatusText.text = 'Status: $status\nUsers: $userCount';
   }
   #end
+
+  var modConversionText:Null<FlxText> = null;
+
+  function checkModConversions():Void
+  {
+    var totalConverted:Int = 0;
+    var totalErrors:Int = 0;
+    var modNames:Array<String> = [];
+
+    for (dirName => report in funkin.modding.PolymodHandler.conversionReports)
+    {
+      totalConverted++;
+      totalErrors += report.errors.length;
+      modNames.push(dirName);
+    }
+
+    if (totalConverted == 0) return;
+
+    FlxG.log.add('[MainMenuState] $totalConverted mod(s) auto-converted from Psych Engine format this session: ${modNames.join(", ")}');
+
+    if (totalErrors > 0)
+    {
+      FlxG.log.warn('[MainMenuState] $totalErrors conversion issue(s) reported across those mods — see PolymodHandler.conversionReports for details.');
+    }
+
+    var message:String = totalConverted == 1 ? '1 mod converted from Psych Engine format' : '$totalConverted mods converted from Psych Engine format';
+    if (totalErrors > 0) message += ' ($totalErrors issue${totalErrors == 1 ? '' : 's'}, see log)';
+
+    modConversionText = new FlxText(10, FlxG.height - 40, FlxG.width - 20, message, 12);
+    modConversionText.scrollFactor.set(0, 0);
+    modConversionText.setFormat('VCR OSD Mono', 12, totalErrors > 0 ? FlxColor.YELLOW : FlxColor.LIME, LEFT);
+    modConversionText.zIndex = 100000;
+    add(modConversionText);
+  }
 
   function initLeftWatermarkText():Void
   {
