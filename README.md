@@ -47,6 +47,7 @@ Feel free to start learning to mod the game by reading our [documentation](https
 * **Brenninho123** — Owner / Programmer
 * **ArgMods** - Artist / Programmer
 * **Sunndy** — Artist
+* **Bruno** — PlayTester
 
 # Friday Night Funkin' Credits
 
