@@ -56,7 +56,9 @@ class FunkinCamera extends FlxCamera
 
   public var crossCameraBlending:Bool;
 
+  #if FEATURE_3D_RENDERING
   public var scene3D(default, null):Null<funkin.graphics.render3d.Funkin3D> = null;
+  #end
 
   var _blendShader:RuntimeCustomBlendShader;
   var _backgroundFrame:FlxFrame;
@@ -86,6 +88,7 @@ class FunkinCamera extends FlxCamera
     crossCameraBlending = false;
   }
 
+  #if FEATURE_3D_RENDERING
   public function attach3DScene(?width:Int, ?height:Int):funkin.graphics.render3d.Funkin3D
   {
     if (scene3D != null) return scene3D;
@@ -113,6 +116,7 @@ class FunkinCamera extends FlxCamera
     scene3D.destroy();
     scene3D = null;
   }
+  #end
 
   override function drawPixels(?frame:FlxFrame, ?pixels:BitmapData, matrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode, ?smoothing:Bool = false,
       ?shader:FlxShader):Void
@@ -260,7 +264,9 @@ class FunkinCamera extends FlxCamera
   {
     super.destroy();
 
+    #if FEATURE_3D_RENDERING
     detach3DScene();
+    #end
 
     _blendRenderTexture.destroy();
     _backgroundRenderTexture.destroy();
