@@ -2,8 +2,6 @@ package funkin.play.modcharts;
 
 import funkin.modding.module.Module;
 import funkin.modding.module.Module.ModuleParams;
-import funkin.graphics.FunkinCamera;
-import funkin.play.notes.Strumline;
 
 class DrunkModchart extends Module
 {
@@ -23,7 +21,6 @@ class DrunkModchart extends Module
   public var noteAngleAmplitude:Float = 10.0;
   public var noteAngleFrequency:Float = 0.7;
 
-  var elapsedTime:Float = 0;
   var baseZoom:Float = 1.0;
   var basePitch:Float = 1.0;
   var basePlayerStrumlineX:Float = 0;
@@ -50,7 +47,7 @@ class DrunkModchart extends Module
   {
     super.onCreate(event);
 
-    elapsedTime = 0;
+    resetElapsedTime();
     captureBaseline();
   }
 
@@ -58,7 +55,7 @@ class DrunkModchart extends Module
   {
     super.onEnabled();
 
-    elapsedTime = 0;
+    resetElapsedTime();
     captureBaseline();
   }
 
@@ -66,17 +63,17 @@ class DrunkModchart extends Module
   {
     capturedBaseline = false;
 
-    var cam:Null<FunkinCamera> = PlayState.instance?.camGame;
+    var cam = getGameCamera();
     if (cam != null)
     {
       baseZoom = cam.zoom;
       capturedBaseline = true;
     }
 
-    var playerStrumline:Null<Strumline> = PlayState.instance?.playerStrumline;
+    var playerStrumline = getPlayerStrumline();
     if (playerStrumline != null) basePlayerStrumlineX = playerStrumline.x;
 
-    var opponentStrumline:Null<Strumline> = PlayState.instance?.opponentStrumline;
+    var opponentStrumline = getOpponentStrumline();
     if (opponentStrumline != null) baseOpponentStrumlineX = opponentStrumline.x;
 
     if (wobbleMusicPitch && FlxG.sound.music != null)
@@ -90,80 +87,32 @@ class DrunkModchart extends Module
     super.onUpdate(event);
 
     if (!isCurrentlyActive()) return;
-
-    var cam:Null<FunkinCamera> = PlayState.instance?.camGame;
-    if (cam == null) return;
-
+    if (getGameCamera() == null) return;
     if (!capturedBaseline) captureBaseline();
 
-    elapsedTime += event.elapsed;
+    swayCameraAngle(angleAmplitude, angleFrequency);
+    swayCameraZoom(baseZoom, zoomAmplitude, zoomFrequency, 1.3);
 
-    var twoPi:Float = Math.PI * 2;
+    swayStrumlineX(getPlayerStrumline(), basePlayerStrumlineX, strumlineSwayAmplitude, strumlineSwayFrequency, 0);
+    swayStrumlineX(getOpponentStrumline(), baseOpponentStrumlineX, strumlineSwayAmplitude, strumlineSwayFrequency, Math.PI);
 
-    cam.angle = Math.sin(elapsedTime * angleFrequency * twoPi) * angleAmplitude;
-    cam.zoom = baseZoom + (Math.sin(elapsedTime * zoomFrequency * twoPi + 1.3) * zoomAmplitude);
+    wobbleNoteAngles(getPlayerStrumline(), noteAngleAmplitude, noteAngleFrequency, 0);
+    wobbleNoteAngles(getOpponentStrumline(), noteAngleAmplitude, noteAngleFrequency, Math.PI);
 
-    applyStrumlineSway(PlayState.instance?.playerStrumline, basePlayerStrumlineX, 0);
-    applyStrumlineSway(PlayState.instance?.opponentStrumline, baseOpponentStrumlineX, Math.PI);
-
-    if (wobbleMusicPitch && FlxG.sound.music != null)
+    if (wobbleMusicPitch)
     {
-      FlxG.sound.music.pitch = basePitch + (Math.sin(elapsedTime * pitchFrequency * twoPi) * pitchAmplitude);
-    }
-  }
-
-  function applyStrumlineSway(strumline:Null<Strumline>, baseX:Float, phaseOffset:Float):Void
-  {
-    if (strumline == null) return;
-
-    var twoPi:Float = Math.PI * 2;
-
-    strumline.x = baseX + (Math.sin((elapsedTime * strumlineSwayFrequency * twoPi) + phaseOffset) * strumlineSwayAmplitude);
-
-    for (index => note in strumline.notes.members)
-    {
-      if (note == null) continue;
-
-      var notePhase:Float = (elapsedTime * noteAngleFrequency * twoPi) + phaseOffset + (index * 0.35);
-      note.angle = Math.sin(notePhase) * noteAngleAmplitude;
+      wobblePitch(basePitch, pitchAmplitude, pitchFrequency);
     }
   }
 
   function resetToBaseline():Void
   {
-    var cam:Null<FunkinCamera> = PlayState.instance?.camGame;
-    if (cam != null && capturedBaseline)
-    {
-      cam.angle = 0;
-      cam.zoom = baseZoom;
-    }
+    if (capturedBaseline) resetCameraTransform(baseZoom);
 
-    var playerStrumline:Null<Strumline> = PlayState.instance?.playerStrumline;
-    if (playerStrumline != null)
-    {
-      playerStrumline.x = basePlayerStrumlineX;
+    resetStrumlineTransform(getPlayerStrumline(), basePlayerStrumlineX);
+    resetStrumlineTransform(getOpponentStrumline(), baseOpponentStrumlineX);
 
-      for (note in playerStrumline.notes.members)
-      {
-        if (note != null) note.angle = 0;
-      }
-    }
-
-    var opponentStrumline:Null<Strumline> = PlayState.instance?.opponentStrumline;
-    if (opponentStrumline != null)
-    {
-      opponentStrumline.x = baseOpponentStrumlineX;
-
-      for (note in opponentStrumline.notes.members)
-      {
-        if (note != null) note.angle = 0;
-      }
-    }
-
-    if (wobbleMusicPitch && FlxG.sound.music != null)
-    {
-      FlxG.sound.music.pitch = basePitch;
-    }
+    if (wobbleMusicPitch) resetPitch(basePitch);
 
     capturedBaseline = false;
   }
