@@ -31,6 +31,26 @@ class Paths implements ConsoleClass
     pathCache.clear();
   }
 
+  public static function clearCacheForLibrary(library:String):Void
+  {
+    var prefix:String = ':$library:';
+
+    for (key in pathCache.keys())
+    {
+      if (key.indexOf(prefix) >= 0) pathCache.remove(key);
+    }
+  }
+
+  public static function getCacheSize():Int
+  {
+    var count:Int = 0;
+
+    for (key in pathCache.keys())
+      count++;
+
+    return count;
+  }
+
   public static function stripLibrary(path:String):String
   {
     var parts:Array<String> = path.split(':');
@@ -43,6 +63,11 @@ class Paths implements ConsoleClass
     var parts:Array<String> = path.split(':');
     if (parts.length < 2) return 'preload';
     return parts[0];
+  }
+
+  public static function stripExtension(file:String):String
+  {
+    return new Path(file).file;
   }
 
   static function getPath(file:String, type:AssetType, library:Null<String>):String
@@ -100,6 +125,45 @@ class Paths implements ConsoleClass
   public static function soundExists(key:String, ?library:String):Bool
   {
     return Assets.exists(getPath('sounds/$key.${Constants.EXT_SOUND}', SOUND, library), SOUND);
+  }
+
+  public static function musicExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(getPath('music/$key.${Constants.EXT_SOUND}', MUSIC, library), MUSIC);
+  }
+
+  public static function instExists(song:String, ?suffix:String = ''):Bool
+  {
+    return Assets.exists(inst(song, suffix), SOUND);
+  }
+
+  public static function voicesExist(song:String, ?suffix:String = ''):Bool
+  {
+    return Assets.exists(voices(song, suffix), SOUND);
+  }
+
+  public static function firstExistingImage(keys:Array<String>, ?library:String):Null<String>
+  {
+    for (key in keys)
+      if (imageExists(key, library)) return image(key, library);
+
+    return null;
+  }
+
+  public static function firstExistingSound(keys:Array<String>, ?library:String):Null<String>
+  {
+    for (key in keys)
+      if (soundExists(key, library)) return sound(key, library);
+
+    return null;
+  }
+
+  public static function firstExistingMusic(keys:Array<String>, ?library:String):Null<String>
+  {
+    for (key in keys)
+      if (musicExists(key, library)) return music(key, library);
+
+    return null;
   }
 
   public static function file(file:String, type:AssetType = TEXT, ?library:String):String
@@ -192,6 +256,11 @@ class Paths implements ConsoleClass
     return 'assets/fonts/$key';
   }
 
+  public static function fontExists(key:String):Bool
+  {
+    return Assets.exists(font(key));
+  }
+
   public static function ui(key:String, ?library:String):String
   {
     return xml('ui/$key', library);
@@ -200,6 +269,18 @@ class Paths implements ConsoleClass
   public static function getSparrowAtlas(key:String, ?library:String):FlxAtlasFrames
   {
     return FlxAtlasFrames.fromSparrow(image(key, library), file('images/$key.xml', library));
+  }
+
+  public static function sparrowAtlasExists(key:String, ?library:String):Bool
+  {
+    return imageExists(key, library) && exists('images/$key.xml', TEXT, library);
+  }
+
+  public static function getSparrowAtlasSafe(key:String, ?library:String):Null<FlxAtlasFrames>
+  {
+    if (!sparrowAtlasExists(key, library)) return null;
+
+    return getSparrowAtlas(key, library);
   }
 
   public static function getAnimateAtlas(key:String, ?library:String, settings:AtlasSpriteSettings):FlxAnimateFrames
@@ -243,9 +324,35 @@ class Paths implements ConsoleClass
       });
   }
 
+  public static function animateAtlasExists(key:String, ?library:String):Bool
+  {
+    var graphicKey:String = library != null ? Paths.animateAtlas(key, library) : Paths.animateAtlas(key);
+
+    return Assets.exists('${graphicKey}/Animation.json');
+  }
+
+  public static function getAnimateAtlasSafe(key:String, ?library:String, ?settings:AtlasSpriteSettings):Null<FlxAnimateFrames>
+  {
+    if (!animateAtlasExists(key, library)) return null;
+
+    return getAnimateAtlas(key, library, settings ?? {});
+  }
+
   public static function getPackerAtlas(key:String, ?library:String):FlxAtlasFrames
   {
     return FlxAtlasFrames.fromSpriteSheetPacker(image(key, library), file('images/$key.txt', library));
+  }
+
+  public static function packerAtlasExists(key:String, ?library:String):Bool
+  {
+    return imageExists(key, library) && exists('images/$key.txt', TEXT, library);
+  }
+
+  public static function getPackerAtlasSafe(key:String, ?library:String):Null<FlxAtlasFrames>
+  {
+    if (!packerAtlasExists(key, library)) return null;
+
+    return getPackerAtlas(key, library);
   }
 }
 
