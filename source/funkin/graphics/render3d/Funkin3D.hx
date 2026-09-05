@@ -5,7 +5,7 @@ import foxlite.FoxCamera;
 import foxlite.FoxModel;
 import foxlite.FoxObject;
 import foxlite.loaders.FoxGLTFLoader;
-import foxlite.loaders.GLTFData;
+import foxlite.loaders.FoxGLTFLoader.GLTFData;
 import foxlite.group.FoxObjectGroup;
 import flixel.util.FlxSignal.FlxTypedSignal;
 
