@@ -6,6 +6,8 @@ import funkin.modding.IScriptedClass.IFreeplayScriptedClass;
 import funkin.modding.IScriptedClass.ICharacterSelectScriptedClass;
 import funkin.modding.events.ScriptEvent;
 import flixel.util.FlxTimer;
+import funkin.graphics.FunkinCamera;
+import funkin.play.notes.Strumline;
 
 typedef ModuleParams =
 {
@@ -185,6 +187,123 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
     return '$moduleId [priority=$priority, active=$active, source=${getSourceDescription()}, uptime=${Math.round(getUptime())}s, data=${dataKeys.length} key(s)]';
   }
 
+  var _moduleElapsedTime:Float = 0;
+
+  public function getElapsedTime():Float
+  {
+    return _moduleElapsedTime;
+  }
+
+  public function resetElapsedTime():Void
+  {
+    _moduleElapsedTime = 0;
+  }
+
+  function sineWave(frequency:Float, phaseOffset:Float = 0):Float
+  {
+    return Math.sin((_moduleElapsedTime * frequency * Math.PI * 2) + phaseOffset);
+  }
+
+  public function getPlayState():Null<PlayState>
+  {
+    return PlayState.instance;
+  }
+
+  public function isInPlayState():Bool
+  {
+    return PlayState.instance != null;
+  }
+
+  public function getGameCamera():Null<FunkinCamera>
+  {
+    return PlayState.instance?.camGame;
+  }
+
+  public function getHudCamera():Null<FunkinCamera>
+  {
+    return PlayState.instance?.camHUD;
+  }
+
+  public function getPlayerStrumline():Null<Strumline>
+  {
+    return PlayState.instance?.playerStrumline;
+  }
+
+  public function getOpponentStrumline():Null<Strumline>
+  {
+    return PlayState.instance?.opponentStrumline;
+  }
+
+  public function swayCameraAngle(amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
+  {
+    var cam:Null<FunkinCamera> = getGameCamera();
+    if (cam == null) return;
+
+    cam.angle = sineWave(frequency, phaseOffset) * amplitude;
+  }
+
+  public function swayCameraZoom(baseZoom:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
+  {
+    var cam:Null<FunkinCamera> = getGameCamera();
+    if (cam == null) return;
+
+    cam.zoom = baseZoom + (sineWave(frequency, phaseOffset) * amplitude);
+  }
+
+  public function resetCameraTransform(baseZoom:Float = 1.0):Void
+  {
+    var cam:Null<FunkinCamera> = getGameCamera();
+    if (cam == null) return;
+
+    cam.angle = 0;
+    cam.zoom = baseZoom;
+  }
+
+  public function swayStrumlineX(strumline:Null<Strumline>, baseX:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
+  {
+    if (strumline == null) return;
+
+    strumline.x = baseX + (sineWave(frequency, phaseOffset) * amplitude);
+  }
+
+  public function wobbleNoteAngles(strumline:Null<Strumline>, amplitude:Float, frequency:Float, phaseOffset:Float = 0, indexPhaseStep:Float = 0.35):Void
+  {
+    if (strumline == null) return;
+
+    for (index => note in strumline.notes.members)
+    {
+      if (note == null) continue;
+
+      note.angle = sineWave(frequency, phaseOffset + (index * indexPhaseStep)) * amplitude;
+    }
+  }
+
+  public function resetStrumlineTransform(strumline:Null<Strumline>, baseX:Float):Void
+  {
+    if (strumline == null) return;
+
+    strumline.x = baseX;
+
+    for (note in strumline.notes.members)
+    {
+      if (note != null) note.angle = 0;
+    }
+  }
+
+  public function wobblePitch(basePitch:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
+  {
+    if (FlxG.sound.music == null) return;
+
+    FlxG.sound.music.pitch = basePitch + (sineWave(frequency, phaseOffset) * amplitude);
+  }
+
+  public function resetPitch(basePitch:Float):Void
+  {
+    if (FlxG.sound.music == null) return;
+
+    FlxG.sound.music.pitch = basePitch;
+  }
+
   public function onEnabled():Void
   {
   }
@@ -208,6 +327,7 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
 
   public function onUpdate(event:UpdateScriptEvent)
   {
+    if (isCurrentlyActive()) _moduleElapsedTime += event.elapsed;
   }
 
   public function onPause(event:PauseScriptEvent)
