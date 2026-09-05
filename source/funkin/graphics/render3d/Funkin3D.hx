@@ -1,5 +1,6 @@
 package funkin.graphics.render3d;
 
+#if FEATURE_3D_RENDERING
 import foxlite.FoxScene;
 import foxlite.FoxCamera;
 import foxlite.FoxModel;
@@ -116,3 +117,4 @@ class Funkin3D
     loadedGroups = [];
   }
 }
+#end
