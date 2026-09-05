@@ -57,6 +57,16 @@ class LuaModule extends Module
     callLua('onCreate');
   }
 
+  override public function getSourceDescription():String
+  {
+    return 'Lua Script: $scriptPath';
+  }
+
+  override public function isLuaBacked():Bool
+  {
+    return true;
+  }
+
   override public function onDestroy(event:ScriptEvent)
   {
     super.onDestroy(event);
