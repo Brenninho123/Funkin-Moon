@@ -9,6 +9,9 @@ import funkin.ui.FullScreenScaleMode;
 import funkin.audio.FunkinSound;
 import funkin.ui.TextMenuList;
 import funkin.ui.debug.charting.ChartEditorState;
+#if FEATURE_MUSIC_EDITOR
+import funkin.ui.debug.music.MusicEditorState;
+#end
 import funkin.util.logging.CrashHandler;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.util.FileUtil;
@@ -58,6 +61,9 @@ class DebugMenuSubState extends MusicBeatSubState
     #end
     #if FEATURE_STAGE_EDITOR
     createItem("STAGE EDITOR", openStageEditor);
+    #end
+    #if FEATURE_MUSIC_EDITOR
+    createItem("MUSIC EDITOR", openMusicEditor);
     #end
     #if FEATURE_RESULTS_DEBUG
     createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
@@ -172,6 +178,13 @@ class DebugMenuSubState extends MusicBeatSubState
   function openStageEditor():Void
   {
     switchToState(() -> new funkin.ui.debug.stageeditor.StageEditorState());
+  }
+  #end
+
+  #if FEATURE_MUSIC_EDITOR
+  function openMusicEditor():Void
+  {
+    switchToState(() -> new MusicEditorState('tutorial'));
   }
   #end
 
