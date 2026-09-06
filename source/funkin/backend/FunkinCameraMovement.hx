@@ -42,6 +42,34 @@ class FunkinCameraMovement
   var _dampingX:Null<Float> = null;
   var _dampingY:Null<Float> = null;
 
+  public var stiffnessZ(get, set):Float;
+  public var dampingZ(get, set):Float;
+
+  function get_stiffnessZ():Float return _stiffnessZ ?? stiffness;
+
+  function set_stiffnessZ(value:Float):Float return _stiffnessZ = value;
+
+  function get_dampingZ():Float return _dampingZ ?? damping;
+
+  function set_dampingZ(value:Float):Float return _dampingZ = value;
+
+  var _stiffnessZ:Null<Float> = null;
+  var _dampingZ:Null<Float> = null;
+
+  public var enable3D:Bool = true;
+
+  public var depthAmplitude:Float = 0.5;
+
+  public var depthImpulseMultiplier:Float = 8.0;
+
+  public var positionScale3D:Float = 0.02;
+
+  public var pitchAmplitudeDegrees:Float = 1.2;
+
+  public var yawAmplitudeDegrees:Float = 1.2;
+
+  public var lockZ:Bool = false;
+
   public var enableTilt:Bool = true;
 
   public var maxTiltDegrees:Float = 0.6;
@@ -53,8 +81,24 @@ class FunkinCameraMovement
 
   var posX:Float = 0.0;
   var posY:Float = 0.0;
+  var posZ:Float = 0.0;
   var velX:Float = 0.0;
   var velY:Float = 0.0;
+  var velZ:Float = 0.0;
+
+  #if FEATURE_3D_RENDERING
+  var appliedScene3DX:Float = 0.0;
+  var appliedScene3DY:Float = 0.0;
+  var appliedScene3DZ:Float = 0.0;
+  var appliedScene3DPitch:Float = 0.0;
+  var appliedScene3DYaw:Float = 0.0;
+  #end
+
+  #if FEATURE_AWAY3D
+  var appliedAwayX:Float = 0.0;
+  var appliedAwayY:Float = 0.0;
+  var appliedAwayZ:Float = 0.0;
+  #end
 
   var shakeTimeLeft:Float = 0.0;
   var shakeDuration:Float = 0.0;
@@ -73,6 +117,11 @@ class FunkinCameraMovement
     return camera != null && camera.scroll != null;
   }
 
+  function getFunkinCamera():Null<funkin.graphics.FunkinCamera>
+  {
+    return Std.isOfType(camera, funkin.graphics.FunkinCamera) ? cast camera : null;
+  }
+
   public function new(camera:FlxCamera, movementDistance:Float = 20.0)
   {
     this.camera = camera;
@@ -89,6 +138,7 @@ class FunkinCameraMovement
 
     if (!lockX) velX += offset.x * Math.sqrt(stiffnessX);
     if (!lockY) velY += offset.y * Math.sqrt(stiffnessY);
+    if (!lockZ) velZ -= depthAmplitude * depthImpulseMultiplier * Math.sqrt(stiffnessZ) * intensity;
   }
 
   public function onNoteMiss(intensity:Float = 1.0):Void
@@ -99,6 +149,7 @@ class FunkinCameraMovement
 
     if (!lockX) velX += FlxG.random.float(-1, 1) * jitter * Math.sqrt(stiffnessX);
     if (!lockY) velY += FlxG.random.float(-1, 1) * jitter * Math.sqrt(stiffnessY);
+    if (!lockZ) velZ += FlxG.random.float(-1, 1) * jitter * 0.5 * Math.sqrt(stiffnessZ);
   }
 
   public function shake(intensity:Float, duration:Float):Void
@@ -140,6 +191,17 @@ class FunkinCameraMovement
     {
       camera.angle = 0;
     }
+
+    if (enable3D)
+    {
+      #if FEATURE_3D_RENDERING
+      applyToScene3D();
+      #end
+
+      #if FEATURE_AWAY3D
+      applyToAwayScene();
+      #end
+    }
   }
 
   function stepSpring(dt:Float):Void
@@ -163,7 +225,70 @@ class FunkinCameraMovement
       posY = 0;
       velY = 0;
     }
+
+    var accelZ:Float = (-stiffnessZ * posZ) - (dampingZ * velZ);
+    velZ += accelZ * dt;
+    posZ += velZ * dt;
+
+    if (Math.abs(posZ) < SETTLE_THRESHOLD && Math.abs(velZ) < SETTLE_THRESHOLD)
+    {
+      posZ = 0;
+      velZ = 0;
+    }
   }
+
+  #if FEATURE_3D_RENDERING
+  function applyToScene3D():Void
+  {
+    var funkinCam = getFunkinCamera();
+    if (funkinCam == null || funkinCam.scene3D == null) return;
+
+    var cam3D = funkinCam.scene3D.camera;
+
+    cam3D.x -= appliedScene3DX;
+    cam3D.y -= appliedScene3DY;
+    cam3D.z -= appliedScene3DZ;
+
+    appliedScene3DX = lockX ? 0 : posX * positionScale3D;
+    appliedScene3DY = lockY ? 0 : -posY * positionScale3D;
+    appliedScene3DZ = lockZ ? 0 : posZ;
+
+    cam3D.x += appliedScene3DX;
+    cam3D.y += appliedScene3DY;
+    cam3D.z += appliedScene3DZ;
+
+    cam3D.angleX -= appliedScene3DPitch;
+    cam3D.angleY -= appliedScene3DYaw;
+
+    appliedScene3DPitch = lockY ? 0 : (posY / movementDistance) * pitchAmplitudeDegrees;
+    appliedScene3DYaw = lockX ? 0 : (posX / movementDistance) * yawAmplitudeDegrees;
+
+    cam3D.angleX += appliedScene3DPitch;
+    cam3D.angleY += appliedScene3DYaw;
+  }
+  #end
+
+  #if FEATURE_AWAY3D
+  function applyToAwayScene():Void
+  {
+    var funkinCam = getFunkinCamera();
+    if (funkinCam == null || funkinCam.awayScene == null) return;
+
+    var away = funkinCam.awayScene;
+
+    away.camera.x -= appliedAwayX;
+    away.camera.y -= appliedAwayY;
+    away.camera.z -= appliedAwayZ;
+
+    appliedAwayX = lockX ? 0 : posX * positionScale3D;
+    appliedAwayY = lockY ? 0 : -posY * positionScale3D;
+    appliedAwayZ = lockZ ? 0 : posZ;
+
+    away.camera.x += appliedAwayX;
+    away.camera.y += appliedAwayY;
+    away.camera.z += appliedAwayZ;
+  }
+  #end
 
   function stepShake(dt:Float):Void
   {
@@ -198,10 +323,44 @@ class FunkinCameraMovement
       camera.angle = 0;
     }
 
+    #if FEATURE_3D_RENDERING
+    var funkinCam3D = getFunkinCamera();
+    if (funkinCam3D != null && funkinCam3D.scene3D != null)
+    {
+      var cam3D = funkinCam3D.scene3D.camera;
+      cam3D.x -= appliedScene3DX;
+      cam3D.y -= appliedScene3DY;
+      cam3D.z -= appliedScene3DZ;
+      cam3D.angleX -= appliedScene3DPitch;
+      cam3D.angleY -= appliedScene3DYaw;
+    }
+    appliedScene3DX = 0.0;
+    appliedScene3DY = 0.0;
+    appliedScene3DZ = 0.0;
+    appliedScene3DPitch = 0.0;
+    appliedScene3DYaw = 0.0;
+    #end
+
+    #if FEATURE_AWAY3D
+    var funkinCamAway = getFunkinCamera();
+    if (funkinCamAway != null && funkinCamAway.awayScene != null)
+    {
+      var away = funkinCamAway.awayScene;
+      away.camera.x -= appliedAwayX;
+      away.camera.y -= appliedAwayY;
+      away.camera.z -= appliedAwayZ;
+    }
+    appliedAwayX = 0.0;
+    appliedAwayY = 0.0;
+    appliedAwayZ = 0.0;
+    #end
+
     posX = 0.0;
     posY = 0.0;
+    posZ = 0.0;
     velX = 0.0;
     velY = 0.0;
+    velZ = 0.0;
     shakeTimeLeft = 0.0;
     shakeDuration = 0.0;
     shakeIntensity = 0.0;
@@ -218,7 +377,7 @@ class FunkinCameraMovement
 
   public function isSettled():Bool
   {
-    return posX == 0 && posY == 0 && velX == 0 && velY == 0 && shakeTimeLeft <= 0;
+    return posX == 0 && posY == 0 && posZ == 0 && velX == 0 && velY == 0 && velZ == 0 && shakeTimeLeft <= 0;
   }
 
   public function setCamera(camera:FlxCamera):Void
