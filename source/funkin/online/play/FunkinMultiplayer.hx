@@ -261,7 +261,18 @@ class FunkinMultiplayer
     var hostId:Null<String> = data.hostId;
     if (roomId == null || hostId == null) return null;
 
-    var players:Array<String> = data.players ?? [hostId];
+    var players:Array<String> = [];
+
+    if (data.players != null)
+    {
+      var rawPlayers:Array<Dynamic> = data.players;
+      for (rawPlayer in rawPlayers)
+        players.push(Std.string(rawPlayer));
+    }
+    else
+    {
+      players.push(hostId);
+    }
 
     return {
       roomId: roomId,
