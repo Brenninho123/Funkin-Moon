@@ -354,6 +354,82 @@ class Paths implements ConsoleClass
 
     return getPackerAtlas(key, library);
   }
+
+  public static function png3d(key:String, ?library:String):String
+  {
+    return image(key, library);
+  }
+
+  public static function png3dDepth(key:String, ?library:String):String
+  {
+    return getPath('images/${key}_depth.png', IMAGE, library);
+  }
+
+  public static function png3dNormal(key:String, ?library:String):String
+  {
+    return getPath('images/${key}_normal.png', IMAGE, library);
+  }
+
+  public static function png3dMeta(key:String, ?library:String):String
+  {
+    return getPath('images/$key.png3d.json', TEXT, library);
+  }
+
+  public static function png3dDepthExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(png3dDepth(key, library), IMAGE);
+  }
+
+  public static function png3dNormalExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(png3dNormal(key, library), IMAGE);
+  }
+
+  public static function png3dMetaExists(key:String, ?library:String):Bool
+  {
+    return Assets.exists(png3dMeta(key, library), TEXT);
+  }
+
+  public static function png3dExists(key:String, ?library:String):Bool
+  {
+    return imageExists(key, library) && png3dDepthExists(key, library);
+  }
+
+  public static function getPng3DData(key:String, ?library:String):Png3DData
+  {
+    var hasDepth:Bool = png3dDepthExists(key, library);
+    var hasNormal:Bool = png3dNormalExists(key, library);
+    var hasMeta:Bool = png3dMetaExists(key, library);
+
+    return {
+      colorPath: png3d(key, library),
+      depthPath: hasDepth ? png3dDepth(key, library) : null,
+      normalPath: hasNormal ? png3dNormal(key, library) : null,
+      metaPath: hasMeta ? png3dMeta(key, library) : null,
+      hasDepth: hasDepth,
+      hasNormal: hasNormal,
+      hasMeta: hasMeta
+    };
+  }
+
+  public static function firstExistingPng3D(keys:Array<String>, ?library:String):Null<String>
+  {
+    for (key in keys)
+      if (png3dExists(key, library)) return png3d(key, library);
+
+    return null;
+  }
+}
+
+typedef Png3DData =
+{
+  var colorPath:String;
+  var depthPath:Null<String>;
+  var normalPath:Null<String>;
+  var metaPath:Null<String>;
+  var hasDepth:Bool;
+  var hasNormal:Bool;
+  var hasMeta:Bool;
 }
 
 enum abstract PathsFunction(String)
