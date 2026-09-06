@@ -155,6 +155,21 @@ class Preferences
     return value;
   }
 
+  public static var mode3D(get, set):Bool;
+
+  static function get_mode3D():Bool
+  {
+    return Save?.instance?.options?.mode3D ?? false;
+  }
+
+  static function set_mode3D(value:Bool):Bool
+  {
+    var save:Save = Save.instance;
+    save.options.mode3D = value;
+    Save.system.flush();
+    return value;
+  }
+
   public static var storageType(get, set):String;
 
   static function get_storageType():String
