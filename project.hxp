@@ -497,7 +497,12 @@ class Project extends HXProject
     // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
     FEATURE_3D_RENDERING.apply(this, false);
 
-    FEATURE_AWAY3D.apply(this, true);
+    // Disabled by default: Away3D 5.0.9 (published years ago) still assumes Lib.getTimer()
+    // returns Int/UInt, but current OpenFL returns Float there - a known, unresolved
+    // upstream incompatibility (see HaxeFlixel/flixel#3561 for the same root cause hitting
+    // other libraries). Causes build errors in View3D.hx, ParserBase.hx, AnimatorBase.hx.
+    // Re-enable once Away3D publishes a fix, or after patching the installed haxelib locally.
+    FEATURE_AWAY3D.apply(this, false);
 
     renderFlagsTable();
   }
