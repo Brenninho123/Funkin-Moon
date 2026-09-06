@@ -97,6 +97,7 @@ class MainMenuState extends MusicBeatState
     upgradeSparkles = new FlxTypedSpriteGroup<UpgradeSparkle>();
     magenta = new FlxSprite(Paths.image('menuBGMagenta'));
     camFollow = new FlxObject(0, 0, 1, 1);
+    mainMenuCam = new FunkinCamera('mainMenu');
 
     FlxG.keys.enabled = true;
   }
@@ -107,7 +108,6 @@ class MainMenuState extends MusicBeatState
     DiscordClient.instance.setPresence({state: "In the Menus", details: null});
     #end
 
-    mainMenuCam = new FunkinCamera('mainMenu');
     FlxG.cameras.reset(mainMenuCam);
 
     #if FEATURE_3D_RENDERING
