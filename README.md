@@ -49,6 +49,7 @@ Feel free to start learning to mod the game by reading our [documentation](https
 * **Sunndy** — Artist
 * **Bruno** — PlayTester
 * **Cosmic** — Musician/PlayTester
+* **Cookie** — Programmer
 
 # Friday Night Funkin' Credits
 
