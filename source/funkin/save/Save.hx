@@ -89,6 +89,7 @@ class Save implements ConsoleClass
         invisibleHitbox: false,
         flashingLights: true,
         cameraMovement: true,
+        mode3D: false,
         storageType: 'data',
         zoomCamera: true,
         debugDisplay: 'Off',
@@ -1087,6 +1088,8 @@ typedef SaveDataOptions =
   var flashingLights:Bool;
 
   var cameraMovement:Bool;
+
+  var mode3D:Bool;
 
   var storageType:String;
 
