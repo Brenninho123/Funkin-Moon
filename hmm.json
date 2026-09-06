@@ -21,6 +21,13 @@
       "url": "https://github.com/FunkinCrew/extension-admob"
     },
     {
+      "name": "hxrpc",
+      "type": "git",
+      "dir": null,
+      "ref": "main",
+      "url": "https://github.com/BrenninhoTools/hxrpc.git"
+    },
+    {
       "name": "extension-agesignals",
       "type": "git",
       "ref": "dd3f56ccbb313a43d40cba8826fca2b1ec7c7e5d",
