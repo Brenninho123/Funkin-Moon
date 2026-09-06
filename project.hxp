@@ -161,6 +161,8 @@ class Project extends HXProject
 
   static final FEATURE_STAGE_EDITOR:FeatureFlag = "FEATURE_STAGE_EDITOR";
 
+  static final FEATURE_MUSIC_EDITOR:FeatureFlag = "FEATURE_MUSIC_EDITOR";
+
   static final FEATURE_TOUCH_CONTROLS:FeatureFlag = "FEATURE_TOUCH_CONTROLS";
 
   static final FEATURE_TOUCH_HERE_TO_PLAY:FeatureFlag = "FEATURE_TOUCH_HERE_TO_PLAY";
@@ -467,6 +469,7 @@ class Project extends HXProject
     FEATURE_ANIMATION_EDITOR.apply(this, !isWeb());
     FEATURE_CHART_EDITOR.apply(this, !isWeb());
     FEATURE_STAGE_EDITOR.apply(this, !isWeb());
+    FEATURE_MUSIC_EDITOR.apply(this, !isWeb());
     FEATURE_HAXEUI.apply(this, FEATURE_ANIMATION_EDITOR.isEnabled(this)
       || FEATURE_CHART_EDITOR.isEnabled(this)
       || FEATURE_STAGE_EDITOR.isEnabled(this));
