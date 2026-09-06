@@ -2,6 +2,8 @@ package funkin.play.modcharts;
 
 import funkin.modding.module.Module;
 import funkin.modding.module.Module.ModuleParams;
+import funkin.modding.events.ScriptEvent;
+import funkin.modding.events.ScriptEvent.UpdateScriptEvent;
 
 class DrunkModchart extends Module
 {
