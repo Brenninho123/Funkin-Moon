@@ -101,6 +101,8 @@ class Project extends HXProject
 
   static final FEATURE_DISCORD_RPC:FeatureFlag = "FEATURE_DISCORD_RPC";
 
+  static final FEATURE_HXRPC:FeatureFlag = "FEATURE_HXRPC";
+
   static final FEATURE_LOST_FOCUS_VOLUME:FeatureFlag = "FEATURE_LOST_FOCUS_VOLUME";
 
   static final FEATURE_FILE_DROP:FeatureFlag = "FEATURE_FILE_DROP";
@@ -450,6 +452,8 @@ class Project extends HXProject
     FEATURE_RESULTS_DEBUG.apply(this, isDebug() || GITHUB_BUILD.isEnabled(this));
 
     FEATURE_DISCORD_RPC.apply(this, isDesktop() && !FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
+
+    FEATURE_HXRPC.apply(this, isDesktop() || isMobile());
 
     FEATURE_LOST_FOCUS_VOLUME.apply(this, isDesktop());
 
@@ -849,6 +853,11 @@ class Project extends HXProject
     if (FEATURE_DISCORD_RPC.isEnabled(this))
     {
       addHaxelib('hxdiscord_rpc');
+    }
+
+    if (FEATURE_HXRPC.isEnabled(this))
+    {
+      addHaxelib('hxrpc');
     }
 
     if (FEATURE_NEWGROUNDS.isEnabled(this))
