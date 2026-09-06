@@ -220,6 +220,27 @@ class FunkinSprite extends FlxAnimate
     return loadBitmapData(inputBitmap);
   }
 
+  #if FEATURE_AWAY3D
+  public function loadFromAway3D(away3D:funkin.graphics.away3d.FunkinAway3D, cache:Bool = false):Null<FunkinSprite>
+  {
+    var view:away3d.containers.View3D = away3D.view;
+    var proxy:Null<away3d.core.managers.Stage3DProxy> = view.stage3DProxy;
+
+    if (proxy == null || proxy.context3D == null)
+    {
+      FlxG.log.warn('loadFromAway3D - Away3D view has no active Context3D yet, skipping capture.');
+      return null;
+    }
+
+    view.render();
+
+    var snapshot:BitmapData = new BitmapData(Std.int(view.width), Std.int(view.height), true, 0);
+    proxy.context3D.drawToBitmapData(snapshot);
+
+    return loadBitmapData(snapshot, cache);
+  }
+  #end
+
   public function loadTextureAtlas(key:Null<String>, ?assetLibrary:Null<String>, ?settings:AtlasSpriteSettings):FunkinSprite
   {
     if (key == null)
