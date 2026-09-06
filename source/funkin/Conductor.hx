@@ -90,6 +90,13 @@ class Conductor
   public var onStepHit(default, null):FlxSignal = new FlxSignal();
 
   /**
+   * Signal fired when this Conductor's song position had to be hard-corrected
+   * to match a remote peer's time in multiplayer (see `reportNetworkTime`).
+   * UI can listen to this to briefly show a "resyncing" indicator.
+   */
+  public var onNetworkResync(default, null):FlxSignal = new FlxSignal();
+
+  /**
    * The list of time changes in the song.
    * There should be at least one time change (at the beginning of the song) to define the BPM.
    */
@@ -246,6 +253,46 @@ class Conductor
   public var currentStepTime(default, null):Float = 0;
 
   /**
+   * Fractional position within the current beat, from 0.0 (right on the beat)
+   * to 1.0 (right before the next beat). Handy for driving beat-synced visual
+   * effects, including 3D camera bop/punch amplitude, without every caller
+   * having to recompute it from `currentBeatTime` themselves.
+   */
+  public var beatProgress(get, never):Float;
+
+  function get_beatProgress():Float
+  {
+    return currentBeatTime - Math.floor(currentBeatTime);
+  }
+
+  /**
+   * Fractional position within the current step, from 0.0 to 1.0.
+   */
+  public var stepProgress(get, never):Float;
+
+  function get_stepProgress():Float
+  {
+    return currentStepTime - Math.floor(currentStepTime);
+  }
+
+  /**
+   * Returns an eased pulse value that peaks at 1.0 right on the beat and decays
+   * to 0.0 by the next beat, following `x ^ curve`. Meant to directly drive a
+   * "bop" effect - e.g. a 3D camera's zoom/FOV punch, or a 2D scale pulse -
+   * without every caller reimplementing the same easing curve.
+   *
+   * @param curve Higher values make the pulse decay faster (snappier bop). Defaults to 2.0.
+   */
+  public function getBeatPulse(curve:Float = 2.0):Float
+  {
+    var remaining:Float = 1.0 - beatProgress;
+    if (remaining < 0) remaining = 0;
+    if (remaining > 1) remaining = 1;
+
+    return Math.pow(remaining, curve);
+  }
+
+  /**
    * An offset tied to the current chart file to compensate for a delay in the instrumental.
    */
   public var instrumentalOffset:Float = 0;
@@ -317,6 +364,29 @@ class Conductor
   {
     return Std.int(timeSignatureNumerator * Constants.STEPS_PER_BEAT);
   }
+
+  /**
+   * How far off (in milliseconds) this Conductor's song position is from the
+   * last known position reported by a remote peer via `reportNetworkTime`.
+   * Positive means the local song is behind the remote; negative means ahead.
+   * Only meaningful in multiplayer contexts.
+   */
+  public var networkDriftMs(default, null):Float = 0;
+
+  /**
+   * Whether the local song position is currently considered in sync with the
+   * last reported remote time (within `NETWORK_DRIFT_DEADZONE_MS`).
+   */
+  public var isNetworkSynced(get, never):Bool;
+
+  function get_isNetworkSynced():Bool
+  {
+    return Math.abs(networkDriftMs) <= NETWORK_DRIFT_DEADZONE_MS;
+  }
+
+  static final NETWORK_DRIFT_DEADZONE_MS:Float = 30;
+  static final NETWORK_HARD_SYNC_THRESHOLD_MS:Float = 250;
+  static final NETWORK_CATCHUP_PITCH_OFFSET:Float = 0.02;
 
   /**
    * Reset the Conductor, replacing the current instance with a fresh one.
@@ -540,6 +610,66 @@ class Conductor
     @:privateAccess
     this.songPosition = soundToCheck._channel.position;
     return this.songPosition;
+  }
+
+  /**
+   * Reports the song position of a remote peer (e.g. the multiplayer host),
+   * along with an estimate of the one-way network latency to them, so this
+   * Conductor can track how far its own playback has drifted from theirs.
+   *
+   * If the drift is small, `applyNetworkTimeCorrection` will nudge playback
+   * pitch slightly to catch up/slow down without an audible jump. If the
+   * drift is too large to correct smoothly, the local song position is
+   * hard-snapped to match and `onNetworkResync` fires.
+   *
+   * @param remoteSongPosition The remote peer's reported song position, in milliseconds.
+   * @param estimatedLatencyMs A one-way latency estimate (e.g. half the round-trip time), in milliseconds.
+   */
+  public function reportNetworkTime(remoteSongPosition:Float, estimatedLatencyMs:Float = 0):Void
+  {
+    var adjustedRemoteTime:Float = remoteSongPosition + estimatedLatencyMs;
+    var localTime:Float = FlxG.sound.music != null ? FlxG.sound.music.time : songPosition;
+
+    networkDriftMs = adjustedRemoteTime - localTime;
+
+    if (Math.abs(networkDriftMs) > NETWORK_HARD_SYNC_THRESHOLD_MS)
+    {
+      if (FlxG.sound.music != null) FlxG.sound.music.time = adjustedRemoteTime;
+
+      networkDriftMs = 0;
+      onNetworkResync.dispatch();
+    }
+  }
+
+  /**
+   * Call every frame (while in a networked session) to gradually correct any
+   * tracked drift by nudging the music's playback pitch, rather than an
+   * audible hard seek. Does nothing once drift is within the deadzone.
+   *
+   * @param elapsed Time elapsed since the last frame, in seconds.
+   */
+  public function applyNetworkTimeCorrection(elapsed:Float):Void
+  {
+    if (FlxG.sound.music == null) return;
+
+    if (Math.abs(networkDriftMs) <= NETWORK_DRIFT_DEADZONE_MS)
+    {
+      if (FlxG.sound.music.pitch != 1.0) FlxG.sound.music.pitch = 1.0;
+      return;
+    }
+
+    var catchingUp:Bool = networkDriftMs > 0;
+
+    FlxG.sound.music.pitch = 1.0 + (catchingUp ? NETWORK_CATCHUP_PITCH_OFFSET : -NETWORK_CATCHUP_PITCH_OFFSET);
+
+    var correctionMs:Float = NETWORK_CATCHUP_PITCH_OFFSET * elapsed * Constants.MS_PER_SEC;
+    networkDriftMs += catchingUp ? -correctionMs : correctionMs;
+
+    if (Math.abs(networkDriftMs) <= NETWORK_DRIFT_DEADZONE_MS)
+    {
+      FlxG.sound.music.pitch = 1.0;
+      networkDriftMs = 0;
+    }
   }
 
   /**
@@ -892,6 +1022,7 @@ class Conductor
     FlxG.watch.addQuick('currentMeasureTime', target.currentMeasureTime);
     FlxG.watch.addQuick('currentBeatTime', target.currentBeatTime);
     FlxG.watch.addQuick('currentStepTime', target.currentStepTime);
+    FlxG.watch.addQuick('networkDriftMs', target.networkDriftMs);
   }
 
   static function log(message:String):Void
