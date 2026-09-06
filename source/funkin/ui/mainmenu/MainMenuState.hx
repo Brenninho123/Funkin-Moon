@@ -387,6 +387,8 @@ class MainMenuState extends MusicBeatState
 
   function init3DBackground():Void
   {
+    if (!Preferences.mode3D) return;
+
     if (!Paths.exists(MENU_3D_MODEL_PATH, BINARY))
     {
       FlxG.log.warn('[MainMenuState] 3D background model not found at $MENU_3D_MODEL_PATH, skipping.');
