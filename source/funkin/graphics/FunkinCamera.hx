@@ -60,6 +60,10 @@ class FunkinCamera extends FlxCamera
   public var scene3D(default, null):Null<funkin.graphics.render3d.Funkin3D> = null;
   #end
 
+  #if FEATURE_AWAY3D
+  public var awayScene(default, null):Null<funkin.graphics.away3d.FunkinAway3D> = null;
+  #end
+
   var _blendShader:RuntimeCustomBlendShader;
   var _backgroundFrame:FlxFrame;
   var _blendRenderTexture:RenderTexture;
@@ -115,6 +119,38 @@ class FunkinCamera extends FlxCamera
 
     scene3D.destroy();
     scene3D = null;
+  }
+  #end
+
+  #if FEATURE_AWAY3D
+  public function attachAwayScene(?width:Int, ?height:Int):funkin.graphics.away3d.FunkinAway3D
+  {
+    if (awayScene != null) return awayScene;
+
+    var sceneWidth:Int = width ?? Std.int(this.width);
+    var sceneHeight:Int = height ?? Std.int(this.height);
+
+    awayScene = new funkin.graphics.away3d.FunkinAway3D(sceneWidth, sceneHeight);
+    awayScene.attachToStage();
+    syncAwayScene();
+
+    return awayScene;
+  }
+
+  public function syncAwayScene():Void
+  {
+    if (awayScene == null) return;
+
+    awayScene.setViewPosition(this.x, this.y);
+    awayScene.resize(Std.int(this.width), Std.int(this.height));
+  }
+
+  public function detachAwayScene():Void
+  {
+    if (awayScene == null) return;
+
+    awayScene.dispose();
+    awayScene = null;
   }
   #end
 
@@ -266,6 +302,10 @@ class FunkinCamera extends FlxCamera
 
     #if FEATURE_3D_RENDERING
     detach3DScene();
+    #end
+
+    #if FEATURE_AWAY3D
+    detachAwayScene();
     #end
 
     _blendRenderTexture.destroy();
