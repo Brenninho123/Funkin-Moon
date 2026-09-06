@@ -48,6 +48,7 @@ Feel free to start learning to mod the game by reading our [documentation](https
 * **ArgMods** - Artist / Programmer
 * **Sunndy** — Artist
 * **Bruno** — PlayTester
+* **Cosmic** — Musician/PlayTester
 
 # Friday Night Funkin' Credits
 
