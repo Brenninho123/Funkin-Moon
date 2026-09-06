@@ -173,6 +173,8 @@ class Project extends HXProject
 
   static final FEATURE_3D_RENDERING:FeatureFlag = "FEATURE_3D_RENDERING";
 
+  static final FEATURE_AWAY3D:FeatureFlag = "FEATURE_AWAY3D";
+
   public function new()
   {
     super();
@@ -495,6 +497,8 @@ class Project extends HXProject
     // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
     FEATURE_3D_RENDERING.apply(this, false);
 
+    FEATURE_AWAY3D.apply(this, true);
+
     renderFlagsTable();
   }
 
@@ -799,6 +803,11 @@ class Project extends HXProject
     if (FEATURE_3D_RENDERING.isEnabled(this))
     {
       addHaxelib('foxlite');
+    }
+
+    if (FEATURE_AWAY3D.isEnabled(this))
+    {
+      addHaxelib('away3d');
     }
 
     if (FEATURE_LUA_SCRIPTS.isEnabled(this))
