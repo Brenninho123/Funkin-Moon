@@ -58,6 +58,10 @@ class MainMenuState extends MusicBeatState
   var bg:Null<FlxSprite>;
   var magenta:FlxSprite;
   var camFollow:FlxObject;
+  var mainMenuCam:FunkinCamera;
+  #if FEATURE_3D_RENDERING
+  var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
+  #end
   #if mobile
   var gyroPan:Null<FlxPoint>;
   #end
@@ -103,7 +107,12 @@ class MainMenuState extends MusicBeatState
     DiscordClient.instance.setPresence({state: "In the Menus", details: null});
     #end
 
-    FlxG.cameras.reset(new FunkinCamera('mainMenu'));
+    mainMenuCam = new FunkinCamera('mainMenu');
+    FlxG.cameras.reset(mainMenuCam);
+
+    #if FEATURE_3D_RENDERING
+    init3DBackground();
+    #end
 
     transIn = FlxTransitionableState.defaultTransIn;
     transOut = FlxTransitionableState.defaultTransOut;
@@ -370,6 +379,34 @@ class MainMenuState extends MusicBeatState
     var userCount:Int = FunkinUser.instance.getActiveUserCount();
 
     onlineStatusText.text = 'Status: $status\nUsers: $userCount';
+  }
+  #end
+
+  #if FEATURE_3D_RENDERING
+  static final MENU_3D_MODEL_PATH:String = 'assets/models/menuBackground.gltf';
+
+  function init3DBackground():Void
+  {
+    if (!Paths.exists(MENU_3D_MODEL_PATH, BINARY))
+    {
+      FlxG.log.warn('[MainMenuState] 3D background model not found at $MENU_3D_MODEL_PATH, skipping.');
+      return;
+    }
+
+    scene3D = mainMenuCam.attach3DScene(FlxG.width, FlxG.height);
+    scene3D.loadGLTFModel(MENU_3D_MODEL_PATH);
+    scene3D.setCameraPosition(0, 1.4, -6);
+
+    add(scene3D.scene);
+  }
+
+  function destroy3DBackground():Void
+  {
+    if (scene3D == null) return;
+
+    remove(scene3D.scene);
+    mainMenuCam.detach3DScene();
+    scene3D = null;
   }
   #end
 
@@ -671,6 +708,10 @@ class MainMenuState extends MusicBeatState
 
   override public function destroy():Void
   {
+    #if FEATURE_3D_RENDERING
+    destroy3DBackground();
+    #end
+
     #if FEATURE_ONLINE
     FunkinOnline.instance.onConnected.remove(updateOnlineStatusBar);
     FunkinOnline.instance.onDisconnected.remove(updateOnlineStatusBar);
