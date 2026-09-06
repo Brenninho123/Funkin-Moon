@@ -184,6 +184,13 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     {
       Preferences.cameraMovement = value;
     }, Preferences.cameraMovement);
+    #if (FEATURE_3D_RENDERING || FEATURE_AWAY3D)
+    createPrefItemCheckbox('3D Mode', 'When enabled, supported stages and menus render with 3D backgrounds instead of flat 2D art.',
+      function(value:Bool):Void
+      {
+        Preferences.mode3D = value;
+      }, Preferences.mode3D);
+    #end
     createPrefItemCheckbox('Camera Zooms', 'When enabled, the camera bounces during songs.', function(value:Bool):Void
     {
       Preferences.zoomCamera = value;
