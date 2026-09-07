@@ -70,6 +70,12 @@ import funkin.util.TouchUtil;
 import funkin.util.SwipeUtil;
 import funkin.mobile.input.ControlsHandler;
 #end
+#if FEATURE_LUA_SCRIPTS
+import funkin.modding.module.Module;
+#end
+#if FEATURE_3D_RENDERING
+import funkin.graphics.render3d.Funkin3D;
+#end
 
 /**
  * The state for the freeplay menu, allowing the player to select any song to play.
@@ -89,72 +95,23 @@ class FreeplayState extends MusicBeatSubState
 
   final currentCharacter:PlayableCharacter;
 
-  /**
-   * For the audio preview, the duration of the fade-in effect.
-   */
   public static final FADE_IN_DURATION:Float = 0.5;
-
-  /**
-   * For the audio preview, the duration of the fade-out effect.
-   *
-   */
   public static final FADE_OUT_DURATION:Float = 0.25;
-
-  /**
-   * For the audio preview, the volume at which the fade-in starts.
-   */
   public static final FADE_IN_START_VOLUME:Float = 0.25;
-
-  /**
-   * For the audio preview, the volume at which the fade-in ends.
-   */
   public static final FADE_IN_END_VOLUME:Float = 1.0;
-
-  /**
-   * For the audio preview, the volume at which the fade-out starts.
-   */
   public static final FADE_OUT_END_VOLUME:Float = 0.0;
-
-  /**
-   * For scaling some sprites on wide displays.
-   */
   public static var CUTOUT_WIDTH:Float = FullScreenScaleMode.gameCutoutSize.x / 1.5;
-
-  /**
-   * For positioning the DJ on wide displays.
-   */
   public static final DJ_POS_MULTI:Float = 0.44;
-
-  /**
-   * For positioning the songs list on wide displays.
-   */
   public static final SONGS_POS_MULTI:Float = 0.75;
-
-  /**
-   * For positioning the difficulty dots.
-   */
   public static final DEFAULT_DOTS_GROUP_POS:Array<Int> = [260, 170];
-
-  /**
-   * For the audio preview, the time to wait before attempting to load a song preview.
-   */
   public static final FADE_IN_DELAY:Float = 0.25;
 
   public var uiStateMachine:UIStateMachine = new UIStateMachine();
 
   var songs:Array<Null<FreeplaySongData>> = [];
   var curSelected:Int = 0;
-  // curSelectedFloat is used for mobile to get "inbetween" selections for swipe/scrolling/momentum stuff
   var curSelectedFloat:Float = 0;
-
-  /**
-   * Currently selected difficulty, in string form.
-   */
   var currentDifficulty:String = Constants.DEFAULT_DIFFICULTY;
-
-  /**
-   *  Current variation: default, erect, pico, bf, etc.
-   */
   var currentVariation:String = Constants.DEFAULT_VARIATION;
 
   var fpScoreDisplay:FreeplayScore;
@@ -165,18 +122,8 @@ class FreeplayState extends MusicBeatSubState
   var intendedScore:Int = 0;
   var grpDifficulties:FlxTypedSpriteGroup<DifficultySprite>;
   var difficultyDots:FlxTypedSpriteGroup<DifficultyDot>;
-
-  /**
-   *  An array of preview timers, so that we can prevent the timers from overlapping.
-   */
   var previewTimers:Array<FlxTimer> = [];
 
-  /**
-   * Bit of a utility var to get the currently displayed DifficultySprite
-   *
-   * The getter looks like this
-   * `return grpDifficulties.members.filter(d -> d.difficultyId == currentDifficulty)[0];`
-   */
   var currentDifficultySprite(get, never):DifficultySprite;
 
   function get_currentDifficultySprite():DifficultySprite
@@ -184,9 +131,6 @@ class FreeplayState extends MusicBeatSubState
     return grpDifficulties.members.filter(d -> d.difficultyId == currentDifficulty)[0];
   }
 
-  /**
-   * Another utility var, this one gets our current selected capsule easily
-   */
   var currentCapsule(get, never):SongMenuItem;
 
   function get_currentCapsule():SongMenuItem
@@ -197,7 +141,6 @@ class FreeplayState extends MusicBeatSubState
   var grpCapsules:SongItemGroup;
   var dj:Null<BaseFreeplayDJ> = null;
   #if FEATURE_TOUCH_CONTROLS
-  // For proper hitbox detection, flxanimate doesn't work with touch overlap!!
   var djHitbox:FlxObject = new FlxObject((CUTOUT_WIDTH * DJ_POS_MULTI), 320, 400, 400);
   var capsuleHitbox:FlxObject = new FlxObject((CUTOUT_WIDTH * SONGS_POS_MULTI) + 380, 150, CUTOUT_WIDTH + 590, 576);
   #end
@@ -211,25 +154,21 @@ class FreeplayState extends MusicBeatSubState
   var exitMoversCharSel:ExitMoverData = new Map();
   var stickerSubState:Null<StickerSubState> = null;
 
-  /**
-   * The difficulty we were on when this menu was last accessed.
-   */
+  var psychOriginIndicator:Null<FlxText> = null;
+
+  #if FEATURE_LUA_SCRIPTS
+  var freeplayLuaModule:Null<Module> = null;
+  static final FREEPLAY_LUA_SCRIPT_PATH:String = 'scripts/freeplay.lua';
+  #end
+
+  #if FEATURE_3D_RENDERING
+  var scene3D:Null<Funkin3D> = null;
+  static final DEFAULT_FREEPLAY_3D_MODEL_PATH:String = 'assets/models/freeplayBackground.gltf';
+  #end
+
   public static var rememberedDifficulty:String = Constants.DEFAULT_DIFFICULTY;
-
-  /**
-   * The song we were on when this menu was last accessed.
-   * NOTE: `null` if the last song was `Random`.
-   */
   public static var rememberedSongId:Null<String> = 'tutorial';
-
-  /**
-   * The character we were on when this menu was last accessed.
-   */
   public static var rememberedCharacterId:String = Constants.DEFAULT_CHARACTER;
-
-  /**
-   * The remembered variation we were on when this menu was last accessed.
-   */
   public static var rememberedVariation:String = Constants.DEFAULT_VARIATION;
 
   public var funnyCam:FunkinCamera;
@@ -237,18 +176,9 @@ class FreeplayState extends MusicBeatSubState
   var rankCamera:FunkinCamera;
   var rankBg:FunkinSprite;
   var rankVignette:FlxSprite;
-  // We can use this without doing Null<BackingCard> because we initialize it in new()
-
-  /**
-   * The card behind the DJ !
-   */
   var backingCard:BackingCard;
 
-  /**
-   * The backing card that has the toned dots, right now we just use that one dad graphic dave cooked up
-   */
   public var backingImage:FunkinSprite;
-
   public var angleMaskShader:AngleMask = new AngleMask();
 
   var fadeShader:BlueFade = new BlueFade();
@@ -314,11 +244,9 @@ class FreeplayState extends MusicBeatSubState
         }
       }
     }
-    // Return the default backing card if there isn't one specific for the character.
 
     backingCard = backingCardPrep ?? new BackingCard(currentCharacterId);
 
-    // We build a bunch of sprites BEFORE create() so we can guarantee they aren't null later on.
     albumRoll = new AlbumRoll();
     fpScoreDisplay = new FreeplayScore(FlxG.width - (FullScreenScaleMode.gameNotchSize.x + 353), 60, 7, 100, styleData);
     rankCamera = new FunkinCamera('rankCamera', 0, 0, FlxG.width, FlxG.height);
@@ -339,7 +267,6 @@ class FreeplayState extends MusicBeatSubState
 
     backingImage = FunkinSprite.create(backingCard.pinkBack.width * 0.74, 0, styleData == null ? 'freeplay/freeplayBGweek1-bf' : styleData.getBgAssetKey());
 
-    // TODO: refactor DifficultySelector to *not* use `this` as input? Handle it's animations and style data in different manner
     diffSelLeft = new DifficultySelector((CUTOUT_WIDTH * DJ_POS_MULTI) + 20, grpDifficulties.y - 10, false, controls, styleData, uiStateMachine);
     diffSelRight = new DifficultySelector((CUTOUT_WIDTH * DJ_POS_MULTI) + 325, grpDifficulties.y - 10, true, controls, styleData, uiStateMachine);
   }
@@ -374,17 +301,13 @@ class FreeplayState extends MusicBeatSubState
     }
 
     #if FEATURE_DISCORD_RPC
-    // Updating Discord Rich Presence
     DiscordClient.instance.setPresence({state: 'In the Menus', details: null});
     #end
 
-    // Block input until the intro finishes.
     uiStateMachine.transition(EnteringFreeplay);
 
-    // Add a null entry that represents the RANDOM option
     songs.push(null);
 
-    // programmatically adds the songs via LevelRegistry and SongRegistry
     for (levelId in LevelRegistry.instance.listSortedLevelIds())
     {
       var level:Null<Level> = LevelRegistry.instance.fetchEntry(levelId);
@@ -408,10 +331,6 @@ class FreeplayState extends MusicBeatSubState
         songs.push(new FreeplaySongData(songId, level, this));
       }
     }
-
-    // LOAD MUSIC
-
-    // LOAD CHARACTERS
 
     backingCard.instance = this;
     add(backingCard);
@@ -450,9 +369,8 @@ class FreeplayState extends MusicBeatSubState
     #end
 
     var blackOverlayBullshitLOLXD:FlxSprite = new FlxSprite(FlxG.width).makeGraphic(Std.int(backingImage.width), Std.int(backingImage.height), FlxColor.BLACK);
-    add(blackOverlayBullshitLOLXD); // used to mask the text lol!
+    add(blackOverlayBullshitLOLXD);
 
-    // this makes the texture sizes consistent, for the angle shader
     backingImage.setGraphicSize(0, FlxG.height + 1);
     blackOverlayBullshitLOLXD.setGraphicSize(0, FlxG.height + 1);
 
@@ -473,7 +391,6 @@ class FreeplayState extends MusicBeatSubState
     add(grpDifficulties);
     add(difficultyDots);
     add(backingImage);
-    // backingCard.pinkBack.width * 0.74
 
     blackOverlayBullshitLOLXD.shader = backingImage.shader;
 
@@ -628,7 +545,6 @@ class FreeplayState extends MusicBeatSubState
       wait: 0.1
     });
 
-    // Reminder, this is a callback function being set, rather than these being called here in create()
     letterSort.changeSelectionCallback = (str) ->
     {
       var curSong:Null<FreeplaySongData> = currentCapsule?.freeplayData;
@@ -646,9 +562,6 @@ class FreeplayState extends MusicBeatSubState
           generateSongList({filterType: REGEXP, filterData: str}, true, false);
       }
 
-      // If the current song is still in the list, or if it was random, we'll land on it
-      // Otherwise we want to land on the first song of the group, rather than random song when changing letter sorts
-      // that is, only if there's more than one song in the group!
       if (curSong == null || currentFilteredSongs.contains(curSong))
       {
         changeSelection();
@@ -682,7 +595,6 @@ class FreeplayState extends MusicBeatSubState
     diffSelRight.visible = false;
     add(diffSelRight);
 
-    // putting these here to fix the layering
     add(overhangStuff);
     add(freeplayArrow);
     add(freeplayTxtBg);
@@ -694,22 +606,27 @@ class FreeplayState extends MusicBeatSubState
       add(charSelectHint);
     }
 
-    // be careful not to "add()" things in here unless it's to a group that's already added to the state
-    // otherwise it won't be properly attatched to funnyCamera (relavent code should be at the bottom of create())
+    initPsychOriginIndicator();
+
+    #if FEATURE_LUA_SCRIPTS
+    initFreeplayLuaScript();
+    #end
+
+    #if FEATURE_3D_RENDERING
+    if (Preferences.mode3D) initDefault3DBackground();
+    #end
+
     var onDJIntroDone:Void->Void = () ->
     {
       if (!uiStateMachine.is(Interacting)) uiStateMachine.transition(Idle);
 
       dispatchEvent(new FreeplayScriptEvent(FREEPLAY_INTRO));
 
-      // when boyfriend hits dat shiii
-
       albumRoll.playIntro();
       albumRoll.albumId = currentCapsule.freeplayData?.data.getAlbumId(currentDifficulty, currentVariation);
 
       if (!fromCharSelect)
       {
-        // render optimisation
         if (_parentState != null) _parentState.persistentDraw = false;
 
         FlxTween.color(backingImage, 0.6, 0xFF000000, 0xFFFFFFFF, {
@@ -798,18 +715,14 @@ class FreeplayState extends MusicBeatSubState
       #end
     };
 
-    // Generates song list with the starter params (who our current character is, last remembered difficulty, etc.)
-    // Set this to false if you prefer the 50% transparency on the capsules when they first appear.
     generateSongList(null, true);
 
-    // dedicated camera for the state so we don't need to fuk around with camera scrolls from the mainmenu / elsewhere
     funnyCam.bgColor = FlxColor.TRANSPARENT;
     FlxG.cameras.add(funnyCam, false);
 
     rankVignette.scale.set(2 * FullScreenScaleMode.wideScale.x, 2 * FullScreenScaleMode.wideScale.y);
     rankVignette.updateHitbox();
     rankVignette.blend = BlendMode.ADD;
-    // rankVignette.cameras = [rankCamera];
     add(rankVignette);
     rankVignette.alpha = 0;
 
@@ -853,28 +766,108 @@ class FreeplayState extends MusicBeatSubState
     }
   }
 
-  /**
-   * Dispatches script events to all relevant scripted classes.
-   * @param event
-   */
-  override public function dispatchEvent(event:ScriptEvent):Void
+  function initPsychOriginIndicator():Void
   {
-    // Dispatch to scripted modules.
-    super.dispatchEvent(event);
-
-    // Dispatch to scripted backing cards, behind the DJ.
-    if (backingCard != null) ScriptEventDispatcher.callEvent(backingCard, event);
-
-    // Dispatch to scripted Freeplay DJs.
-    if (dj != null) ScriptEventDispatcher.callEvent(dj, event);
+    psychOriginIndicator = new FlxText(8 - FullScreenScaleMode.gameNotchSize.x, 34, FlxG.width - 16, '', 16);
+    psychOriginIndicator.font = 'VCR OSD Mono';
+    psychOriginIndicator.color = FlxColor.YELLOW;
+    psychOriginIndicator.visible = false;
+    psychOriginIndicator.cameras = [funnyCam];
+    add(psychOriginIndicator);
   }
 
-  /**
-   * Create a FreeplayDJ for the current character.
-   * @param x The X position.
-   * @param y The Y position.
-   * @param characterId The character ID to use.
-   */
+  function checkPsychOrigin(songId:Null<String>):Null<String>
+  {
+    if (songId == null || songId == '') return null;
+
+    for (dirName => report in funkin.modding.PolymodHandler.conversionReports)
+    {
+      if (report.songsConverted.contains(songId)) return dirName;
+    }
+
+    return null;
+  }
+
+  function updatePsychOriginIndicator():Void
+  {
+    if (psychOriginIndicator == null) return;
+
+    var songId:Null<String> = currentCapsule?.freeplayData?.data.id;
+    var originDir:Null<String> = checkPsychOrigin(songId);
+
+    if (originDir == null)
+    {
+      psychOriginIndicator.visible = false;
+      return;
+    }
+
+    psychOriginIndicator.text = 'Converted from Psych Engine mod: $originDir';
+    psychOriginIndicator.visible = true;
+  }
+
+  #if FEATURE_LUA_SCRIPTS
+  function initFreeplayLuaScript():Void
+  {
+    if (!Paths.exists(FREEPLAY_LUA_SCRIPT_PATH, TEXT)) return;
+
+    freeplayLuaModule = Module.fromLuaScript(Paths.file(FREEPLAY_LUA_SCRIPT_PATH, TEXT), 'freeplayLuaScript');
+    ScriptEventDispatcher.callEvent(freeplayLuaModule, new ScriptEvent(CREATE, false));
+  }
+  #end
+
+  #if FEATURE_3D_RENDERING
+  function initDefault3DBackground():Void
+  {
+    if (!Paths.exists(DEFAULT_FREEPLAY_3D_MODEL_PATH, BINARY))
+    {
+      FlxG.log.warn('[FreeplayState] 3D background model not found at $DEFAULT_FREEPLAY_3D_MODEL_PATH, skipping.');
+      return;
+    }
+
+    enable3DBackground(DEFAULT_FREEPLAY_3D_MODEL_PATH);
+  }
+
+  public function enable3DBackground(modelPath:String, binary:Bool = false):Void
+  {
+    if (scene3D != null) return;
+
+    scene3D = funnyCam.attach3DScene(FlxG.width, FlxG.height);
+
+    if (binary)
+    {
+      scene3D.loadGLTFBinary(modelPath);
+    }
+    else
+    {
+      scene3D.loadGLTFModel(modelPath);
+    }
+
+    add(scene3D.scene);
+  }
+
+  public function disable3DBackground():Void
+  {
+    if (scene3D == null) return;
+
+    remove(scene3D.scene);
+    funnyCam.detach3DScene();
+    scene3D = null;
+  }
+  #end
+
+  override public function dispatchEvent(event:ScriptEvent):Void
+  {
+    super.dispatchEvent(event);
+
+    if (backingCard != null) ScriptEventDispatcher.callEvent(backingCard, event);
+
+    if (dj != null) ScriptEventDispatcher.callEvent(dj, event);
+
+    #if FEATURE_LUA_SCRIPTS
+    if (freeplayLuaModule != null) ScriptEventDispatcher.callEvent(freeplayLuaModule, event);
+    #end
+  }
+
   @:privateAccess
   public function createFreeplayDJ(x:Float, y:Float, characterId:String):Void
   {
@@ -895,25 +888,15 @@ class FreeplayState extends MusicBeatSubState
         dj = (scriptClass != '') ? (ScriptedPackerFreeplayDJ.scriptInit(scriptClass, x, y, characterId)) : (new PackerFreeplayDJ(x, y, characterId));
       case 'custom':
         dj = (scriptClass != '') ? (ScriptedBaseFreeplayDJ.scriptInit(scriptClass, x, y, characterId)) : {
-          // force-skip intro only in fallback, since you can specify onIntroDone.dispatch in ScriptedBaseFreeplayDJ, and this is goddamn fallback
           forceSkipIntro = true;
           new BaseFreeplayDJ(x, y, characterId);
-        }; // We can't fallback on any other types, since the assets may be unspecified
+        };
     }
   }
 
   var currentFilter:Null<SongFilter> = null;
   var currentFilteredSongs:Array<Null<FreeplaySongData>> = [];
 
-  /**
-   * Given the current filter, rebuild the current song list and display it.
-   * Automatically takes into account currentDifficulty, character, and variation
-   *
-   * @param filterStuff A filter to apply to the song list (regex, startswith, all, favorite)
-   * @param force Whether the capsules should "jump" back in or not using their animation
-   * @param onlyIfChanged Only apply the filter if the song list has changed
-   * @param noJumpIn Will not call the jump-in function, used when changing difficulties to update the song list correctly without this happening twice
-   */
   public function generateSongList(filterStuff:Null<SongFilter>, force:Bool = false, onlyIfChanged:Bool = true, noJumpIn:Bool = false):Void
   {
     var tempSongs:Array<Null<FreeplaySongData>> = songs;
@@ -922,13 +905,10 @@ class FreeplayState extends MusicBeatSubState
 
     tempSongs = tempSongs.filter(song ->
     {
-      if (song == null) return true; // Random
+      if (song == null) return true;
 
-      // Available variations for current character. We get this since bf is usually `default` variation, and `pico` is `pico`
-      // but sometimes pico can be the default variation (weekend 1 songs), and bf can be `bf` variation (darnell)
       var characterVariations:Array<String> = song.data.getVariationsByCharacter(currentCharacter);
 
-      // Gets all available difficulties for our character, via our available variations
       var difficultiesAvailable:Array<String> = song.data.listDifficulties(null, characterVariations);
       return difficultiesAvailable.contains(currentDifficulty);
     });
@@ -937,9 +917,6 @@ class FreeplayState extends MusicBeatSubState
     {
       if (tempSongs.isEqualUnordered(currentFilteredSongs))
       {
-        // If the song list is the same, we don't need to generate a new list.
-
-        // Instead, we just apply the jump-in animation to the existing capsules.
         for (capsule in grpCapsules.members)
         {
           if (!noJumpIn)
@@ -949,12 +926,10 @@ class FreeplayState extends MusicBeatSubState
           }
         }
 
-        // Stop processing.
         return;
       }
     }
 
-    // Only now do we know that the filter is actually changing.
     currentFilter = filterStuff;
 
     currentFilteredSongs = tempSongs;
@@ -962,7 +937,6 @@ class FreeplayState extends MusicBeatSubState
 
     grpCapsules.killMembers();
 
-    // Initialize the random capsule, with empty/blank info (which we display once bf/pico does his hand)
     var randomCapsule:SongMenuItem = grpCapsules.recycle(SongMenuItem);
     randomCapsule.initRandom(styleData);
     randomCapsule.onConfirm = () -> capsuleOnOpenRandom(randomCapsule);
@@ -991,7 +965,6 @@ class FreeplayState extends MusicBeatSubState
       funnyMenu.hsvShader = hsvShader;
       funnyMenu.newText.animation.curAnim.curFrame = 45 - ((i * 4) % 45);
 
-      // Stop the bounce-in animation when returning to freeplay from the character selection screen, or if noJumpIn is set to true
       if (fromCharSelect || forceSkipIntro || noJumpIn) funnyMenu.forcePosition();
       else
         funnyMenu.initJumpIn(0, force);
@@ -1008,12 +981,6 @@ class FreeplayState extends MusicBeatSubState
     dispatchEvent(new CapsuleScriptEvent(DIFFICULTY_SWITCH, currentCapsule, currentDifficulty, currentVariation));
   }
 
-  /**
-   * Filters an array of songs based on a filter
-   * @param songsToFilter What data to use when filtering
-   * @param songFilter The filter to apply
-   * @return Array<FreeplaySongData>
-   */
   public function sortSongs(songsToFilter:Array<Null<FreeplaySongData>>, songFilter:SongFilter):Array<Null<FreeplaySongData>>
   {
     var filterAlphabetically = function(a:Null<FreeplaySongData>, b:Null<FreeplaySongData>):Int
@@ -1024,40 +991,30 @@ class FreeplayState extends MusicBeatSubState
     switch (songFilter.filterType)
     {
       case REGEXP:
-        // filterStuff.filterData has a string with the first letter of the sorting range, and the second one
-        // this creates a filter to return all the songs that start with a letter between those two
-
-        // if filterData looks like "A-C", the regex should look something like this: ^[A-C].*
-        // to get every song that starts between A and C
         var filterRegexp:EReg = new EReg('^[' + songFilter.filterData + '].*', 'i');
         songsToFilter = songsToFilter.filter(filteredSong ->
         {
-          if (filteredSong == null) return true; // Random
+          if (filteredSong == null) return true;
           return filterRegexp.match(filteredSong.data.songName);
         });
 
         songsToFilter.sort(filterAlphabetically);
 
       case STARTSWITH:
-        // extra note: this is essentially a "search"
-
         songsToFilter = songsToFilter.filter(filteredSong ->
         {
-          if (filteredSong == null) return true; // Random
+          if (filteredSong == null) return true;
           return filteredSong.data.songName.toLowerCase().startsWith(songFilter.filterData ?? '');
         });
       case ALL:
-        // no filter!
       case FAVORITE:
-        // sort favorites by week, not alphabetically
         songsToFilter = songsToFilter.filter(filteredSong ->
         {
-          if (filteredSong == null) return true; // Random
+          if (filteredSong == null) return true;
           return filteredSong.isFav;
         });
 
       default:
-        // return all on default
     }
 
     return songsToFilter;
@@ -1069,21 +1026,18 @@ class FreeplayState extends MusicBeatSubState
   function rankAnimStart(fromResults:FromResultsParams, capsuleToRank:SongMenuItem):Void
   {
     uiStateMachine.transition(Interacting);
-    // We get the current selected capsule, in-case someone changes the song selection during a timer
     capsuleToRank.sparkle.alpha = 0;
-    // capsuleToRank.forcePosition();
 
     rememberedSongId = fromResults.songId;
     rememberedDifficulty = fromResults.difficultyId;
     capsuleToRank.fakeRanking.visible = true;
-    capsuleToRank.fakeRanking.alpha = 0; // If this isn't done, you'd see a tiny E being replaced for the first rank
+    capsuleToRank.fakeRanking.alpha = 0;
 
     changeSelection();
     changeDiff();
 
     (fromResultsParams?.newRank == SHIT) ? dj?.fistPumpLossIntro() : dj?.fistPumpIntro();
 
-    // rankCamera.fade(FlxColor.BLACK, 0.5, true);
     rankCamera.fade(0xFF000000, 0.5, true, null, true);
     if (FlxG.sound.music != null) FlxG.sound.music.volume = 0;
     rankBg.alpha = 1;
@@ -1111,7 +1065,6 @@ class FreeplayState extends MusicBeatSubState
       add(sparksADD);
       sparksADD.cameras = [rankCamera];
       sparksADD.color = fromResults.oldRank.getRankingFreeplayColor();
-      // sparksADD.color = sparks.color;
       capsuleToRank.fakeRanking.alpha = 1.0;
     }
 
@@ -1124,7 +1077,6 @@ class FreeplayState extends MusicBeatSubState
     capsuleToRank.ranking.visible = false;
     capsuleToRank.blurredRanking.visible = false;
 
-    // Rank animation vibrations.
     HapticUtil.increasingVibrate(Constants.MIN_VIBRATION_AMPLITUDE, Constants.MAX_VIBRATION_AMPLITUDE, 0.6);
 
     rankCamera.zoom = 1.85;
@@ -1134,8 +1086,6 @@ class FreeplayState extends MusicBeatSubState
     FlxTween.tween(funnyCam, {'zoom': 1.1}, 0.6, {ease: FlxEase.sineIn});
 
     capsuleToRank.cameras = [rankCamera];
-    // capsuleToRank.targetPos.set((FlxG.width / 2) - (capsuleToRank.width / 2),
-    //  (FlxG.height / 2) - (capsuleToRank.height / 2));
 
     capsuleToRank.setPosition((FlxG.width / 2) - (capsuleToRank.capsule.width / 2), (FlxG.height / 2) - (capsuleToRank.capsule.height / 2));
 
@@ -1225,10 +1175,7 @@ class FreeplayState extends MusicBeatSubState
 
   function rankAnimSlam(fromResultsParams:Null<FromResultsParams>, capsuleToRank:SongMenuItem):Void
   {
-    // FlxTween.tween(rankCamera, {"zoom": 1.9}, 0.5, {ease: FlxEase.backOut});
     FlxTween.tween(rankBg, {alpha: 0}, 0.5, {ease: FlxEase.expoIn});
-
-    // FlxTween.tween(capsuleToRank, {angle: 5}, 0.5, {ease: FlxEase.backIn});
 
     switch (fromResultsParams?.newRank)
     {
@@ -1251,7 +1198,6 @@ class FreeplayState extends MusicBeatSubState
     FlxTween.tween(capsuleToRank.targetPos, {x: originalPos.x, y: originalPos.y}, 0.5, {ease: FlxEase.expoOut});
     new FlxTimer().start(0.5, _ ->
     {
-      // Capsule slam vibration.
       HapticUtil.vibrate(Constants.DEFAULT_VIBRATION_PERIOD, Constants.DEFAULT_VIBRATION_DURATION, Constants.MAX_VIBRATION_AMPLITUDE);
 
       funnyCam.shake(0.0045, 0.35);
@@ -1272,7 +1218,6 @@ class FreeplayState extends MusicBeatSubState
           if (index == curSelected)
           {
             FlxTween.cancelTweensOf(capsule);
-            // capsule.targetPos.x += 50;
             capsule.fadeAnim(fromResultsParams?.newRank);
 
             rankVignette.color = capsule.getTrailColor();
@@ -1286,24 +1231,15 @@ class FreeplayState extends MusicBeatSubState
               capsule.doLerp = true;
               capsule.cameras = [funnyCam];
 
-              // NOW we can interact with the menu
               uiStateMachine.transition(Idle);
               capsule.sparkle.alpha = 0.7;
               playCurSongPreview(capsule);
             }, null);
 
-            // FlxTween.tween(capsule, {"targetPos.x": capsule.targetPos.x - 50}, 0.6,
-            //   {
-            //     ease: FlxEase.backInOut,
-            //     onComplete: function(_) {
-            //       capsule.cameras = [funnyCam];
-            //     }
-            //   });
             FlxTween.tween(capsule, {angle: 0}, 0.5, {ease: FlxEase.backOut});
           }
           if (index > curSelected)
           {
-            // capsule.color = FlxColor.RED;
             new FlxTimer().start(distFromSelected / 20, _ ->
             {
               capsule.doLerp = false;
@@ -1320,7 +1256,6 @@ class FreeplayState extends MusicBeatSubState
 
           if (index < curSelected)
           {
-            // capsule.color = FlxColor.BLUE;
             new FlxTimer().start(distFromSelected / 20, _ ->
             {
               capsule.doLerp = false;
@@ -1384,7 +1319,6 @@ class FreeplayState extends MusicBeatSubState
     var curDot:Int = 0;
     for (i in 0...difficultyDots.group.members.length)
     {
-      // if (difficultyDots.group.members[i] == null) continue;
       var targetState:DotState = SELECTED;
       var targetType:DotType = NORMAL;
       var diffId:String = difficultyDots.group.members[i].difficultyId;
@@ -1432,9 +1366,6 @@ class FreeplayState extends MusicBeatSubState
       {
         if (daSong?.isDifficultyNew(diffId) == true)
         {
-          // at the moment, we don't want the other difficulties to show the pulse, cause the
-          // feature only works on new songs at the moment and its not particularly hard to find a new song on easy/normal/hard.
-          // eventually this will probably be moved to affect all types.
           if (targetType == ERECT)
           {
             difficultyDots.group.members[i].important = true;
@@ -1442,8 +1373,6 @@ class FreeplayState extends MusicBeatSubState
         }
       }
 
-      // originally was gonna hide the dots if erect/nightmare wasnt present, leaving this functionality just in case
-      // mods (or we) need to display a different amount
       if (i > amount - 1 && amount != 5)
       {
         difficultyDots.group.members[i].visible = false;
@@ -1455,10 +1384,6 @@ class FreeplayState extends MusicBeatSubState
     prevDotAmount = amount;
   }
 
-  /**
-   * Updates the OST text according to the album data for the current song and performs an outline animation.
-   * @param forceAnimation Whether to force the animation to play even if the text is the same.
-   */
   function updateOSTName(forceAnimation:Bool = false):Void
   {
     var newName:String = albumRoll.getOSTNameOverride() ?? '';
@@ -1477,7 +1402,6 @@ class FreeplayState extends MusicBeatSubState
 
   function tryOpenCharSelect():Void
   {
-    // Check if we have ACCESS to character select!
     trace('Is Pico unlocked? ${PlayerRegistry.instance.fetchEntry('pico')?.isUnlocked()}');
     trace('Number of characters: ${PlayerRegistry.instance.countUnlockedCharacters()}');
 
@@ -1498,7 +1422,6 @@ class FreeplayState extends MusicBeatSubState
 
     dj?.toCharSelect();
 
-    // Get this character's transition delay, with a reasonable default.
     var transitionDelay:Float = currentCharacter.getFreeplayDJData()?.getCharSelectTransitionDelay() ?? 0.25;
 
     new FlxTimer().start(transitionDelay, _ ->
@@ -1545,7 +1468,6 @@ class FreeplayState extends MusicBeatSubState
     fadeShader.fade(1.0, 0.0, 0.8, {ease: FlxEase.quadIn});
     FlxG.sound.music?.fadeOut(0.9, 0);
 
-    // Passing the currrent Freeplay character to the CharSelect so we can start it with that character selected
     new FlxTimer().start(0.9, _ ->
     {
       FlxG.switchState(() -> new funkin.ui.charSelect.CharSelectSubState({character: currentCharacterId}));
@@ -1612,8 +1534,6 @@ class FreeplayState extends MusicBeatSubState
       }
     }
 
-    // TODO: i have no fucking idea why the dj position is shitty when entering from char select
-    // the easiest way is to just snap them back into place
     if (dj != null)
     {
       dj.resetPosition();
@@ -1672,7 +1592,7 @@ class FreeplayState extends MusicBeatSubState
         difficultyId: 'hard'
       }, currentCapsule);
     }
-    #end // ^<-- FEATURE_DEBUG_FUNCTIONS
+    #end
 
     if (uiStateMachine.canInteract())
     {
@@ -1692,9 +1612,6 @@ class FreeplayState extends MusicBeatSubState
 
     handleInputs(elapsed);
 
-    // if (dj != null) FlxG.watch.addQuick('dj-anim', dj.getCurrentAnimation());
-
-    // If the allowPicoBulletsVibration is true, trigger vibration each update (for pico shooting bullets animation).
     if (allowPicoBulletsVibration) HapticUtil.vibrate(0, 0.01, (Constants.MAX_VIBRATION_AMPLITUDE / 3) * 2.5);
   }
 
@@ -1715,12 +1632,8 @@ class FreeplayState extends MusicBeatSubState
 
     fpScoreDisplay.updateScore(Std.int(lerpScore));
 
-    // sets the text of the completion percentage. Perhaps eventually we may want to generalize this,
-    // but for now we can just clamp the values between 0 and 100.
-    // Fixes issue where it rounds to negative integer overflow on Windows? Which occurs when switching to an unranked song?
     txtCompletion.text = '${Math.floor(lerpCompletion * 100).clamp(0, 100)}';
 
-    // Right align the completion percentage
     switch (txtCompletion.text.length)
     {
       case 3:
@@ -1761,7 +1674,7 @@ class FreeplayState extends MusicBeatSubState
 
     if (wheelAmount != 0)
     {
-      dj?.onPlayerAction(); // dj?.resetAFKTimer();
+      dj?.onPlayerAction();
       changeSelection(-wheelAmount);
     }
 
@@ -1818,7 +1731,7 @@ class FreeplayState extends MusicBeatSubState
       }
 
       spamTimer += elapsed;
-      dj?.onPlayerAction(); // dj?.resetAFKTimer();
+      dj?.onPlayerAction();
     }
     else
     {
@@ -1841,13 +1754,13 @@ class FreeplayState extends MusicBeatSubState
 
     if (leftPressed)
     {
-      dj?.onPlayerAction(); // dj?.resetAFKTimer();
+      dj?.onPlayerAction();
       changeDiff(-1);
       generateSongList(currentFilter, true, false);
     }
     else if (rightPressed)
     {
-      dj?.onPlayerAction(); // dj?.resetAFKTimer();
+      dj?.onPlayerAction();
       changeDiff(1);
       generateSongList(currentFilter, true, false);
     }
@@ -1866,7 +1779,6 @@ class FreeplayState extends MusicBeatSubState
       {
         var availableSongCapsules:Array<SongMenuItem> = grpCapsules.members.filter(function(cap:SongMenuItem)
         {
-          // Dead capsules are ones which were removed from the list when changing filters.
           return cap.alive && cap.freeplayData != null;
         });
 
@@ -1884,14 +1796,11 @@ class FreeplayState extends MusicBeatSubState
 
         var targetSong:SongMenuItem = FlxG.random.getObject(availableSongCapsules);
 
-        // Seeing if I can do an animation...
         curSelected = grpCapsules.members.indexOf(targetSong);
         changeSelection(0);
         targetSongID = currentCapsule?.freeplayData?.data.id ?? 'unknown';
       }
-      // Play the confirm animation so the user knows they actually did something.
       FunkinSound.playOnce(Paths.sound('confirmMenu'));
-      // if (dj != null) dj.confirm();
       dj?.onConfirm();
       new FlxTimer().start(styleData?.getStartDelay(), function(tmr:FlxTimer)
       {
@@ -1917,7 +1826,6 @@ class FreeplayState extends MusicBeatSubState
 
         var availableSongCapsules:Array<SongMenuItem> = grpCapsules.members.filter(function(cap:SongMenuItem)
         {
-          // Dead capsules are ones which were removed from the list when changing filters.
           return cap.alive && cap.freeplayData != null;
         });
 
@@ -1935,7 +1843,6 @@ class FreeplayState extends MusicBeatSubState
 
         var targetSong:SongMenuItem = FlxG.random.getObject(availableSongCapsules);
 
-        // Seeing if I can do an animation...
         curSelected = grpCapsules.members.indexOf(targetSong);
         changeSelection(0);
         targetSongID = grpCapsules.members[curSelected]?.freeplayData?.data.id ?? 'unknown';
@@ -2094,8 +2001,6 @@ class FreeplayState extends MusicBeatSubState
 
   function handleTouchFavoritesAndDifficulties()
   {
-    // Note: I was a bit evil, and used `draggingDifficulty` for the DifficultySprite dragging as well!
-
     if ((TouchUtil.pressed || TouchUtil.justReleased))
     {
       if (_pressedOnSelected && TouchUtil.touch != null)
@@ -2103,7 +2008,7 @@ class FreeplayState extends MusicBeatSubState
         if (SwipeUtil.swipeLeft)
         {
           draggingDifficulty = true;
-          dj?.onPlayerAction(); // dj?.resetAFKTimer();
+          dj?.onPlayerAction();
           changeDiff(-1, false, true);
           _pressedOnSelected = false;
           FlxG.touches.flickManager.destroy();
@@ -2124,7 +2029,7 @@ class FreeplayState extends MusicBeatSubState
         else if (SwipeUtil.swipeRight)
         {
           draggingDifficulty = true;
-          dj?.onPlayerAction(); // dj?.resetAFKTimer();
+          dj?.onPlayerAction();
           changeDiff(1, false, true);
           _pressedOnSelected = false;
           FlxG.touches.flickManager.destroy();
@@ -2158,7 +2063,6 @@ class FreeplayState extends MusicBeatSubState
       if (!uiStateMachine.canInteract()) return;
       if (currentDifficultySprite == null) return;
 
-      // If we press onto our difficulty, we want to "grab" it rather than simply check if we are overlapping
       if (TouchUtil.overlapsComplex(currentDifficultySprite, funnyCam) && TouchUtil.justPressed && !draggingDifficulty)
       {
         HapticUtil.vibrate(0, 0.01, 0.375, 0.4);
@@ -2171,7 +2075,7 @@ class FreeplayState extends MusicBeatSubState
       currentDifficultySprite.offset.x = MathUtil.smoothLerpPrecision(currentDifficultySprite.offset.x, (TouchUtil.touch.x - _dragOffset) * -1, FlxG.elapsed,
         0.2);
 
-      var vibDist:Float = 5; // essentially how far the touch needs to be before it will trigger a tiny haptic feel
+      var vibDist:Float = 5;
       if (Std.int((TouchUtil.touch.x - _dragOffset) / vibDist) * vibDist != _prevRoundedDragOffset)
       {
         HapticUtil.vibrate(0, 0.01, 0.2, 0.8);
@@ -2200,7 +2104,6 @@ class FreeplayState extends MusicBeatSubState
     }
     else
     {
-      // we aren't pressin nothin, we should lerp our difficulty thing back to og offset/position
       currentDifficultySprite.offset.x = MathUtil.smoothLerpPrecision(currentDifficultySprite.offset.x, 0, FlxG.elapsed, 0.4);
     }
 
@@ -2212,10 +2115,20 @@ class FreeplayState extends MusicBeatSubState
   override public function destroy():Void
   {
     super.destroy();
-    // remove and destroy freeplay camera
     FlxG.cameras.remove(funnyCam);
-    // Cancel all song preview timers just in case a preview loads after we exit.
     clearPreviews();
+
+    #if FEATURE_LUA_SCRIPTS
+    if (freeplayLuaModule != null)
+    {
+      ScriptEventDispatcher.callEvent(freeplayLuaModule, new ScriptEvent(DESTROY, false));
+      freeplayLuaModule = null;
+    }
+    #end
+
+    #if FEATURE_3D_RENDERING
+    disable3DBackground();
+    #end
   }
 
   function goBack():Void
@@ -2293,7 +2206,6 @@ class FreeplayState extends MusicBeatSubState
         FunkinSound.playMusic('freakyMenu', {
           overrideExisting: true,
           restartTrack: false,
-          // Continue playing this music between states, until a different music track gets played.
           persist: true
         });
         if (FlxG.sound.music != null) FlxG.sound.music.fadeIn(4.0, 0.0, 1.0);
@@ -2307,12 +2219,6 @@ class FreeplayState extends MusicBeatSubState
     });
   }
 
-  /**
-   * findClosestDiff will find the closest difficulty to the given diff.
-   * It will return the index of the closest song in the grpCapsules.members array.
-   * @param diff
-   * @return Int
-   */
   function findClosestDiff(characterVariations:Array<String>, diff:String):Int
   {
     var closestIndex:Int = 0;
@@ -2324,12 +2230,9 @@ class FreeplayState extends MusicBeatSubState
       if (song == null) continue;
       var characterVar = song.data.getVariationsByCharacter(currentCharacter);
       var songDiff:Null<String> = song.data.getDifficulty(diff, null, characterVar)?.difficulty;
-      // if the difference between the current index and this index is the smallest so far,
-      // take this one as the closest index. (By comparing with the closest variable)
       var c:Int = curSelected - index;
       if (songDiff == diff && (Math.abs(c) < Math.abs(closestIndex - curSelected) || closestIndex == 0))
       {
-        // trace('Found closest diff: ${songDiff} at index ${index} (current: ${curSelected})');
         closestIndex = index;
         closest = c;
       }
@@ -2338,14 +2241,6 @@ class FreeplayState extends MusicBeatSubState
     return closestIndex;
   }
 
-  /**
-   * changeDiff is the root of both difficulty and variation changes/management.
-   * It will check the difficulty of the current variation, all available variations, and all available difficulties per variation.
-   * Call generateSongList after this with the right parameters if you want the capsules to do their jump-in animation after changing difficulties.
-   * @param change
-   * @param force
-   * @param capsuleAnim
-   */
   function changeDiff(change:Int = 0, force:Bool = false, capsuleAnim:Bool = false):Void
   {
     if (capsuleAnim)
@@ -2392,11 +2287,8 @@ class FreeplayState extends MusicBeatSubState
     var daSong:Null<FreeplaySongData> = currentCapsule.freeplayData;
     currentCapsule.selected = false;
 
-    // Available variations for current character. We get this since bf is usually `default` variation, and `pico` is `pico`
-    // but sometimes pico can be the default variation (weekend 1 songs), and bf can be `bf` variation (darnell)
     var characterVariations:Array<String> = daSong?.data.getVariationsByCharacter(currentCharacter) ?? Constants.DEFAULT_VARIATION_LIST;
     var difficultiesAvailable:Array<String> = SongRegistry.instance.listAllDifficulties(currentCharacterId) ?? Constants.DEFAULT_DIFFICULTY_LIST_FULL;
-    // Gets all available difficulties for our character, via our available variations
     var songDifficulties:Array<String> = daSong?.data.listDifficulties(null, characterVariations) ?? Constants.DEFAULT_DIFFICULTY_LIST;
 
     var currentDifficultyIndex:Int = difficultiesAvailable.indexOf(currentDifficulty);
@@ -2408,17 +2300,13 @@ class FreeplayState extends MusicBeatSubState
 
     if (currentDifficultyIndex < 0) currentDifficultyIndex = Std.int(difficultiesAvailable.length - 1);
     if (currentDifficultyIndex >= difficultiesAvailable.length) currentDifficultyIndex = 0;
-    // Update the current difficulty
     currentDifficulty = difficultiesAvailable[currentDifficultyIndex];
-    // For when we change the difficulty, but the song doesn't have that difficulty!
     if (daSong != null && !songDifficulties.contains(difficultiesAvailable[currentDifficultyIndex]))
     {
-      // Switch to the closest song with that difficulty.
       curSelected = findClosestDiff(characterVariations, difficultiesAvailable[currentDifficultyIndex]);
       daSong = currentCapsule.freeplayData;
       rememberedSongId = daSong?.data.id;
 
-      // Update the variation list for the new song.
       characterVariations = daSong?.data.getVariationsByCharacter(currentCharacter) ?? Constants.DEFAULT_VARIATION_LIST;
     }
 
@@ -2496,12 +2384,10 @@ class FreeplayState extends MusicBeatSubState
       });
     }
 
-    // refreshDots(songDifficulties.length, currentDifficultyIndex, prevDifficultyIndex);
     refreshDots(5, currentDifficultyIndex, prevDifficultyIndex);
 
     if (change != 0 || force)
     {
-      // Update the song capsules to reflect the new difficulty info.
       for (songCapsule in grpCapsules.members)
       {
         if (songCapsule == null || !songCapsule.alive) continue;
@@ -2513,11 +2399,9 @@ class FreeplayState extends MusicBeatSubState
         }
       }
 
-      // Reset the song preview in case we changed variations (normal->erect etc)
       if (currentVariation != previousVariation) playCurSongPreview();
     }
 
-    // Set the album graphic and play the animation if relevant.
     var newAlbumId:Null<String> = daSong?.data.getAlbumId(currentDifficulty, currentVariation);
     if (albumRoll.albumId != newAlbumId && (currentVariation != previousVariation || uiStateMachine.canInteract()) && !fromCharSelect)
     {
@@ -2526,10 +2410,11 @@ class FreeplayState extends MusicBeatSubState
     }
     updateOSTName();
 
-    // Set difficulty star count.
     albumRoll.setDifficultyStars(daSong?.data.getDifficulty(currentDifficulty, currentVariation)?.difficultyRating ?? 0);
 
-    currentCapsule.selected = true; // set selected again, so it can run its getter function to initialize movement
+    currentCapsule.selected = true;
+
+    updatePsychOriginIndicator();
   }
 
   #if FEATURE_TOUCH_CONTROLS
@@ -2545,7 +2430,7 @@ class FreeplayState extends MusicBeatSubState
   function handleDiffBoundaryChange(change:Int):Void
   {
     if (!uiStateMachine.canInteract()) return;
-    dj?.onPlayerAction(); // dj?.resetAFKTimer();
+    dj?.onPlayerAction();
     changeDiff(change);
     generateSongList(currentFilter, true, false);
     FlxG.touches.flickManager.destroy();
@@ -2555,14 +2440,10 @@ class FreeplayState extends MusicBeatSubState
   }
   #end
 
-  /**
-   * Called when hitting ENTER to open the instrumental choice for random capsule
-   */
   function capsuleOnOpenRandom(randomCapsule:SongMenuItem):Void
   {
     var availableSongCapsules:Array<SongMenuItem> = grpCapsules.members.filter(function(cap:SongMenuItem)
     {
-      // Dead capsules are ones which were removed from the list when changing filters.
       return cap.alive && cap.freeplayData != null;
     });
 
@@ -2593,17 +2474,13 @@ class FreeplayState extends MusicBeatSubState
     #end
   }
 
-  /**
-   * Called when hitting ENTER on an instrumental choice for random capsule
-   */
   function capsuleOnConfirmRandom(availableSongCapsules:Array<SongMenuItem>, instChoice:String):Void
   {
     cleanupInstSelectMenu();
 
     var targetSongCap:SongMenuItem = FlxG.random.getObject(availableSongCapsules);
-    // Seeing if I can do an animation...
     curSelected = grpCapsules.members.indexOf(targetSongCap);
-    changeSelection(); // Trigger an update. This will also fix the target variation.
+    changeSelection();
 
     var targetSongId:String = targetSongCap?.freeplayData?.data.id ?? 'unknown';
     var targetSongNullable:Null<Song> = SongRegistry.instance.fetchEntry(targetSongId);
@@ -2633,22 +2510,16 @@ class FreeplayState extends MusicBeatSubState
       var altInstrumentalIds:Array<String> = targetSong.listAltInstrumentalIds(targetDifficultyId,
         targetDifficulty?.variation ?? Constants.DEFAULT_VARIATION) ?? [];
 
-      // Choose a random instrumental
       var instrumentalIds:Array<String> = [baseInstrumentalId].concat(altInstrumentalIds);
       var targetInstrumentalId:String = FlxG.random.getObject(instrumentalIds);
-      // Hit Confirm on that song with random instrumental
       capsuleOnConfirmDefault(targetSongCap, targetInstrumentalId);
     }
     else
     {
-      // Hit Confirm on that song with default instrumental
       capsuleOnConfirmDefault(targetSongCap);
     }
   }
 
-  /**
-   * Called when hitting ENTER to open the instrumental list.
-   */
   function capsuleOnOpenDefault(cap:SongMenuItem):Void
   {
     var targetDifficultyId:String = currentDifficulty;
@@ -2721,9 +2592,6 @@ class FreeplayState extends MusicBeatSubState
     }
   }
 
-  /**
-   * Called when hitting ENTER to play the song.
-   */
   function capsuleOnConfirmDefault(cap:SongMenuItem, ?targetInstId:String):Void
   {
     uiStateMachine.transition(Exiting);
@@ -2760,7 +2628,6 @@ class FreeplayState extends MusicBeatSubState
       targetInstId = baseInstrumentalId;
     }
 
-    // Visual and audio effects.
     FunkinSound.playOnce(Paths.sound('confirmMenu'));
     dj?.onConfirm();
 
@@ -2770,14 +2637,12 @@ class FreeplayState extends MusicBeatSubState
     backingCard.confirm();
     fadeDots(false);
 
-    // Start vibration after half of second.
     if (HapticUtil.hapticsAvailable)
     {
       new FlxTimer().start(0.5, function(tmr)
       {
         switch (currentCharacterId)
         {
-          // Toggles the bool that allows vibration on update.
           case 'pico':
             allowPicoBulletsVibration = true;
             new FlxTimer().start(0.5, function(tmr)
@@ -2785,7 +2650,6 @@ class FreeplayState extends MusicBeatSubState
               allowPicoBulletsVibration = false;
             });
 
-          // A single vibration.
           default:
             HapticUtil.vibrate(Constants.DEFAULT_VIBRATION_PERIOD, Constants.DEFAULT_VIBRATION_DURATION * 5, (Constants.MAX_VIBRATION_AMPLITUDE / 3) * 2.5);
         }
@@ -2819,10 +2683,6 @@ class FreeplayState extends MusicBeatSubState
           #else
           botPlayMode: false,
           #end
-          // TODO: Make these an option! It's currently only accessible via chart editor.
-          // startTimestamp: 0.0,
-          // playbackRate: 0.5,
-          // botPlayMode: true,
         }, true);
       });
     });
@@ -2881,7 +2741,7 @@ class FreeplayState extends MusicBeatSubState
     {
       FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
       HapticUtil.vibrate(0, 0.01, 0.5);
-      dj?.onPlayerAction(); // dj?.resetAFKTimer();
+      dj?.onPlayerAction();
       _pressedOnSelected = false;
     }
   }
@@ -2912,7 +2772,6 @@ class FreeplayState extends MusicBeatSubState
       #end
     }
 
-    // Reset `prepForNewRank` flag on change to prevent song previews from not updating.
     if (change != 0 && prepForNewRank) prepForNewRank = false;
 
     if (!prepForNewRank && curSelected != prevSelected) FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
@@ -2940,13 +2799,12 @@ class FreeplayState extends MusicBeatSubState
       var capsuleIndex = index - curSelected;
       var yOffset:Float = 0;
 
-      // Small offset so edge capsules actually go offscreen enough to not require to be rendered.
       if (capsuleIndex < 0) yOffset += 50;
       else if (capsuleIndex > 4) yOffset -= 10;
 
       capsule.targetPos.y = capsule.intendedY(capsuleIndex) - yOffset;
       capsule.targetPos.x = capsule.intendedX(capsuleIndex) + (CUTOUT_WIDTH * SONGS_POS_MULTI);
-      if (index < curSelected) capsule.targetPos.y -= 100; // another 100 for good measure
+      if (index < curSelected) capsule.targetPos.y -= 100;
     }
 
     if (grpCapsules.countLiving() > 0 && !prepForNewRank && uiStateMachine.canInteract())
@@ -2954,12 +2812,11 @@ class FreeplayState extends MusicBeatSubState
       FlxG.sound.music?.pause();
       FlxTimer.wait(FADE_IN_DELAY, playCurSongPreview.bind(currentCapsule));
       currentCapsule.selected = true;
-
-      // switchBackingImage(currentCapsule.freeplayData);
     }
 
-    // Small vibrations every selection change.
     if (change != 0) HapticUtil.vibrate(0, 0.01, 0.5);
+
+    updatePsychOriginIndicator();
 
     dispatchEvent(new CapsuleScriptEvent(CAPSULE_SELECTED, currentCapsule, currentDifficulty, currentVariation));
   }
@@ -2986,12 +2843,10 @@ class FreeplayState extends MusicBeatSubState
     }
     else
     {
-      // Make sure the player is still hovering over the song we want to load preview for
       if (!daSongCapsule.selected) return;
       var previewSong:Null<Song> = daSongCapsule?.freeplayData?.data;
       if (previewSong == null) return;
 
-      // Check if character-specific difficulty exists
       var songDifficulty:Null<SongDifficulty> = previewSong.getDifficulty(currentDifficulty, currentVariation);
 
       var baseInstrumentalId:String = previewSong.getBaseInstrumentalId(currentDifficulty, songDifficulty?.variation ?? Constants.DEFAULT_VARIATION) ?? '';
@@ -3005,13 +2860,12 @@ class FreeplayState extends MusicBeatSubState
       }
       #end
       instSuffix = (instSuffix != '') ? '-$instSuffix' : '';
-      // trace('Attempting to play partial preview: ${previewSong.id}:${instSuffix}');
 
       FunkinSound.playMusic(previewSong.id, {
         startingVolume: 0.0,
         overrideExisting: true,
         restartTrack: false,
-        mapTimeChanges: false, // The music metadata is not alongside the audio file so this won't work.
+        mapTimeChanges: false,
         pathsFunction: INST,
         suffix: instSuffix,
         partialParams: {
@@ -3060,13 +2914,8 @@ class FreeplayState extends MusicBeatSubState
     backingImage.loadTextureAsync(path);
   }
 
-  /**
-   * Build an instance of `FreeplayState` that is above the `MainMenuState`.
-   * @return The MainMenuState with the FreeplayState as a substate.
-   */
   public static function build(?params:FreeplayStateParams, ?stickers:StickerSubState):MusicBeatState
   {
-    // Since CUTOUT_WIDTH is static it might retain some old inccrect values so we update it before loading freeplay
     CUTOUT_WIDTH = FullScreenScaleMode.gameCutoutSize.x / 1.5;
     var result:MainMenuState;
     result = new MainMenuState(true);
@@ -3091,7 +2940,7 @@ class FreeplayState extends MusicBeatSubState
         selectedCapsule.favIconBlurred.animation.play('fav');
         FunkinSound.playOnce(Paths.sound('fav'), 1);
         selectedCapsule.checkClip();
-        selectedCapsule.selected = true; // set selected again, so it can run its getter function to initialize movement
+        selectedCapsule.selected = true;
         selectedCapsule.updateSelected();
         uiStateMachine.transition(Interacting);
 
@@ -3118,7 +2967,7 @@ class FreeplayState extends MusicBeatSubState
           selectedCapsule.favIcon.visible = false;
           selectedCapsule.favIconBlurred.visible = false;
           selectedCapsule.checkClip();
-          selectedCapsule.selected = true; // set selected again, so it can run its getter function to initialize movement
+          selectedCapsule.selected = true;
           selectedCapsule.updateSelected();
         });
 
@@ -3151,9 +3000,6 @@ class FreeplayState extends MusicBeatSubState
   }
 }
 
-/**
- * The difficulty selector arrows to the left and right of the difficulty.
- */
 @:nullSafety
 class DifficultySelector extends FlxSprite
 {
@@ -3232,63 +3078,27 @@ class DifficultySelector extends FlxSprite
   }
 }
 
-/**
- * Structure for the current song filter.
- */
 typedef SongFilter =
 {
   var filterType:FilterType;
   var ?filterData:Dynamic;
 }
 
-/**
- * Possible types to use for the song filter.
- */
 enum abstract FilterType(String)
 {
-  /**
-   * Filter to songs which start with a string
-   */
   public var STARTSWITH;
-
-  /**
-   * Filter to songs which match a regular expression
-   */
   public var REGEXP;
-
-  /**
-   * Filter to songs which are favorited
-   */
   public var FAVORITE;
-
-  /**
-   * Filter to all songs
-   */
   public var ALL;
 }
 
-/**
- * Data about a specific song in the freeplay menu.
- */
 @:nullSafety
 class FreeplaySongData
 {
-  /**
-   * We used to have a billion fields, but this SongMetadata variable should be all we need
-   * to be able to get most information about an available song.
-   * For example, you can get the artist via `data.songArtist`
-   *
-   * You can usually get various other particulars of a specific difficulty/variation by
-   * using data.getDifficulty(), and inputting specifics on your difficulty, variations, etc.
-   * See the getters here for songCharacter, fullSongName, and songStartingBpm for examples.
-   *
-   * @see Song
-   */
   public var data(get, never):Song;
 
   function get_data():Song
   {
-    // This looks jank but the haxe compiler is on crack or something so 2 `privateAccess` lines are needed for some reason
     @:privateAccess
     var song:Null<Song> = SongRegistry.instance.fetchEntry(songId, {variation: curVariation});
     @:privateAccess
@@ -3297,15 +3107,8 @@ class FreeplaySongData
     return song;
   }
 
-  /**
-   * The current variation to use in various property functions.
-   */
   var curVariation(get, never):String;
 
-  /**
-   * The level id of the song, useful for sorting from week1 -> week 7 + weekend1
-   * and for properly loading PlayStatePlaylist for preloading on web
-   */
   public var levelId(get, never):Null<String>;
 
   function get_levelId():Null<String>
@@ -3316,47 +3119,14 @@ class FreeplaySongData
   var _levelId:String;
   final songId:String;
 
-  /**
-   * The start time of this song's preview in Freeplay (in range 0 - 1)
-   */
   public var previewStartTime(get, never):Float;
-
-  /**
-   * The end time of this song's preview in Freeplay (in range 0 - 1)
-   */
   public var previewEndTime(get, never):Float;
-
-  /**
-   * Whether or not the song has been favorited.
-   */
   public var isFav(get, never):Bool;
-
-  /**
-   * Whether the player has seen/played this song before within freeplay
-   */
   public var isNew(get, never):Bool;
-
-  /**
-   * The default opponent for the song.
-   * Does the getter stuff for you depending on your current (or rather, remembered) variation and difficulty.
-   */
   public var songCharacter(get, never):String;
-
-  /**
-   * The full song name, dynamically generated depending on your current (or rather, remembered) variation and difficulty.
-   */
   public var fullSongName(get, never):String;
-
-  /**
-   * The song's id and variation, combined with a colon. Dynamically generated depending on your current (or rather, remembered) variation and difficulty.
-   */
   public var idAndVariation(get, never):String;
-
-  /**
-   * The starting BPM of the song, dynamically generated depending on your current (or rather, remembered) variation and difficulty.
-   */
   public var songStartingBpm(get, never):Float;
-
   public var difficultyRating(get, never):Int;
   public var scoringRank(get, never):Null<ScoringRank>;
   public var instance:FreeplayState;
@@ -3368,10 +3138,6 @@ class FreeplaySongData
     this.instance = instance;
   }
 
-  /**
-   * Toggle whether or not the song is favorited, then flush to save data.
-   * @return Whether or not the song is now favorited.
-   */
   public function toggleFavorite():Bool
   {
     if (isFav)
@@ -3397,8 +3163,6 @@ class FreeplaySongData
 
   public function isDifficultyNew(difficulty:String):Bool
   {
-    // grabs a specific difficulty's new status. used for the difficulty dots.
-
     return data.isSongNew(difficulty, curVariation);
   }
 
@@ -3434,11 +3198,6 @@ class FreeplaySongData
 
   function get_isNew():Bool
   {
-    // We use a slightly different manner to get the new status of a song than the other getters here
-    // `isSongNew()` only takes a single variation, and it's data that isn't accessible via the Song data/metadata
-    // it's stored in the song .hxc script in a function that overrides `isSongNew()`
-    // and is only accessible with the correct valid variation inputs
-
     return data.isSongNew(FreeplayState.rememberedDifficulty, curVariation);
   }
 
@@ -3475,8 +3234,6 @@ class FreeplaySongData
 
   function get_curVariation():String
   {
-    // Temporarily fetch the song to check for the first valid variation of it.
-    // For example if the current character is bf, for songs such as darnell we want to use the 'bf' variation instead of 'normal'.
     var song:Null<Song> = SongRegistry.instance.fetchEntry(songId);
     if (song == null) throw 'Song entry not found for id: $songId';
 
@@ -3488,9 +3245,6 @@ class FreeplaySongData
   }
 }
 
-/**
- * Parameters used to initialize the FreeplayState.
- */
 typedef FreeplayStateParams =
 {
   ?character:String,
@@ -3498,45 +3252,17 @@ typedef FreeplayStateParams =
   ?fromResults:FromResultsParams,
 };
 
-/**
- * A set of parameters for transitioning to the FreeplayState from the ResultsState.
- */
 typedef FromResultsParams =
 {
-  /**
-   * The previous rank the song hand, if any. Null if it had no score before.
-   */
   var ?oldRank:ScoringRank;
-
-  /**
-   * Whether or not to play the rank animation on returning to freeplay.
-   */
   var playRankAnim:Bool;
-
-  /**
-   * The new rank the song has.
-   */
   var newRank:ScoringRank;
-
-  /**
-   * The song ID to play the animation on.
-   */
   var songId:String;
-
-  /**
-   * The difficulty ID to play the animation on.
-   */
   var difficultyId:String;
 };
 
-/**
- * The map storing information about the exit movers.
- */
 typedef ExitMoverData = Map<Array<FlxSprite>, MoveData>;
 
-/**
- * The data for an exit mover.
- */
 typedef MoveData =
 {
   var ?x:Float;
