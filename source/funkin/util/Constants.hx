@@ -32,6 +32,16 @@ class Constants
   }
 
   /**
+   * Moon Engine version number.
+   */
+  public static var BUILD_NUMBER(get, never):String;
+
+  static function get_BUILD_NUMBER():String
+  {
+    return #if (BUILD_NUMBER) BUILD_NUMBER #else '107' #end;
+  }
+
+  /**
    * The current version number of the game.
    * Modify this in the `project.xml` file.
    */

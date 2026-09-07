@@ -42,6 +42,7 @@ class InviteNotificationSubState extends MusicBeatSubState
   var statusText:Null<FlxText> = null;
   var acceptButton:Null<FlxButton> = null;
   var discardButton:Null<FlxButton> = null;
+  var isMultiplayerMode:Bool;
   var client:Null<MultiplayerClient> = null;
 
   public function new(invite:InviteInfo, ?account:Dynamic)

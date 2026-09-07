@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.7";
 
-  static final BUILD_NUMBER:Int = 106;
+  static final BUILD_NUMBER:Int = 109;
 
   static final MOON_VERSION:String = '0.0.1';
 
@@ -279,6 +279,8 @@ class Project extends HXProject
     this.preBuildCallbacks.push(buildHaxeCLICommand(PREBUILD_HX));
     this.postBuildCallbacks.push(buildHaxeCLICommand(POSTBUILD_HX));
 
+    this.preBuildCallbacks.push(buildCLICommand("python scripts/bump_build.py"));
+
     this.languages = LANGUAGES;
 
     this.meta.buildNumber = Std.string(BUILD_NUMBER);
@@ -503,7 +505,7 @@ class Project extends HXProject
 
     // desativei temporariamente porque não tive tempo de resolver todos erros, mas depois tem que voltar a ser true
     // temporarily disabled, didn't have time to fix all the errors yet, gotta flip this back to true later.
-    FEATURE_ONLINE.apply(this, false);
+    FEATURE_ONLINE.apply(this, true);
     // FEATURE_ONLINE.apply(this, !isWeb());
 
     // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this

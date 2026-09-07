@@ -464,8 +464,7 @@ class MainMenuState extends MusicBeatState
   {
     if (leftWatermarkText == null) return;
 
-    leftWatermarkText.text = Constants.VERSION;
-    leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build 106]';
+    leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build ${Constants.BUILD_NUMBER}]';
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())

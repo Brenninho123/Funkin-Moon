@@ -99,6 +99,7 @@ typedef PlayStateParams =
   ?targetInstrumental:String,
   ?practiceMode:Bool,
   ?botPlayMode:Bool,
+  ?isMultiplayerMode:Bool,
   ?playtestResults:Bool,
   ?minimalMode:Bool,
   ?startTimestamp:Float,
@@ -160,6 +161,7 @@ class PlayState extends MusicBeatSubState
   public var isGameOverState:Bool = false;
   public var isPracticeMode:Bool = false;
   public var isBotPlayMode:Bool = false;
+  public var isMultiplayerMode:Bool = false;
   public var isPlaytestResults:Bool = false;
   public var isPlayerDying:Bool = false;
   public var isMinimalMode:Bool = false;
@@ -306,6 +308,7 @@ class PlayState extends MusicBeatSubState
     if (params.targetInstrumental != null) currentInstrumental = params.targetInstrumental;
     isPracticeMode = params.practiceMode ?? false;
     isBotPlayMode = params.botPlayMode ?? false;
+    isMultiplayerMode = params.isMultiplayerMode ?? false;
     isPlaytestResults = params.playtestResults ?? false;
     isMinimalMode = params.minimalMode ?? false;
     startTimestamp = params.startTimestamp ?? 0.0;

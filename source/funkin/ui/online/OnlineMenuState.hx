@@ -31,6 +31,7 @@ class OnlineMenuState extends MusicBeatState
   var statusText:Null<FlxText> = null;
   var hostButton:Null<FunkinSprite> = null;
   var hostLocked:Bool = false;
+  var isMultiplayerMode:Bool;
   var connectButton:Null<FlxButton> = null;
   var backButton:Null<FlxButton> = null;
   var currentAccount:Dynamic = null;

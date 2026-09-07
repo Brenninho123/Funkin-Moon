@@ -49,6 +49,9 @@ import funkin.ui.freeplay.charselect.PlayableCharacter;
 import funkin.ui.mainmenu.MainMenuState;
 import funkin.ui.story.Level;
 import funkin.ui.transition.LoadingState;
+#if FEATURE_ONLINE
+import funkin.multiplayer.MultiplayerHostSession;
+#end
 import funkin.ui.transition.stickers.StickerSubState;
 import funkin.util.HapticUtil;
 import funkin.util.MathUtil;
@@ -2670,6 +2673,15 @@ class FreeplayState extends MusicBeatSubState
       funnyCam.fade(FlxColor.BLACK, 0.2, false, function()
       {
         Paths.setCurrentLevel(cap?.freeplayData?.levelId);
+
+        #if FEATURE_ONLINE
+        if (MultiplayerHostSession.active)
+        {
+          MultiplayerHostSession.startMatch(targetSong, currentDifficulty, currentVariation);
+          return;
+        }
+        #end
+
         LoadingState.loadPlayState({
           targetSong: targetSong,
           targetDifficulty: currentDifficulty,

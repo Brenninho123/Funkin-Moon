@@ -22,6 +22,8 @@ import funkin.ui.transition.LoadingState;
 class MultiplayerHostSession
 {
   #if FEATURE_ONLINE
+  var isMultiplayerMode:Bool;
+
   public static var active:Bool = false;
   public static var serverId:String = '';
 
