@@ -21,6 +21,7 @@ import funkin.util.SerializerUtil;
 import funkin.util.SortUtil;
 import funkin.util.WindowUtil;
 import funkin.audio.FunkinSound;
+import funkin.mobile.ui.FunkinBackButton;
 import haxe.ui.components.DropDown;
 import haxe.ui.containers.dialogs.CollapsibleDialog;
 import haxe.ui.core.Screen;
@@ -62,10 +63,14 @@ class DebugBoundingState extends FlxState
     return Screen.instance.hasSolidComponentUnderPoint(hudMousePos.x, hudMousePos.y);
   }
 
+  #if FEATURE_TOUCH_CONTROLS
+  var touchButtons:Array<TouchButton> = [];
+  #end
+
   override function create():Void
   {
     Paths.setCurrentLevel('week1');
-    
+
     FlxG.sound.music?.stop();
 
     Cursor.show();
@@ -114,9 +119,32 @@ class DebugBoundingState extends FlxState
     initSpritesheetView();
     initOffsetView();
 
+    initBackButton();
+
+    #if FEATURE_TOUCH_CONTROLS
+    initTouchControls();
+    #end
+
     Cursor.show();
 
     super.create();
+  }
+
+  var backButton:Null<FunkinBackButton> = null;
+
+  function initBackButton():Void
+  {
+    #if FEATURE_TOUCH_CONTROLS
+    backButton = new FunkinBackButton(FlxG.width - 90, 10, FlxColor.WHITE, goBack, 0.6, false);
+    backButton.cameras = [hudCam];
+    add(backButton);
+    #end
+  }
+
+  function goBack():Void
+  {
+    resetWindowTitle();
+    FlxG.switchState(() -> new MainMenuState());
   }
 
   var bf:FlxSprite;
@@ -253,11 +281,6 @@ class DebugBoundingState extends FlxState
       {
         movingCharacter = false;
       }
-
-      if (FlxG.mouse.justReleased)
-      {
-        movingCharacter = false;
-      }
     }
   }
 
@@ -320,11 +343,11 @@ class DebugBoundingState extends FlxState
 
     if (FlxG.keys.justPressed.H) hudCam.visible = !hudCam.visible;
 
-    if (FlxG.keys.justPressed.F4)
-    {
-      resetWindowTitle();
-      FlxG.switchState(() -> new MainMenuState());
-    }
+    if (FlxG.keys.justPressed.F4) goBack();
+
+    #if FEATURE_TOUCH_CONTROLS
+    checkTouchControls();
+    #end
 
     if (FlxG.mouse.justPressed || FlxG.mouse.justPressedMiddle) FunkinSound.playOnce(Paths.sound("chartingSounds/ClickDown"));
     if (FlxG.mouse.justReleased || FlxG.mouse.justReleasedMiddle) FunkinSound.playOnce(Paths.sound("chartingSounds/ClickUp"));
@@ -358,6 +381,42 @@ class DebugBoundingState extends FlxState
     funkin.play.Countdown.reset();
   }
 
+  function nudgeOffset(dx:Float, dy:Float):Void
+  {
+    if (swagChar == null) return;
+
+    var animName:String = currentAnimationName;
+    var existing:Null<Array<Float>> = swagChar.animationOffsets.get(animName);
+    var coolValues:Array<Float> = existing != null ? existing.copy() : [0.0, 0.0];
+
+    coolValues[0] += dx;
+    coolValues[1] += dy;
+
+    swagChar.animationOffsets.set(animName, coolValues);
+    swagChar.playAnimation(animName);
+
+    txtOffsetShit.text = 'Offset: ' + coolValues;
+    txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
+  }
+
+  function cycleAnimation(forward:Bool):Void
+  {
+    if (offsetAnimationDropdown.dataSource.size == 0) return;
+
+    if (forward)
+    {
+      offsetAnimationDropdown.selectedIndex = (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size)
+        ? offsetAnimationDropdown.selectedIndex + 1 : 0;
+    }
+    else
+    {
+      offsetAnimationDropdown.selectedIndex = (offsetAnimationDropdown.selectedIndex - 1 >= 0) ? offsetAnimationDropdown.selectedIndex - 1
+        : offsetAnimationDropdown.dataSource.size - 1;
+    }
+
+    playCharacterAnimation(currentAnimationName, true);
+  }
+
   function offsetControls():Void
   {
     // CTRL + S = Save Character Data
@@ -372,31 +431,11 @@ class DebugBoundingState extends FlxState
 
     if (FlxG.keys.justPressed.RBRACKET || FlxG.keys.justPressed.E)
     {
-      if (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size)
-      {
-        offsetAnimationDropdown.selectedIndex += 1;
-      }
-      else
-      {
-        offsetAnimationDropdown.selectedIndex = 0;
-      }
-      trace(offsetAnimationDropdown.selectedIndex);
-      trace(offsetAnimationDropdown.dataSource.size);
-      trace(offsetAnimationDropdown.value);
-      trace(currentAnimationName);
-      playCharacterAnimation(currentAnimationName, true);
+      cycleAnimation(true);
     }
     if (FlxG.keys.justPressed.LBRACKET || FlxG.keys.justPressed.Q)
     {
-      if (offsetAnimationDropdown.selectedIndex - 1 >= 0)
-      {
-        offsetAnimationDropdown.selectedIndex -= 1;
-      }
-      else
-      {
-        offsetAnimationDropdown.selectedIndex = offsetAnimationDropdown.dataSource.size - 1;
-      }
-      playCharacterAnimation(currentAnimationName, true);
+      cycleAnimation(false);
     }
 
     // Keyboards controls for general WASD "movement"
@@ -460,27 +499,21 @@ class DebugBoundingState extends FlxState
 
     if (FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.UP || FlxG.keys.justPressed.DOWN)
     {
-      var animName = currentAnimationName;
-      var coolValues:Array<Float> = swagChar.animationOffsets.get(animName).copy();
-
       var multiplier:Int = 5;
 
       if (FlxG.keys.pressed.CONTROL) multiplier = 1;
 
       if (FlxG.keys.pressed.SHIFT) multiplier = 10;
 
-      if (FlxG.keys.justPressed.RIGHT) coolValues[0] -= 1 * multiplier;
-      else if (FlxG.keys.justPressed.LEFT) coolValues[0] += 1 * multiplier;
-      else if (FlxG.keys.justPressed.UP) coolValues[1] += 1 * multiplier;
-      else if (FlxG.keys.justPressed.DOWN) coolValues[1] -= 1 * multiplier;
+      var dx:Float = 0;
+      var dy:Float = 0;
 
-      swagChar.animationOffsets.set(currentAnimationName, coolValues);
-      swagChar.playAnimation(animName);
+      if (FlxG.keys.justPressed.RIGHT) dx -= 1 * multiplier;
+      else if (FlxG.keys.justPressed.LEFT) dx += 1 * multiplier;
+      else if (FlxG.keys.justPressed.UP) dy += 1 * multiplier;
+      else if (FlxG.keys.justPressed.DOWN) dy -= 1 * multiplier;
 
-      txtOffsetShit.text = 'Offset: ' + coolValues;
-      txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
-
-      trace(animName);
+      nudgeOffset(dx, dy);
     }
   }
 
@@ -650,7 +683,79 @@ class DebugBoundingState extends FlxState
     _file = null;
     FlxG.log.error("Problem saving Level data");
   }
+
+  #if FEATURE_TOUCH_CONTROLS
+  function initTouchControls():Void
+  {
+    var panelY:Float = FlxG.height - 140;
+
+    addTouchButton('PREV', 10, panelY, 70, () -> cycleAnimation(false));
+    addTouchButton('NEXT', 90, panelY, 70, () -> cycleAnimation(true));
+    addTouchButton('PLAY', 170, panelY, 70, () -> playCharacterAnimation(currentAnimationName, false));
+    addTouchButton('FLIP', 250, panelY, 70, () ->
+    {
+      if (swagChar == null) return;
+      swagChar.flipX = !swagChar.flipX;
+      if (onionSkinChar.visible) updateOnionSkin();
+    });
+    addTouchButton('ONION', 330, panelY, 70, () ->
+    {
+      if (onionSkinChar == null) return;
+      onionSkinChar.visible = !onionSkinChar.visible;
+      if (onionSkinChar.visible) updateOnionSkin();
+    });
+
+    var padX:Float = FlxG.width - 190;
+    var padY:Float = FlxG.height - 190;
+
+    addTouchButton('UP', padX + 55, padY, 50, () -> nudgeOffset(0, 5));
+    addTouchButton('DOWN', padX + 55, padY + 100, 50, () -> nudgeOffset(0, -5));
+    addTouchButton('LEFT', padX, padY + 50, 50, () -> nudgeOffset(5, 0));
+    addTouchButton('RIGHT', padX + 110, padY + 50, 50, () -> nudgeOffset(-5, 0));
+  }
+
+  function addTouchButton(label:String, x:Float, y:Float, width:Float, onTap:Void->Void):Void
+  {
+    var buttonSprite:FlxSprite = new FlxSprite(x, y).makeGraphic(Std.int(width), 40, 0xCC1E2022);
+    buttonSprite.scrollFactor.set(0, 0);
+    buttonSprite.cameras = [hudCam];
+    add(buttonSprite);
+
+    var buttonLabel:FlxText = new FlxText(x, y + 10, width, label, 12);
+    buttonLabel.alignment = CENTER;
+    buttonLabel.color = FlxColor.WHITE;
+    buttonLabel.scrollFactor.set(0, 0);
+    buttonLabel.cameras = [hudCam];
+    add(buttonLabel);
+
+    touchButtons.push({sprite: buttonSprite, onTap: onTap});
+  }
+
+  function checkTouchControls():Void
+  {
+    if (!FlxG.mouse.justPressed) return;
+
+    var mousePos:FlxPoint = FlxG.mouse.getViewPosition(hudCam);
+
+    for (button in touchButtons)
+    {
+      if (button.sprite.overlapsPoint(mousePos, false, hudCam))
+      {
+        button.onTap();
+        break;
+      }
+    }
+  }
+  #end
 }
+
+#if FEATURE_TOUCH_CONTROLS
+typedef TouchButton =
+{
+  var sprite:FlxSprite;
+  var onTap:Void->Void;
+}
+#end
 
 enum abstract ANIMDEBUGVIEW(String)
 {
