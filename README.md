@@ -46,7 +46,7 @@ Feel free to start learning to mod the game by reading our [documentation](https
 
 * **Brenninho123** — Owner/Programmer
 * **StefanDX** - Artist/PlayTester
-* **Sunndy** — Artist
+* **Sunndy** — Artist/PlayTester
 * **Bruno** — PlayTester
 * **Cosmic** — Musician/PlayTester
 * **Cookie** — Programmer
