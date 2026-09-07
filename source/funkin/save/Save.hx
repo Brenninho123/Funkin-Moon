@@ -21,15 +21,14 @@ import funkin.api.newgrounds.Medals;
 import funkin.api.newgrounds.Leaderboards;
 #end
 
-@:nullSafety @:build(funkin.util.macro.SaveMacro.buildSaveProperties())
+@:nullSafety
+@:build(funkin.util.macro.SaveMacro.buildSaveProperties())
 class Save implements ConsoleClass
 {
   public static final SAVE_DATA_VERSION:thx.semver.Version = "2.1.1";
   public static final SAVE_DATA_VERSION_RULE:thx.semver.VersionRule = ">=2.1.0 <2.2.0";
   public static var system:SaveSystem = new SaveSystem();
-
   public static var instance(get, never):Save;
-
   static var _instance:Null<Save> = null;
 
   static function get_instance():Save
@@ -88,7 +87,7 @@ class Save implements ConsoleClass
         middlescroll: false,
         invisibleHitbox: false,
         flashingLights: true,
-        cameraMovement: true,
+        cameraMovement: false,
         mode3D: false,
         storageType: 'data',
         zoomCamera: true,
@@ -198,13 +197,10 @@ class Save implements ConsoleClass
 
   @:saveProperty(data.volume)
   public var volume:SaveProperty<Float>;
-
   @:saveProperty(data.mute)
   public var mute:SaveProperty<Bool>;
-
   @:saveProperty(data.api.newgrounds.sessionId)
   public var ngSessionId:SaveProperty<Null<String>>;
-
   @:saveProperty(data.mods.enabledMods)
   public var enabledModDirs:SaveProperty<Array<String>>;
   @:saveProperty(data.optionsChartEditor.previousFiles, [])
@@ -245,13 +241,10 @@ class Save implements ConsoleClass
   public var chartEditorThemeMusic:SaveProperty<Bool>;
   @:saveProperty(data.optionsChartEditor.playbackSpeed, 0.5)
   public var chartEditorPlaybackSpeed:SaveProperty<Float>;
-
   @:saveProperty(data.unlocks.charactersSeen, ["bf"])
   public var charactersSeen:SaveProperty<Array<String>>;
-
   @:saveProperty(data.unlocks.oldChar)
   public var oldChar:SaveProperty<Bool>;
-
   @:saveProperty(data.optionsStageEditor.previousFiles, [])
   public var stageEditorPreviousFiles:SaveProperty<Array<String>>;
   @:saveProperty(data.optionsStageEditor.hasBackup, false)
@@ -266,8 +259,10 @@ class Save implements ConsoleClass
 
   function get_stageBoyfriendChar():String
   {
-    if (data.optionsStageEditor.bfChar == null
-      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.bfChar) == null) data.optionsStageEditor.bfChar = "bf";
+    if (
+      data.optionsStageEditor.bfChar == null
+      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.bfChar) == null
+    ) data.optionsStageEditor.bfChar = "bf";
     return data.optionsStageEditor.bfChar;
   }
 
@@ -282,8 +277,10 @@ class Save implements ConsoleClass
 
   function get_stageGirlfriendChar():String
   {
-    if (data.optionsStageEditor.gfChar == null
-      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.gfChar ?? "") == null) data.optionsStageEditor.gfChar = "gf";
+    if (
+      data.optionsStageEditor.gfChar == null
+      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.gfChar ?? "") == null
+    ) data.optionsStageEditor.gfChar = "gf";
     return data.optionsStageEditor.gfChar;
   }
 
@@ -298,8 +295,10 @@ class Save implements ConsoleClass
 
   function get_stageDadChar():String
   {
-    if (data.optionsStageEditor.dadChar == null
-      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.dadChar ?? "") == null) data.optionsStageEditor.dadChar = "dad";
+    if (
+      data.optionsStageEditor.dadChar == null
+      || CharacterDataParser.fetchCharacterData(data.optionsStageEditor.dadChar ?? "") == null
+    ) data.optionsStageEditor.dadChar = "dad";
     return data.optionsStageEditor.dadChar;
   }
 
@@ -327,7 +326,10 @@ class Save implements ConsoleClass
 
     if (data.scores == null)
     {
-      data.scores = {songs: [], levels: []};
+      data.scores = {
+        songs: [],
+        levels: []
+      };
       repaired = true;
     }
     else
@@ -352,7 +354,10 @@ class Save implements ConsoleClass
 
     if (data.unlocks == null)
     {
-      data.unlocks = {charactersSeen: ["bf"], oldChar: false};
+      data.unlocks = {
+        charactersSeen: ["bf"],
+        oldChar: false
+      };
       repaired = true;
     }
     else if (data.unlocks.charactersSeen == null)
@@ -363,7 +368,10 @@ class Save implements ConsoleClass
 
     if (data.mods == null)
     {
-      data.mods = {enabledMods: [], modOptions: []};
+      data.mods = {
+        enabledMods: [],
+        modOptions: []
+      };
       repaired = true;
     }
     else
@@ -588,7 +596,11 @@ class Save implements ConsoleClass
       {
         if (best == null || score.score > best.score.score)
         {
-          best = {songId: songId, difficultyId: difficultyId, score: score};
+          best = {
+            songId: songId,
+            difficultyId: difficultyId,
+            score: score
+          };
         }
       }
     }
@@ -627,8 +639,10 @@ class Save implements ConsoleClass
     }
     var newScore:SaveScoreData = {
       score: (previousScoreData.score > newScoreData.score) ? previousScoreData.score : newScoreData.score,
-      tallies: (previousRank > newRank
-        || Scoring.tallyCompletion(previousScoreData.tallies) > Scoring.tallyCompletion(newScoreData.tallies)) ? previousScoreData.tallies : newScoreData.tallies
+      tallies: (
+        previousRank > newRank
+        || Scoring.tallyCompletion(previousScoreData.tallies) > Scoring.tallyCompletion(newScoreData.tallies)
+      ) ? previousScoreData.tallies : newScoreData.tallies
     };
     song.set(difficultyId, newScore);
     Save.system.flush();
@@ -992,27 +1006,17 @@ typedef RawSaveData =
 {
   var volume:Float;
   var mute:Bool;
-
   var version:Version;
-
   var api:SaveApiData;
-
   var scores:SaveHighScoresData;
-
   var options:SaveDataOptions;
-
   var unlocks:SaveDataUnlocks;
-
   #if mobile
   var mobileOptions:SaveDataMobileOptions;
   #end
-
   var favoriteSongs:Array<String>;
-
   var mods:SaveDataMods;
-
   var optionsChartEditor:SaveDataChartEditorOptions;
-
   var optionsStageEditor:SaveDataStageEditorOptions;
 };
 
@@ -1029,14 +1033,12 @@ typedef SaveApiNewgroundsData =
 typedef SaveDataUnlocks =
 {
   var charactersSeen:Array<String>;
-
   var oldChar:Bool;
 }
 
 typedef SaveHighScoresData =
 {
   var levels:SaveScoreLevelsData;
-
   var songs:SaveScoreSongsData;
 };
 
@@ -1048,15 +1050,12 @@ typedef SaveDataMods =
 }
 
 typedef SaveScoreLevelsData = Map<String, SaveScoreDifficultiesData>;
-
 typedef SaveScoreSongsData = Map<String, SaveScoreDifficultiesData>;
-
 typedef SaveScoreDifficultiesData = Map<String, SaveScoreData>;
 
 typedef SaveScoreData =
 {
   var score:Int;
-
   var tallies:SaveScoreTallyData;
 }
 
@@ -1076,60 +1075,35 @@ typedef SaveScoreTallyData =
 typedef SaveDataOptions =
 {
   var framerate:Int;
-
   var naughtyness:Bool;
-
   var downscroll:Bool;
-
   var middlescroll:Bool;
-
   var invisibleHitbox:Bool;
-
   var flashingLights:Bool;
-
   var cameraMovement:Bool;
-
   var mode3D:Bool;
-
   var storageType:String;
-
   var zoomCamera:Bool;
-
   var debugDisplay:String;
-
   var debugDisplayBGOpacity:Int;
-
   var debugDisplayOffsetX:Int;
-
   var subtitles:Bool;
-
   var hapticsMode:String;
-
   var hapticsIntensityMultiplier:Float;
-
   var autoPause:Bool;
-
   var vsyncMode:String;
-
   var strumlineBackgroundOpacity:Int;
-
   var autoFullscreen:Bool;
-
   var globalOffset:Int;
-
   var audioVisualOffset:Int;
-
   var unlockedFramerate:Bool;
-
   var enabledDiscordRPC:Bool;
-
   var screenshot:
     {
       var shouldHideMouse:Bool;
       var fancyPreview:Bool;
       var previewOnSave:Bool;
     };
-
   var controls:
     {
       var p1:PlayerControlData;
@@ -1147,11 +1121,8 @@ typedef PlayerControlData =
 typedef SaveDataMobileOptions =
 {
   var screenTimeout:Bool;
-
   var controlsScheme:String;
-
   var fullscreenMode:Bool;
-
   var noAds:Bool;
 }
 #end
@@ -1159,94 +1130,54 @@ typedef SaveDataMobileOptions =
 typedef SaveControlsData =
 {
   var ?UI_UP:Array<Int>;
-
   var ?UI_LEFT:Array<Int>;
-
   var ?UI_RIGHT:Array<Int>;
-
   var ?UI_DOWN:Array<Int>;
-
   var ?NOTE_LEFT:Array<Int>;
-
   var ?NOTE_UP:Array<Int>;
-
   var ?NOTE_DOWN:Array<Int>;
-
   var ?NOTE_RIGHT:Array<Int>;
-
   var ?ACCEPT:Array<Int>;
-
   var ?BACK:Array<Int>;
-
   var ?PAUSE:Array<Int>;
-
   var ?CUTSCENE_ADVANCE:Array<Int>;
-
   var ?VOLUME_UP:Array<Int>;
-
   var ?VOLUME_DOWN:Array<Int>;
-
   var ?VOLUME_MUTE:Array<Int>;
-
   var ?RESET:Array<Int>;
 }
 
 typedef SaveDataChartEditorOptions =
 {
   var ?hasBackup:Bool;
-
   var ?previousFiles:Array<String>;
-
   var ?noteQuant:Int;
-
   var ?chartEditorLiveInputStyle:ChartEditorLiveInputStyle;
-
   var ?theme:ChartEditorTheme;
-
   var ?downscroll:Bool;
-
   var ?showNoteKinds:Bool;
-
   var ?showSubtitles:Bool;
-
   var ?metronomeVolume:Float;
-
   var ?hitsoundVolumePlayer:Float;
-
   var ?hitsoundVolumeOpponent:Float;
-
   var ?playtestStartTime:Bool;
-
   var ?playtestAudioSettings:Bool;
-
   var ?playtestResultsSettings:Bool;
-
   var ?themeMusic:Bool;
-
   var ?instVolume:Float;
-
   var ?playerVoiceVolume:Float;
-
   var ?opponentVoiceVolume:Float;
-
   var ?playbackSpeed:Float;
 }
 
 typedef SaveDataStageEditorOptions =
 {
   var ?hasBackup:Bool;
-
   var ?previousFiles:Array<String>;
-
   var ?moveStep:String;
-
   var ?angleStep:Float;
-
   var ?theme:StageEditorTheme;
-
   var ?bfChar:String;
-
   var ?gfChar:String;
-
   var ?dadChar:String;
 }

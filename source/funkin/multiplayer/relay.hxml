@@ -1,0 +1,10 @@
+# Compila o RelayServer como um binário standalone (não faz parte do build do jogo).
+# Rode a partir da raiz do projeto (onde fica a pasta source/):
+#   haxe relay.hxml
+# Isso gera relay-server.n (roda com: neko relay-server.n [porta]).
+# Pra um binário nativo em vez de neko, troque "-neko relay-server.n" por
+# "-cpp relay-server-cpp" (precisa do hxcpp instalado).
+
+-cp source
+-main funkin.multiplayer.relay.RelayServer
+-neko relay-server.n

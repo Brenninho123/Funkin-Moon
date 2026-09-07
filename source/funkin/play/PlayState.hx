@@ -86,6 +86,10 @@ import funkin.api.discord.DiscordClient;
 import funkin.api.newgrounds.Medals;
 import funkin.api.newgrounds.Leaderboards;
 #end
+#if FEATURE_ONLINE
+import funkin.multiplayer.MultiplayerClient;
+import funkin.multiplayer.MultiplayerServer;
+#end
 
 typedef PlayStateParams =
 {
@@ -108,53 +112,35 @@ typedef PlayStateParams =
 class PlayState extends MusicBeatSubState
 {
   public static var instance:Null<PlayState>;
-
+  #if FEATURE_ONLINE
+  public static var multiplayerClient:Null<MultiplayerClient> = null;
+  public static var multiplayerMatchActive:Bool = false;
+  public static var multiplayerMatchId:Null<String> = null;
+  #end
   static var lastParams:Null<PlayStateParams>;
 
   public var currentSong:Song;
-
   public var currentDifficulty:String = Constants.DEFAULT_DIFFICULTY;
-
   public var currentVariation:String = Constants.DEFAULT_VARIATION;
-
   public var currentInstrumental:String = '';
-
   public var currentStage:Null<Stage> = null;
-
   public var needsReset:Bool = false;
-
   public var vwooshTimer:FlxTimer = new FlxTimer();
-
   public var deathCounter:Int = 0;
-
   public var health:Float = Constants.HEALTH_STARTING;
-
   public var songScore:Float = 0;
-
   public var startTimestamp:Float = 0.0;
-
   public var playbackRate:Float = 1.0;
-
   public var instrumentalVolume:Float = 1.0;
-
   public var playerVocalsVolume:Float = 1.0;
-
   public var opponentVocalsVolume:Float = 1.0;
-
   public var cameraFollowPoint:FlxObject;
-
   public var cameraFollowTween:Null<FlxTween>;
-
   public var cameraZoomTween:Null<FlxTween>;
-
   public var scrollSpeedTweens:Array<FlxTween> = [];
-
   public var previousCameraFollowPoint:Null<FlxPoint>;
-
   public var currentCameraZoom:Float = FlxCamera.defaultZoom;
-
   public var cameraBopMultiplier:Float = 1.0;
-
   public var stageZoom(get, never):Float;
 
   function get_stageZoom():Float
@@ -165,37 +151,21 @@ class PlayState extends MusicBeatSubState
   }
 
   public var defaultHUDCameraZoom:Float = FlxCamera.defaultZoom * 1.0;
-
   public var cameraBopIntensity:Float = Constants.DEFAULT_BOP_INTENSITY;
-
   public var hudCameraZoomIntensity:Float = 0.015 * 2.0;
-
   public var cameraZoomRate:Float = Constants.DEFAULT_ZOOM_RATE;
-
   public var cameraZoomRateOffset:Float = Constants.DEFAULT_ZOOM_OFFSET;
-
   public var isInCountdown:Bool = false;
-
   public var shouldSubstatePause:Bool = false;
-
   public var isGameOverState:Bool = false;
-
   public var isPracticeMode:Bool = false;
-
   public var isBotPlayMode:Bool = false;
-
   public var isPlaytestResults:Bool = false;
-
   public var isPlayerDying:Bool = false;
-
   public var isMinimalMode:Bool = false;
-
   public var isInCutscene:Bool = false;
-
   public var disableKeys:Bool = false;
-
   public var previousDifficulty:String = Constants.DEFAULT_DIFFICULTY;
-
   public var isSubState(get, never):Bool;
 
   function get_isSubState():Bool
@@ -217,35 +187,20 @@ class PlayState extends MusicBeatSubState
   public var currentConversation:Null<Conversation>;
 
   var inputPressQueue:Array<PreciseInputEvent> = [];
-
   var inputReleaseQueue:Array<PreciseInputEvent> = [];
-
   var justUnpaused:Bool = false;
-
   var noteStyle:NoteStyle;
-
   var luaScripts:Array<funkin.lua.FunkinLua> = [];
-
   var songEvents:Array<SongEventData> = [];
-
   var mayPauseGame:Bool = true;
-
   var healthLerp:Float = Constants.HEALTH_STARTING;
-
   var skipHeldTimer:Float = 0;
-
   var overrideMusic:Bool = false;
-
   var criticalFailure:Bool = false;
-
   var startingSong:Bool = false;
-
   var musicPausedBySubState:Bool = false;
-
   var cameraTweensPausedBySubState:List<FlxTween> = new List<FlxTween>();
-
   var soundsPausedBySubState:List<FlxSound> = new List<FlxSound>();
-
   var initialized:Bool = false;
 
   public var vocals:Null<VoicesGroup>;
@@ -257,51 +212,33 @@ class PlayState extends MusicBeatSubState
   var scoreText:FlxBitmapText;
 
   public var healthBar:FlxBar;
-
   public var healthBarBG:FunkinSprite;
-
   public var subtitles:Null<Subtitles>;
-
   public var iconP1:Null<HealthIcon>;
-
   public var iconP2:Null<HealthIcon>;
-
   public var playerStrumline:Strumline;
-
   public var opponentStrumline:Strumline;
-
   public var camHUD:FunkinCamera;
-
   public var camGame:FunkinCamera;
 
   #if FEATURE_3D_RENDERING
   var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
   #end
-
   var camMovement:Null<funkin.backend.FunkinCameraMovement> = null;
 
   public var debugUnbindCameraZoom:Bool = false;
-
   public var camCutscene:FunkinCamera;
-
   public var camCutouts:FunkinCamera;
-
   public var camSubtitles:FunkinCamera;
-
   public var camPause:FunkinCamera;
-
   public var camTransition:FunkinCamera;
-
   public var comboPopUps:PopUpStuff;
-
   public var isSongEnd:Bool = false;
 
   #if mobile
   var pauseButton:FunkinSprite;
-
   var pauseCircle:FunkinSprite;
   #end
-
   var isGamePaused(get, never):Bool;
 
   function get_isGamePaused():Bool
@@ -344,9 +281,7 @@ class PlayState extends MusicBeatSubState
   }
 
   static final RESYNC_THRESHOLD:Float = 40;
-
   static final CONDUCTOR_DRIFT_THRESHOLD:Float = 65;
-
   static final MUSIC_EASE_RATIO:Float = 42;
 
   var mirrorSongData:Bool = false;
@@ -519,6 +454,10 @@ class PlayState extends MusicBeatSubState
 
     initPreciseInputs();
 
+    #if FEATURE_ONLINE
+    if (isMultiplayerMode) initMultiplayerSync();
+    #end
+
     FlxG.worldBounds.set(0, 0, FlxG.width, FlxG.height);
 
     startingSong = true;
@@ -546,6 +485,121 @@ class PlayState extends MusicBeatSubState
 
     callLuaEvent('onCreatePost', []);
   }
+
+  #if FEATURE_ONLINE
+  /**
+   * true se EU sou o host dessa partida (o server local que criei no
+   * HostMenuSubState continua vivo). false se eu sou o convidado (nesse
+   * caso multiplayerClient != null).
+   */
+  public static var isMultiplayerHost(get, never):Bool; // bagulho pra bloquear essa porra desse compilador doido.
+
+  static function get_isMultiplayerHost():Bool
+  {
+    return MultiplayerServer.instance != null && MultiplayerServer.instance.running;
+  }
+
+  function initMultiplayerSync():Void
+  {
+    if (isMultiplayerHost && MultiplayerServer.instance != null)
+    {
+      trace('[MP] PlayState sincronizando como HOST (via MultiplayerServer)');
+      MultiplayerServer.instance.onClientMessage = handleMultiplayerMessage;
+      MultiplayerServer.instance.onClientDisconnect = onOpponentDisconnected;
+    }
+    else if (multiplayerClient != null)
+    {
+      trace('[MP] PlayState sincronizando como GUEST (via MultiplayerClient)');
+      multiplayerClient.onMessage = handleMultiplayerMessage;
+      multiplayerClient.onDisconnect = onOpponentDisconnected;
+    }
+    else
+    {
+      trace('[MP] isMultiplayerMode=true mas não achei nem MultiplayerServer.instance nem multiplayerClient. Não vai sincronizar nada.');
+    }
+  }
+
+  /**
+   * Ponto único de envio. goodNoteHit/onNoteMiss/endSong chamam só isso,
+   * sem se preocupar se é host ou guest.
+   */
+  function sendMultiplayerMessage(data:Dynamic):Void
+  {
+    if (isMultiplayerHost && MultiplayerServer.instance != null)
+    {
+      MultiplayerServer.instance.broadcast(data);
+    }
+    else if (multiplayerClient != null)
+    {
+      multiplayerClient.send(data);
+    }
+  }
+
+  function handleMultiplayerMessage(data:Dynamic):Void
+  {
+    if (data == null || !Reflect.hasField(data, 'type')) return;
+
+    switch (Std.string(Reflect.field(data, 'type')))
+    {
+      case 'note_hit':
+        applyRemoteNoteHit(data);
+      case 'note_miss':
+        applyRemoteNoteMiss(data);
+      case 'song_finished':
+        trace('[MP] Oponente terminou a música com score ' + Reflect.field(data, 'songScore'));
+      // TODO: guardar isso pra mostrar comparação na tela de resultado.
+      default:
+        // outros tipos (chat, etc) se vocês adicionarem depois.
+    }
+  }
+
+  // Toca a animação/confirm/splash no lado do oponente sem mexer no
+  // score do jogador local — é só representação visual do que o outro fez.
+
+  function applyRemoteNoteHit(data:Dynamic):Void
+  {
+    if (opponentStrumline == null || opponentStrumline.notes?.members == null) return;
+
+    var direction:Int = Reflect.hasField(data, 'direction') ? Std.int(Reflect.field(data, 'direction')) : -1;
+    if (direction < 0) return;
+
+    // Acha a nota mais próxima ainda viva naquela direção pra "consumir" visualmente.
+    var candidate:Null<NoteSprite> = null;
+    for (note in opponentStrumline.notes.members)
+    {
+      if (note == null || !note.alive) continue;
+      if (note.direction != direction) continue;
+      candidate = note;
+      break;
+    }
+
+    if (candidate != null)
+    {
+      opponentStrumline.hitNote(candidate);
+      opponentStrumline.playConfirm(direction);
+      if (candidate.holdNoteSprite != null) opponentStrumline.playNoteHoldCover(candidate.holdNoteSprite);
+    }
+  }
+
+  function applyRemoteNoteMiss(data:Dynamic):Void
+  {
+    if (opponentStrumline == null) return;
+
+    var direction:Int = Reflect.hasField(data, 'direction') ? Std.int(Reflect.field(data, 'direction')) : -1;
+    if (direction >= 0) opponentStrumline.playPress(direction);
+
+    // Se quiser refletir isso na barra de vida do lado do oponente,
+    // é aqui que entraria (ex: health -= algo, se vocês tiverem HP separado por lado).
+  }
+
+  function onOpponentDisconnected():Void
+  {
+    trace('[MP] Oponente desconectou no meio da partida.');
+    if (!isGamePaused) pause();
+    // TODO: mostrar um aviso "oponente desconectou" no pause, em vez de deixar
+    // o jogador achando que travou.
+  }
+  #end
 
   public function togglePauseButton(visible:Bool = false):Void
   {
@@ -779,7 +833,10 @@ class PlayState extends MusicBeatSubState
         if (audioDiff <= CONDUCTOR_DRIFT_THRESHOLD)
         {
           final easeRatio:Float = 1.0 - Math.exp(-(MUSIC_EASE_RATIO * playbackRate) * elapsed);
-          Conductor.instance.update(FlxMath.lerp(Conductor.instance.songPosition, FlxG.sound.music.time + Conductor.instance.combinedOffset, easeRatio), false);
+          Conductor.instance.update(
+            FlxMath.lerp(Conductor.instance.songPosition, FlxG.sound.music.time + Conductor.instance.combinedOffset, easeRatio),
+            false
+          );
         }
         else
         {
@@ -1006,7 +1063,10 @@ class PlayState extends MusicBeatSubState
 
   function openPauseSubState(mode:PauseMode, cam:FlxCamera, lostFocus:Bool = false, ?onPause:Void->Void):Void
   {
-    final pauseSubState = new PauseSubState({mode: mode, lostFocus: lostFocus}, onPause);
+    final pauseSubState = new PauseSubState({
+      mode: mode,
+      lostFocus: lostFocus
+    }, onPause);
     FlxTransitionableState.skipNextTransIn = true;
     FlxTransitionableState.skipNextTransOut = true;
     pauseSubState.camera = cam;
@@ -1353,8 +1413,9 @@ class PlayState extends MusicBeatSubState
     {
       throw 'No lastParams to refer to';
     }
-    lastParams.targetSong = SongRegistry.instance.fetchEntry(currentSong.id,
-      {variation: currentVariation}) ?? throw "Could not load current song from ID. This shouldn't happen!";
+    lastParams.targetSong = SongRegistry.instance.fetchEntry(currentSong.id, {
+      variation: currentVariation
+    }) ?? throw "Could not load current song from ID. This shouldn't happen!";
     LoadingState.loadPlayState(lastParams);
   }
 
@@ -1371,11 +1432,13 @@ class PlayState extends MusicBeatSubState
 
     final MAX_RELATIVE_CAM_ZOOM:Float = 1.35;
 
-    if (Preferences.zoomCamera
+    if (
+      Preferences.zoomCamera
       && !FunkinLow.shouldSkipEffect(NORMAL)
       && camHUD.zoom < (MAX_RELATIVE_CAM_ZOOM * defaultHUDCameraZoom)
       && cameraZoomRate > 0
-      && (Conductor.instance.currentStep + cameraZoomRateOffset * Constants.STEPS_PER_BEAT) % (cameraZoomRate * Constants.STEPS_PER_BEAT) == 0)
+      && (Conductor.instance.currentStep + cameraZoomRateOffset * Constants.STEPS_PER_BEAT) % (cameraZoomRate * Constants.STEPS_PER_BEAT) == 0
+    )
     {
       cameraBopMultiplier = cameraBopIntensity;
       camHUD.zoom += hudCameraZoomIntensity * defaultHUDCameraZoom;
@@ -1420,10 +1483,14 @@ class PlayState extends MusicBeatSubState
         }
       }
 
-      if (!startingSong
-        && (Math.abs(FlxG.sound.music.time - correctSync) > RESYNC_THRESHOLD
+      if (
+        !startingSong
+        && (
+          Math.abs(FlxG.sound.music.time - correctSync) > RESYNC_THRESHOLD
           || Math.abs(playerVoicesError) > RESYNC_THRESHOLD
-          || Math.abs(opponentVoicesError) > RESYNC_THRESHOLD))
+          || Math.abs(opponentVoicesError) > RESYNC_THRESHOLD
+        )
+      )
       {
         resyncVocals();
       }
@@ -1519,9 +1586,10 @@ class PlayState extends MusicBeatSubState
 
   function initHealthBar():Void
   {
-    final isDownscroll:Bool = #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-      && !ControlsHandler.hasExternalInputDevice)
-      || #end Preferences.downscroll;
+    final isDownscroll:Bool = #if mobile (
+      Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
+      && !ControlsHandler.hasExternalInputDevice
+    ) || #end Preferences.downscroll;
 
     var healthBarYPos:Float = isDownscroll ? FlxG.height * 0.1 : FlxG.height * 0.9;
 
@@ -1556,9 +1624,10 @@ class PlayState extends MusicBeatSubState
 
     if (Preferences.subtitles)
     {
-      final isDownscroll:Bool = #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-        && !ControlsHandler.hasExternalInputDevice)
-        || #end Preferences.downscroll;
+      final isDownscroll:Bool = #if mobile (
+        Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
+        && !ControlsHandler.hasExternalInputDevice
+      ) || #end Preferences.downscroll;
 
       final subtitlesAlignment:SubtitlesAlignment = isDownscroll ? SubtitlesAlignment.SUBTITLES_TOP : SubtitlesAlignment.SUBTITLES_BOTTOM;
       subtitles = new Subtitles(0, 139, subtitlesAlignment);
@@ -1729,17 +1798,28 @@ class PlayState extends MusicBeatSubState
 
     final cutoutSize = FullScreenScaleMode.gameCutoutSize.x / 2.5;
 
-    playerStrumline.x = Preferences.middlescroll
-      ? (FlxG.width - playerStrumline.width) / 2
-      : (FlxG.width / 2 + Constants.STRUMLINE_X_OFFSET) + (cutoutSize / 2.0);
+    playerStrumline.x = Preferences.middlescroll ? (
+      FlxG.width
+      - playerStrumline.width
+    ) / 2 : (FlxG.width / 2 + Constants.STRUMLINE_X_OFFSET) + (cutoutSize / 2.0);
 
-    playerStrumline.y = Preferences.downscroll ? FlxG.height - playerStrumline.height - Constants.STRUMLINE_Y_OFFSET - noteStyle.getStrumlineOffsets()[1] : Constants.STRUMLINE_Y_OFFSET;
+    playerStrumline.y =
+      Preferences.downscroll ? FlxG.height
+        - playerStrumline.height
+        - Constants.STRUMLINE_Y_OFFSET
+        - noteStyle.getStrumlineOffsets()[1]
+        : Constants.STRUMLINE_Y_OFFSET;
 
     playerStrumline.zIndex = 1001;
     playerStrumline.cameras = [camHUD];
 
     opponentStrumline.x = Constants.STRUMLINE_X_OFFSET + cutoutSize;
-    opponentStrumline.y = Preferences.downscroll ? FlxG.height - opponentStrumline.height - Constants.STRUMLINE_Y_OFFSET - noteStyle.getStrumlineOffsets()[1] : Constants.STRUMLINE_Y_OFFSET;
+    opponentStrumline.y =
+      Preferences.downscroll ? FlxG.height
+        - opponentStrumline.height
+        - Constants.STRUMLINE_Y_OFFSET
+        - noteStyle.getStrumlineOffsets()[1]
+        : Constants.STRUMLINE_Y_OFFSET;
 
     opponentStrumline.zIndex = 1000;
     opponentStrumline.cameras = [camHUD];
@@ -1850,8 +1930,16 @@ class PlayState extends MusicBeatSubState
     FlxTween.cancelTweensOf(pauseButton);
     FlxTween.cancelTweensOf(pauseCircle);
 
-    FlxTween.tween(pauseButton, {alpha: 1}, 0.25, {ease: FlxEase.quartOut});
-    FlxTween.tween(pauseCircle, {alpha: 0.1}, 0.25, {ease: FlxEase.quartOut});
+    FlxTween.tween(pauseButton, {
+      alpha: 1
+    }, 0.25, {
+      ease: FlxEase.quartOut
+    });
+    FlxTween.tween(pauseCircle, {
+      alpha: 0.1
+    }, 0.25, {
+      ease: FlxEase.quartOut
+    });
   }
   #end
 
@@ -1869,7 +1957,9 @@ class PlayState extends MusicBeatSubState
 
       if (report.errors.length > 0)
       {
-        FlxG.log.warn('[PlayState] That conversion reported ${report.errors.length} issue(s) — check PolymodHandler.conversionReports["$dirName"] for details.');
+        FlxG.log.warn(
+          '[PlayState] That conversion reported ${report.errors.length} issue(s) — check PolymodHandler.conversionReports["$dirName"] for details.'
+        );
       }
 
       break;
@@ -2036,7 +2126,12 @@ class PlayState extends MusicBeatSubState
     Highscore.tallies = new Tallies();
 
     @:nullSafety(Off)
-    var event:SongLoadScriptEvent = new SongLoadScriptEvent(currentChart.song.id, currentChart.difficulty, currentChart.notes.copy(), currentChart.getEvents());
+    var event:SongLoadScriptEvent = new SongLoadScriptEvent(
+      currentChart.song.id,
+      currentChart.difficulty,
+      currentChart.notes.copy(),
+      currentChart.getEvents()
+    );
 
     dispatchEvent(event);
 
@@ -2225,8 +2320,10 @@ class PlayState extends MusicBeatSubState
 
     if (!(FlxG.sound.music?.playing ?? false)) return;
 
-    var timeToPlayAt:Float = Math.min(FlxG.sound.music.length - 1,
-      Math.max(Math.min(Conductor.instance.combinedOffset, 0), Conductor.instance.songPosition) - Conductor.instance.combinedOffset);
+    var timeToPlayAt:Float = Math.min(
+      FlxG.sound.music.length - 1,
+      Math.max(Math.min(Conductor.instance.combinedOffset, 0), Conductor.instance.songPosition) - Conductor.instance.combinedOffset
+    );
 
     FlxG.sound.music.pause();
     vocals.pause();
@@ -2539,8 +2636,16 @@ class PlayState extends MusicBeatSubState
         isComboBreak = Constants.JUDGEMENT_SHIT_COMBO_BREAK;
     }
 
-    var event:HitNoteScriptEvent = new HitNoteScriptEvent(note, healthChange, score, daRating, isComboBreak,
-      note.scoreable ? Highscore.tallies.combo + 1 : Highscore.tallies.combo, noteDiff, daRating == 'sick');
+    var event:HitNoteScriptEvent = new HitNoteScriptEvent(
+      note,
+      healthChange,
+      score,
+      daRating,
+      isComboBreak,
+      note.scoreable ? Highscore.tallies.combo + 1 : Highscore.tallies.combo,
+      noteDiff,
+      daRating == 'sick'
+    );
     dispatchEvent(event);
 
     if (event.eventCanceled) return;
@@ -2563,6 +2668,19 @@ class PlayState extends MusicBeatSubState
     if (camMovement != null) camMovement.onNoteHit(note.noteData.getDirection());
 
     callLuaEvent('onNoteHit', [event.judgement, event.comboCount]);
+
+    #if FEATURE_ONLINE
+    if (multiplayerMatchActive)
+    {
+      sendMultiplayerMessage({
+        type: 'note_hit',
+        direction: note.noteData.getDirection(),
+        judgement: daRating,
+        score: score,
+        songPosition: Conductor.instance.songPosition
+      });
+    }
+    #end
   }
 
   function onNoteMiss(note:NoteSprite, playSound:Bool = false, healthChange:Float):Void
@@ -2588,11 +2706,24 @@ class PlayState extends MusicBeatSubState
       if (vocals != null && !tempVocals) vocals.playerVolume = 0;
       FunkinSound.playOnce(Paths.soundRandom('missnote', 1, 3), FlxG.random.float(0.5, 0.6));
     }
+
+    #if FEATURE_ONLINE
+    if (multiplayerMatchActive)
+    {
+      sendMultiplayerMessage({
+        type: 'note_miss',
+        direction: 0,
+        healthChange: healthChange,
+        songPosition: Conductor.instance.songPosition
+      });
+    }
+    #end
   }
 
   function ghostNoteMiss(direction:NoteDirection, hasPossibleNotes:Bool = true):Void
   {
-    var event:GhostMissNoteScriptEvent = new GhostMissNoteScriptEvent(direction,
+    var event:GhostMissNoteScriptEvent = new GhostMissNoteScriptEvent(
+      direction,
       hasPossibleNotes,
       Constants.HEALTH_GHOST_MISS_PENALTY,
       Constants.SCORE_GHOST_MISS_PENALTY
@@ -2677,8 +2808,10 @@ class PlayState extends MusicBeatSubState
     if (FlxG.keys.justPressed.THREE) health -= 0.05 * Constants.HEALTH_MAX;
     #end
 
-    if ((FlxG.keys.justPressed.NINE #if FEATURE_TOUCH_CONTROLS || (TouchUtil.justPressed && TouchUtil.overlapsComplex(iconP1)) #end)
-      && iconP1 != null) iconP1.toggleOldIcon();
+    if
+      ((FlxG.keys.justPressed.NINE #if FEATURE_TOUCH_CONTROLS || (TouchUtil.justPressed && TouchUtil.overlapsComplex(iconP1)) #end)
+        && iconP1 != null
+      ) iconP1.toggleOldIcon();
 
     final isDebug:Bool = #if FEATURE_DEBUG_FUNCTIONS true #else false #end;
     if (isChartingMode || isDebug)
@@ -2812,8 +2945,10 @@ class PlayState extends MusicBeatSubState
 
     deathCounter = 0;
 
-    var suffixedDifficulty = (currentVariation != Constants.DEFAULT_VARIATION
-      && currentVariation != 'erect') ? '$currentDifficulty-${currentVariation}' : currentDifficulty;
+    var suffixedDifficulty = (
+      currentVariation != Constants.DEFAULT_VARIATION
+      && currentVariation != 'erect'
+    ) ? '$currentDifficulty-${currentVariation}' : currentDifficulty;
 
     var isNewHighscore = false;
     var prevScoreData:Null<SaveScoreData> = Save.instance.getSongScore(currentSong.id, suffixedDifficulty);
@@ -2891,6 +3026,16 @@ class PlayState extends MusicBeatSubState
 
     #if FEATURE_MOBILE_ADVERTISEMENTS
     if (AdMobUtil.PLAYING_COUNTER < AdMobUtil.MAX_BEFORE_AD) AdMobUtil.PLAYING_COUNTER++;
+    #end
+
+    #if FEATURE_ONLINE
+    if (multiplayerMatchActive)
+    {
+      sendMultiplayerMessage({
+        type: 'song_finished',
+        songScore: Std.int(songScore)
+      });
+    }
     #end
 
     if (PlayStatePlaylist.isStoryMode)
@@ -2992,8 +3137,9 @@ class PlayState extends MusicBeatSubState
         }
         else
         {
-          var targetSong:Song = SongRegistry.instance.fetchEntry(targetSongId,
-            {variation: currentVariation}) ?? throw 'Could not find a song with ID $targetSongId';
+          var targetSong:Song = SongRegistry.instance.fetchEntry(targetSongId, {
+            variation: currentVariation
+          }) ?? throw 'Could not find a song with ID $targetSongId';
           var targetVariation:String = currentVariation;
           if (!targetSong.hasDifficulty(PlayStatePlaylist.campaignDifficulty, currentVariation))
           {
@@ -3049,6 +3195,23 @@ class PlayState extends MusicBeatSubState
   {
     if (cleanedUp) return;
     cleanedUp = true;
+
+    #if FEATURE_ONLINE
+    if (isMultiplayerHost && MultiplayerServer.instance != null)
+    {
+      MultiplayerServer.instance.onClientMessage = null;
+      MultiplayerServer.instance.onClientDisconnect = null;
+    }
+    else if (multiplayerClient != null)
+    {
+      multiplayerClient.onMessage = null;
+      multiplayerClient.onDisconnect = null;
+      // Mesma lógica: não desconecta aqui, quem criou o client decide.
+    }
+    multiplayerMatchActive = false;
+    multiplayerMatchId = null;
+    multiplayerClient = null;
+    #end
 
     #if FEATURE_ONLINE
     funkin.online.FunkinUser.instance.setActivity('In Menu');
@@ -3148,7 +3311,9 @@ class PlayState extends MusicBeatSubState
     FlxG.camera.targetOffset.y -= 350;
     FlxG.camera.targetOffset.x += 20;
 
-    FlxTween.tween(camHUD, {alpha: 0}, 0.6);
+    FlxTween.tween(camHUD, {
+      alpha: 0
+    }, 0.6);
 
     camTransition.fade(FlxColor.BLACK, 0.6, false, function()
     {
@@ -3261,7 +3426,10 @@ class PlayState extends MusicBeatSubState
       var adjustedDuration:Float = duration / playbackRate;
 
       var followPos:FlxPoint = cameraFollowPoint.getPosition() - FlxPoint.weak(FlxG.camera.width * 0.5, FlxG.camera.height * 0.5);
-      cameraFollowTween = FlxTween.tween(FlxG.camera.scroll, {x: followPos.x, y: followPos.y}, adjustedDuration, {
+      cameraFollowTween = FlxTween.tween(FlxG.camera.scroll, {
+        x: followPos.x,
+        y: followPos.y
+      }, adjustedDuration, {
         ease: ease,
         onComplete: function(_)
         {
@@ -3298,7 +3466,11 @@ class PlayState extends MusicBeatSubState
     else
     {
       var adjustedDuration:Float = duration / playbackRate;
-      cameraZoomTween = FlxTween.tween(this, {currentCameraZoom: targetZoom}, adjustedDuration, {ease: ease});
+      cameraZoomTween = FlxTween.tween(this, {
+        currentCameraZoom: targetZoom
+      }, adjustedDuration, {
+        ease: ease
+      });
 
       if (shouldSubstatePause)
       {
@@ -3352,7 +3524,9 @@ class PlayState extends MusicBeatSubState
 
         scrollSpeedTweens.push(FlxTween.tween(strum, {
           'scrollSpeed': value
-        }, adjustedDuration, {ease: ease}));
+        }, adjustedDuration, {
+          ease: ease
+        }));
       }
       prevScrollTargets.push([value, i]);
     }
