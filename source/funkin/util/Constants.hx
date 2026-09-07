@@ -19,7 +19,17 @@ class Constants
    * The title of the game, for debug printing purposes.
    * Change this if you're making an engine.
    */
-  public static final TITLE:String = "Friday Night Funkin'";
+  public static final TITLE:String = "Friday Night Funkin': Moon Engine";
+
+  /**
+   * Moon Engine version number.
+   */
+  public static var MOON_VERSION(get, never):String;
+
+  static function get_MOON_VERSION():String
+  {
+    return #if (MOON_VERSION) MOON_VERSION #else '0.0.1' #end;
+  }
 
   /**
    * The current version number of the game.
@@ -46,7 +56,7 @@ class Constants
   #if FEATURE_DEBUG_FUNCTIONS
   static function get_VERSION():String
   {
-    return 'v${Application.current.meta.get('version')} (${GIT_BRANCH} : ${GIT_HASH}${GIT_HAS_LOCAL_CHANGES ? ' : MODIFIED' : ''})' + VERSION_SUFFIX;
+    return ' (${GIT_BRANCH} : ${GIT_HASH}${GIT_HAS_LOCAL_CHANGES ? ' : MODIFIED' : ''})' + VERSION_SUFFIX;
   }
   #else
   static function get_VERSION():String
@@ -733,7 +743,7 @@ class Constants
   /**
    * The path where our save data will be stored.
    */
-  public static inline final SAVE_PATH:String = 'FunkinCrew';
+  public static inline final SAVE_PATH:String = 'MoonEngine';
 
   /**
    * The name of our save slot.

@@ -78,7 +78,6 @@ class MainMenuState extends MusicBeatState
 
   var hasUpgraded:Bool = false;
   var upgradeSparkles:FlxTypedSpriteGroup<UpgradeSparkle>;
-
   #if FEATURE_ONLINE
   var onlineBarBg:Null<FlxSprite> = null;
   var onlineStatusText:Null<FlxText> = null;
@@ -105,7 +104,10 @@ class MainMenuState extends MusicBeatState
   override function create():Void
   {
     #if FEATURE_DISCORD_RPC
-    DiscordClient.instance.setPresence({state: "In the Menus", details: null});
+    DiscordClient.instance.setPresence({
+      state: "In the Menus",
+      details: null
+    });
     #end
 
     FlxG.cameras.reset(mainMenuCam);
@@ -199,6 +201,11 @@ class MainMenuState extends MusicBeatState
       }));
     });
 
+    createMenuItem('online', 'mainmenu/online', function()
+    {
+      startExitState(() -> new funkin.ui.online.OnlineMenuState());
+    });
+
     #if !debug
     if (hasUpgraded)
     {
@@ -255,8 +262,13 @@ class MainMenuState extends MusicBeatState
       var targetItem = menuItems.members[2];
       for (_ in 0...8)
       {
-        var sparkle:UpgradeSparkle = new UpgradeSparkle(targetItem.x - (targetItem.width / 2), targetItem.y - (targetItem.height / 2), targetItem.width,
-          targetItem.height, FlxG.random.bool(80));
+        var sparkle:UpgradeSparkle = new UpgradeSparkle(
+          targetItem.x - (targetItem.width / 2),
+          targetItem.y - (targetItem.height / 2),
+          targetItem.width,
+          targetItem.height,
+          FlxG.random.bool(80)
+        );
         upgradeSparkles.add(sparkle);
 
         sparkle.scrollFactor.x = 0.0;
@@ -451,6 +463,7 @@ class MainMenuState extends MusicBeatState
     if (leftWatermarkText == null) return;
 
     leftWatermarkText.text = Constants.VERSION;
+    leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build 104]';
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
@@ -512,8 +525,10 @@ class MainMenuState extends MusicBeatState
 
   function onMenuItemChange(selected:MenuListItem)
   {
-    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end) camFollow.setPosition(selected.getGraphicMidpoint().x,
-      selected.getGraphicMidpoint().y);
+    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end) camFollow.setPosition(
+      selected.getGraphicMidpoint().x,
+      selected.getGraphicMidpoint().y
+    );
   }
 
   #if FEATURE_OPEN_URL
@@ -552,14 +567,26 @@ class MainMenuState extends MusicBeatState
     var fadeOutDuration:Float = 0.4;
     menuItems.forEach(item ->
     {
-      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
+      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {
+        alpha: 0
+      }, fadeOutDuration, {
+        ease: FlxEase.quadOut
+      });
       else
         item.visible = false;
     });
 
     #if mobile
-    if (optionsButton != null) FlxTween.tween(optionsButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
-    if (backButton != null) FlxTween.tween(backButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
+    if (optionsButton != null) FlxTween.tween(optionsButton, {
+      alpha: 0
+    }, fadeOutDuration, {
+      ease: FlxEase.quadOut
+    });
+    if (backButton != null) FlxTween.tween(backButton, {
+      alpha: 0
+    }, fadeOutDuration, {
+      ease: FlxEase.quadOut
+    });
     #end
 
     FlxTimer.wait(fadeOutDuration, () ->

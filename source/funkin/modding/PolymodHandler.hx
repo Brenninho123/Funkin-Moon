@@ -43,16 +43,11 @@ class PolymodHandler
     return Constants.VERSION;
   }
 
-  public static final API_VERSION_ENGINE:String = '0.0.1';
-
-  public static final API_VERSION_RULE_ENGINE:String = '=0.0.1';
-
+  public static final API_VERSION_ENGINE:String = '0.1.0';
+  public static final API_VERSION_RULE_ENGINE:String = '=0.1.0';
   public static final API_VERSION_RULE_SUPPORT:String = '>=0.1.0 <=0.9.0';
-
-  public static final API_VERSION_RULE:String = '>=0.0.1 <=0.9.0';
-
+  public static final API_VERSION_RULE:String = '>=0.1.0 <=0.9.0';
   static final CONVERTED_SUFFIX:String = '_psych_converted';
-
   static final MOD_FOLDER:String =
     #if (REDIRECT_ASSETS_FOLDER && mac)
     '../../../../../../../example_mods'
@@ -61,7 +56,6 @@ class PolymodHandler
     #else
     'mods'
     #end;
-
   static final CORE_FOLDER:Null<String> =
     #if (REDIRECT_ASSETS_FOLDER && mac)
     '../../../../../../../assets'
@@ -70,19 +64,12 @@ class PolymodHandler
     #else
     null
     #end;
-
   public static var loadedModDirs:Array<String> = [];
-
   public static var loadedModIds:Array<String> = [];
-
   public static var modApiTiers:Map<String, ModApiTier> = new Map();
-
   public static var modFormats:Map<String, FunkinModFormat> = new Map();
-
   public static var conversionReports:Map<String, ConversionReport> = new Map();
-
   static var modFileSystem:Null<ZipFileSystem> = null;
-
   static var cachedModMetadata:Null<Array<ModMetadata>> = null;
 
   public static function createModRoot():Void
@@ -169,7 +156,7 @@ class PolymodHandler
   #if sys
   static function resolveModDirs(dirs:Array<String>):Array<String>
   {
-    return [for (dir in dirs) resolveModDir(dir)];
+    return[for (dir in dirs) resolveModDir(dir)];
   }
 
   static function resolveModDir(dirName:String):String
@@ -192,7 +179,9 @@ class PolymodHandler
       var report:ConversionReport = FunkinConverter.convertMod(modPath, convertedPath);
       conversionReports.set(dirName, report);
 
-      FlxG.log.add('[Polymod] Converted "$dirName": ${report.songsConverted.length} songs, ${report.charactersConverted.length} characters, ${report.stagesConverted.length} stages, ${report.weeksConverted.length} weeks.');
+      FlxG.log.add(
+        '[Polymod] Converted "$dirName": ${report.songsConverted.length} songs, ${report.charactersConverted.length} characters, ${report.stagesConverted.length} stages, ${report.weeksConverted.length} weeks.'
+      );
 
       for (error in report.errors)
       {
@@ -391,7 +380,10 @@ class PolymodHandler
     Polymod.blacklistInstanceFields(openfl.net.Socket, ['readObject']);
     Polymod.blacklistInstanceFields(openfl.utils.ByteArray.ByteArrayData, ['readObject']);
 
-    blacklistClasses(ClassMacro.listClassesInPackage('funkin.api'), (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className));
+    blacklistClasses(
+      ClassMacro.listClassesInPackage('funkin.api'),
+      (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className)
+    );
     blacklistClasses(ClassMacro.listClassesInPackage('polymod'));
     blacklistClasses(ClassMacro.listClassesInPackage('hscript'));
     blacklistClasses(ClassMacro.listClassesInPackage('io.newgrounds'));
@@ -481,9 +473,7 @@ class PolymodHandler
 
   public static function getAllModDirs():Array<String>
   {
-    var modDirs:Array<String> = [
-      for (i in getAllMods()) i.dirName
-    ];
+    var modDirs:Array<String> = [for (i in getAllMods()) i.dirName];
     return modDirs;
   }
 

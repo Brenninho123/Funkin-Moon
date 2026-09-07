@@ -15,11 +15,13 @@ using tools.AnsiUtil;
 @:nullSafety
 class Project extends HXProject
 {
-  static final VERSION:String = "0.0.1";
+  static final VERSION:String = "0.8.7";
 
-  static final BUILD_NUMBER:Int = 102;
+  static final BUILD_NUMBER:Int = 105;
 
-  static final TITLE:String = "Friday Night Funkin' Moon Engine";
+  static final MOON_VERSION:String = '0.0.1';
+
+  static final TITLE:String = "Friday Night Funkin': Moon Engine";
 
   static final TITLE_MOBILE:String = "FNF: Moon Engine";
 
@@ -249,6 +251,7 @@ class Project extends HXProject
   function flair()
   {
     info("Friday Night Funkin' - " + VERSION);
+    info("Build Number:   " + BUILD_NUMBER);
     info("Initializing build...");
 
     info("Git Branch:     " + getGitBranch());
@@ -420,7 +423,7 @@ class Project extends HXProject
 
   function configureFeatureFlags()
   {
-    GITHUB_BUILD.apply(this, false);
+    GITHUB_BUILD.apply(this, true);
     EXCLUDE_ARMV7.apply(this, false);
 
     HARDCODED_CREDITS.apply(this, true);
@@ -497,7 +500,11 @@ class Project extends HXProject
 
     FEATURE_DEBUG_DISPLAY.apply(this, !isMobile() || FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
 
-    FEATURE_ONLINE.apply(this, !isWeb());
+
+    // desativei temporariamente porque não tive tempo de resolver todos erros, mas depois tem que voltar a ser true
+    // temporarily disabled, didn't have time to fix all the errors yet, gotta flip this back to true later.
+    FEATURE_ONLINE.apply(this, false);
+    // FEATURE_ONLINE.apply(this, !isWeb());
 
     // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
     // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
