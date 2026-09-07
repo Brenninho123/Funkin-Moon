@@ -61,7 +61,7 @@ class Constants
   #else
   static function get_VERSION():String
   {
-    return 'v${Application.current.meta.get('version')}' + VERSION_SUFFIX;
+    return '';
   }
   #end
 

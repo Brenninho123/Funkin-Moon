@@ -201,10 +201,12 @@ class MainMenuState extends MusicBeatState
       }));
     });
 
+    #if FEATURE_ONLINE
     createMenuItem('online', 'mainmenu/online', function()
     {
       startExitState(() -> new funkin.ui.online.OnlineMenuState());
     });
+    #end
 
     #if !debug
     if (hasUpgraded)
@@ -463,7 +465,7 @@ class MainMenuState extends MusicBeatState
     if (leftWatermarkText == null) return;
 
     leftWatermarkText.text = Constants.VERSION;
-    leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build 104]';
+    leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build 106]';
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
