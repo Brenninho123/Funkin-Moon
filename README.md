@@ -45,7 +45,7 @@ Feel free to start learning to mod the game by reading our [documentation](https
 ## Moon Engine Credits
 
 * **Brenninho123** — Owner/Programmer
-* **ArgMods** - Artist/PlayTester
+* **StefanDX** - Artist/PlayTester
 * **Sunndy** — Artist
 * **Bruno** — PlayTester
 * **Cosmic** — Musician/PlayTester
