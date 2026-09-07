@@ -25,6 +25,8 @@ import openfl.display.Sprite;
 import openfl.events.Event;
 import openfl.events.UncaughtErrorEvent;
 import openfl.Lib;
+import openfl.utils.Assets;
+import funkin.Paths;
 
 using funkin.util.AnsiUtil;
 
