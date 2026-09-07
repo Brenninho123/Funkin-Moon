@@ -23,9 +23,19 @@ import hxvlc.util.Handle;
 
 import openfl.display.Sprite;
 import openfl.events.Event;
+import openfl.events.UncaughtErrorEvent;
 import openfl.Lib;
 
 using funkin.util.AnsiUtil;
+
+typedef BuildInfo =
+{
+  var commit:String;
+  var branch:String;
+  var buildType:String;
+  var platform:String;
+  var builtAt:String;
+}
 
 class Main extends Sprite
 {
@@ -34,12 +44,16 @@ class Main extends Sprite
 
   public static var instance:Main;
   public static var debugDisplay:FunkinDebugDisplay;
+  public static var buildInfo(default, null):Null<BuildInfo> = null;
 
   private var initialState:Class<FlxState> = funkin.InitState;
   private var zoom:Float = -1;
   private var skipSplash:Bool = true;
   private var initialized:Bool = false;
   private var shuttingDown:Bool = false;
+  private var uncaughtErrorCount:Int = 0;
+
+  private static final MAX_UNCAUGHT_ERRORS_BEFORE_EXIT:Int = 25;
 
   public static function main():Void
   {
@@ -119,6 +133,8 @@ class Main extends Sprite
     }
 
     initializeShutdownHandler();
+    initializeUncaughtErrorHandler();
+    initializeLifecycleHandlers();
 
     if (!validateGraphicsContext()) return;
 
@@ -133,6 +149,70 @@ class Main extends Sprite
       shutdown();
     }, 99);
     #end
+  }
+
+  private function initializeUncaughtErrorHandler():Void
+  {
+    if (loaderInfo == null) return;
+    if (!loaderInfo.uncaughtErrorEvents.hasEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR))
+    {
+      loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onUncaughtError);
+    }
+  }
+
+  private function onUncaughtError(event:UncaughtErrorEvent):Void
+  {
+    event.preventDefault();
+
+    uncaughtErrorCount++;
+
+    var errorMessage:String = Std.string(event.error);
+
+    FlxG.log.error('Uncaught error #$uncaughtErrorCount: $errorMessage');
+
+    if (uncaughtErrorCount >= MAX_UNCAUGHT_ERRORS_BEFORE_EXIT)
+    {
+      WindowUtil.showError('Unstable Session', 'The game has hit too many unhandled errors in a row and needs to close.\n\nLast error:\n$errorMessage');
+
+      #if !html5
+      Sys.exit(1);
+      #end
+    }
+  }
+
+  private function initializeLifecycleHandlers():Void
+  {
+    if (stage == null) return;
+
+    stage.addEventListener(Event.DEACTIVATE, onStageDeactivate);
+    stage.addEventListener(Event.ACTIVATE, onStageActivate);
+  }
+
+  private function onStageDeactivate(event:Event):Void
+  {
+    try
+    {
+      Save.system.flush();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to flush save data on deactivate: $e');
+    }
+
+    #if mobile
+    try
+    {
+      FunkinMemory.purgeCache();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to purge memory cache on deactivate: $e');
+    }
+    #end
+  }
+
+  private function onStageActivate(event:Event):Void
+  {
   }
 
   private function shutdown():Void
@@ -208,6 +288,8 @@ class Main extends Sprite
   {
     try
     {
+      logBuildInfo();
+
       #if FEATURE_HAXEUI
       initializeHaxeUI();
       #end
@@ -227,6 +309,28 @@ class Main extends Sprite
     catch (e:Dynamic)
     {
       reportFatalStartupError(e);
+    }
+  }
+
+  private function logBuildInfo():Void
+  {
+    try
+    {
+      var path:String = Paths.json('build-info');
+
+      if (!Assets.exists(path, TEXT)) return;
+
+      var raw:String = Assets.getText(path);
+      buildInfo = haxe.Json.parse(raw);
+
+      if (buildInfo != null)
+      {
+        FlxG.log.add('Build: ${buildInfo.commit} (${buildInfo.branch}) - ${buildInfo.buildType} - built ${buildInfo.builtAt}');
+      }
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.warn('Failed to read build info: $e');
     }
   }
 
