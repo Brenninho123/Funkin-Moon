@@ -8,6 +8,7 @@ import funkin.save.Save;
 import funkin.util.WindowUtil;
 import funkin.util.HapticUtil.HapticsMode;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
+import flixel.util.FlxSignal.FlxTypedSignal;
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -15,6 +16,46 @@ import funkin.api.discord.DiscordClient;
 @:nullSafety
 class Preferences
 {
+  public static var onPreferenceChanged(default, null):FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
+
+  static var batchDepth:Int = 0;
+  static var batchedChanges:Array<String> = [];
+
+  public static function beginBatch():Void
+  {
+    batchDepth++;
+  }
+
+  public static function endBatch():Void
+  {
+    if (batchDepth <= 0) return;
+
+    batchDepth--;
+
+    if (batchDepth == 0 && batchedChanges.length > 0)
+    {
+      Save.system.flush();
+
+      var changes:Array<String> = batchedChanges;
+      batchedChanges = [];
+
+      for (name in changes)
+        onPreferenceChanged.dispatch(name);
+    }
+  }
+
+  static function commit(name:String):Void
+  {
+    if (batchDepth > 0)
+    {
+      if (batchedChanges.indexOf(name) == -1) batchedChanges.push(name);
+      return;
+    }
+
+    Save.system.flush();
+    onPreferenceChanged.dispatch(name);
+  }
+
   public static var framerate(get, set):Int;
 
   static function get_framerate():Int
@@ -45,7 +86,7 @@ class Preferences
     #else
     var save:Save = Save.instance;
     save.options.framerate = value;
-    Save.system.flush();
+    commit('framerate');
 
     if (!unlockedFramerate)
     {
@@ -75,7 +116,7 @@ class Preferences
     #else
     var save:Save = Save.instance;
     save.options.naughtyness = value;
-    Save.system.flush();
+    commit('naughtyness');
     return value;
     #end
   }
@@ -91,7 +132,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.downscroll = value;
-    Save.system.flush();
+    commit('downscroll');
     return value;
   }
 
@@ -106,7 +147,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.middlescroll = value;
-    Save.system.flush();
+    commit('middlescroll');
     return value;
   }
 
@@ -121,7 +162,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.invisibleHitbox = value;
-    Save.system.flush();
+    commit('invisibleHitbox');
     return value;
   }
 
@@ -136,7 +177,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.flashingLights = value;
-    Save.system.flush();
+    commit('flashingLights');
     return value;
   }
 
@@ -151,7 +192,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.cameraMovement = value;
-    Save.system.flush();
+    commit('cameraMovement');
     return value;
   }
 
@@ -166,7 +207,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.mode3D = value;
-    Save.system.flush();
+    commit('mode3D');
     return value;
   }
 
@@ -181,7 +222,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.storageType = value;
-    Save.system.flush();
+    commit('storageType');
     return value;
   }
 
@@ -196,7 +237,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.zoomCamera = value;
-    Save.system.flush();
+    commit('zoomCamera');
     return value;
   }
 
@@ -220,7 +261,7 @@ class Preferences
 
     var save = Save.instance;
     save.options.debugDisplay = value;
-    Save.system.flush();
+    commit('debugDisplay');
     return value;
     #end
   }
@@ -238,7 +279,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.debugDisplayBGOpacity = value;
-    Save.system.flush();
+    commit('debugDisplayBGOpacity');
     return value;
   }
 
@@ -255,7 +296,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.debugDisplayOffsetX = value;
-    Save.system.flush();
+    commit('debugDisplayOffsetX');
     return value;
   }
 
@@ -292,7 +333,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.hapticsMode = string;
-    Save.system.flush();
+    commit('hapticsMode');
     return value;
   }
 
@@ -307,7 +348,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.hapticsIntensityMultiplier = value;
-    Save.system.flush();
+    commit('hapticsIntensityMultiplier');
     return value;
   }
 
@@ -325,7 +366,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.mobileOptions.fullscreenMode = value;
-    Save.system.flush();
+    commit('fullscreenMode');
     return value;
   }
   #end
@@ -350,7 +391,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.autoPause = value;
-    Save.system.flush();
+    commit('autoPause');
     return value;
     #end
   }
@@ -366,7 +407,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.autoFullscreen = value;
-    Save.system.flush();
+    commit('autoFullscreen');
     return value;
   }
 
@@ -381,7 +422,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.globalOffset = value;
-    Save.system.flush();
+    commit('globalOffset');
     return value;
   }
 
@@ -431,7 +472,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.vsyncMode = string;
-    Save.system.flush();
+    commit('vsyncMode');
     return value;
     #end
   }
@@ -459,7 +500,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.unlockedFramerate = value;
-    Save.system.flush();
+    commit('unlockedFramerate');
     return value;
     #end
   }
@@ -479,7 +520,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.enabledDiscordRPC = value;
-    Save.system.flush();
+    commit('enabledDiscordRPC');
     return value;
   }
 
@@ -515,7 +556,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.strumlineBackgroundOpacity = value;
-    Save.system.flush();
+    commit('strumlineBackgroundOpacity');
     return value;
   }
 
@@ -530,7 +571,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.shouldHideMouse = value;
-    Save.system.flush();
+    commit('shouldHideMouse');
     return value;
   }
 
@@ -545,7 +586,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.fancyPreview = value;
-    Save.system.flush();
+    commit('fancyPreview');
     return value;
   }
 
@@ -560,7 +601,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.previewOnSave = value;
-    Save.system.flush();
+    commit('previewOnSave');
     return value;
   }
 
@@ -576,6 +617,14 @@ class Preferences
 
     #if mobile
     lime.system.System.allowScreenTimeout = Preferences.screenTimeout;
+    #end
+
+    #if FEATURE_DEBUG_FUNCTIONS
+    FlxG.console.registerFunction('prefGet', getPreference);
+    FlxG.console.registerFunction('prefSet', setPreference);
+    FlxG.console.registerFunction('prefToggle', togglePreference);
+    FlxG.console.registerFunction('prefReset', resetToDefaults);
+    FlxG.console.registerFunction('prefExport', exportPreferences);
     #end
   }
 
@@ -623,7 +672,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.subtitles = value;
-    Save.system.flush();
+    commit('subtitles');
     return value;
   }
 
@@ -641,7 +690,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.mobileOptions.screenTimeout = value;
-    Save.system.flush();
+    commit('screenTimeout');
     return value;
   }
 
@@ -665,7 +714,7 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.mobileOptions.controlsScheme = value;
-    Save.system.flush();
+    commit('controlsScheme');
     return value;
   }
 
@@ -686,9 +735,135 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.mobileOptions.noAds = value;
-    Save.system.flush();
+    commit('noAds');
     return value;
   }
   #end
   #end
+
+  /**
+   * Resets the main user-facing preferences back to their documented default
+   * values, in a single batched write (one flush, one set of change signals).
+   * Does not touch platform-purchase state (`noAds`) or anything not meant
+   * to be casually reset.
+   */
+  public static function resetToDefaults():Void
+  {
+    beginBatch();
+
+    naughtyness = true;
+    downscroll = #if mobile true #else false #end;
+    middlescroll = false;
+    invisibleHitbox = false;
+    flashingLights = true;
+    cameraMovement = true;
+    mode3D = false;
+    storageType = 'data';
+    zoomCamera = true;
+    debugDisplay = DebugDisplayMode.Off;
+    debugDisplayBGOpacity = 50;
+    debugDisplayOffsetX = 10;
+    hapticsMode = HapticsMode.ALL;
+    hapticsIntensityMultiplier = 1;
+    autoPause = true;
+    autoFullscreen = true;
+    globalOffset = 0;
+    vsyncMode = lime.ui.WindowVSyncMode.OFF;
+    unlockedFramerate = false;
+    enabledDiscordRPC = true;
+    strumlineBackgroundOpacity = 0;
+    shouldHideMouse = true;
+    fancyPreview = true;
+    previewOnSave = true;
+    subtitles = true;
+
+    #if mobile
+    fullscreenMode = true;
+    screenTimeout = false;
+    controlsScheme = FunkinHitboxControlSchemes.Arrows;
+    #end
+
+    endBatch();
+  }
+
+  /**
+   * Serializes every current preference value to a JSON string. This is a
+   * dump of the raw save data structure (`Save.instance.options`), so it
+   * includes any platform-specific fields present on this build.
+   */
+  public static function exportPreferences():String
+  {
+    return haxe.Json.stringify(Save.instance.options);
+  }
+
+  /**
+   * Merges a JSON string (as produced by `exportPreferences`) into the
+   * current save data, then flushes and notifies listeners for every field
+   * that was present in the import. Fields the JSON doesn't mention are left
+   * untouched. Returns false (and changes nothing) if the JSON is invalid.
+   */
+  public static function importPreferences(json:String):Bool
+  {
+    var parsed:Dynamic = null;
+
+    try
+    {
+      parsed = haxe.Json.parse(json);
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.warn('[Preferences] Failed to parse imported preferences JSON: $e');
+      return false;
+    }
+
+    if (parsed == null) return false;
+
+    beginBatch();
+
+    var options:Dynamic = Save.instance.options;
+
+    for (field in Reflect.fields(parsed))
+    {
+      Reflect.setField(options, field, Reflect.field(parsed, field));
+
+      if (batchedChanges.indexOf(field) == -1) batchedChanges.push(field);
+    }
+
+    endBatch();
+
+    return true;
+  }
+
+  /**
+   * Reads a preference's raw saved value by name, via reflection on the
+   * underlying save data. Note this bypasses any "live apply" side effects
+   * that a named property's setter would normally trigger (e.g. `debugDisplay`
+   * toggling the on-screen overlay) - it only reads/writes the stored value.
+   * Prefer the named static property directly when one exists and side
+   * effects matter.
+   */
+  public static function getPreference(name:String):Dynamic
+  {
+    return Reflect.field(Save.instance.options, name);
+  }
+
+  /**
+   * Writes a preference's raw saved value by name, via reflection. See the
+   * caveat on `getPreference` about live-apply side effects.
+   */
+  public static function setPreference(name:String, value:Dynamic):Void
+  {
+    Reflect.setField(Save.instance.options, name, value);
+    commit(name);
+  }
+
+  /**
+   * Flips a boolean preference by name, via reflection. See the caveat on
+   * `getPreference` about live-apply side effects.
+   */
+  public static function togglePreference(name:String):Void
+  {
+    var current:Dynamic = getPreference(name);
+    setPreference(name, !(current == true));
+  }
 }
