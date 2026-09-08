@@ -19,7 +19,7 @@ class Project extends HXProject
 
   static final BUILD_NUMBER:Int = 135;
 
-  static final MOON_VERSION:String = '0.0.2';
+  static final MOON_VERSION:String = '0.0.1';
 
   static final TITLE:String = "Friday Night Funkin': Moon Engine";
 
@@ -43,9 +43,25 @@ class Project extends HXProject
 
   static final COMPANY:String = "The Funkin' Crew";
 
-  static final LANGUAGES:Array<String> = ["en"];
+  static final LANGUAGES:Array<String> = ["en", "pt-br", "es", "fr", "de", "ja", "ru"];
+
+  static final CHANGELOG_PATH:String = "CHANGELOG.md";
+
+  static final LOCALES_DIR:String = "assets/preload/data/locales";
+
+  static final ASSET_MANIFEST_PATH:String = "assets/preload/data/asset-manifest.json";
+
+  static final API_BASE_URL:String = "https://api.moonengine.dev";
+
+  static final MULTIPLAYER_API_URL:String = "https://mp.moonengine.dev";
+
+  static final MULTIPLAYER_MOD_MANIFEST_PATH:String = "source/funkin/multiplayer/ModManifest.json";
+
+  static final REQUIRED_HOST_TOOLS:Array<String> = ["git", "haxelib", "haxe"];
 
   static var envConfig:Null<Map<String, Dynamic>> = null;
+
+  static var stageTimings:Map<String, Float> = new Map();
 
   static final ANDROID_EXTENSIONS:Array<String> = [
     "funkin.extensions.CallbackUtil",
@@ -181,6 +197,16 @@ class Project extends HXProject
 
   static final FEATURE_AWAY3D:FeatureFlag = "FEATURE_AWAY3D";
 
+  static final FEATURE_MULTIPLAYER:FeatureFlag = "FEATURE_MULTIPLAYER";
+
+  static final FEATURE_MULTIPLAYER_MOD_SYNC:FeatureFlag = "FEATURE_MULTIPLAYER_MOD_SYNC";
+
+  static final FEATURE_CRASH_REPORTING:FeatureFlag = "FEATURE_CRASH_REPORTING";
+
+  static final FEATURE_ASSET_INTEGRITY:FeatureFlag = "FEATURE_ASSET_INTEGRITY";
+
+  static final FEATURE_INCREMENTAL_ASSETS:FeatureFlag = "FEATURE_INCREMENTAL_ASSETS";
+
   public function new()
   {
     super();
@@ -198,59 +224,129 @@ class Project extends HXProject
 
     displayTarget();
 
-    configureApp();
+    stage("validateEnvironment", validateEnvironment);
 
-    configureOutputDir();
+    stage("configureApp", configureApp);
+
+    stage("configureOutputDir", configureOutputDir);
 
     if (isRun() || isInstall())
     {
       return;
     }
 
-    configureFeatureFlags();
-    configureCompileDefines();
-    configureIncludeMacros();
-    configureCustomMacros();
-    configurePolymod();
-    configureHaxelibs();
-    configureASTCTextures();
-    configureAssets();
-    configureBuildInfo();
+    stage("configureFeatureFlags", configureFeatureFlags);
+    stage("validateFeatureFlags", validateFeatureFlags);
+    stage("configureCompileDefines", configureCompileDefines);
+    stage("configureIncludeMacros", configureIncludeMacros);
+    stage("configureCustomMacros", configureCustomMacros);
+    stage("configurePolymod", configurePolymod);
+    stage("configureHaxelibs", configureHaxelibs);
+    stage("configureASTCTextures", configureASTCTextures);
+    stage("configureLocalization", configureLocalization);
+    stage("configureOnlineServices", configureOnlineServices);
+    stage("configureMultiplayer", configureMultiplayer);
+    stage("configureAssets", configureAssets);
+    stage("configureAssetIntegrity", configureAssetIntegrity);
+    stage("configureBuildInfo", configureBuildInfo);
 
     if (!isLinux())
     {
-      configureIcons();
+      stage("configureIcons", configureIcons);
     }
 
     if (FEATURE_MOBILE_ADVERTISEMENTS.isEnabled(this))
     {
-      configureAdMobKeys();
+      stage("configureAdMobKeys", configureAdMobKeys);
     }
 
     if (isAndroid())
     {
-      configureAndroid();
+      stage("configureAndroid", configureAndroid);
     }
 
     if (isIOS())
     {
-      configureIOS();
+      stage("configureIOS", configureIOS);
     }
 
     if (isCPP())
     {
-      buildHxCppTools();
+      stage("buildHxCppTools", buildHxCppTools);
     }
 
     if (!(isDisplay() || isCleanCommand()))
     {
-      checkLibraries();
+      stage("checkLibraries", checkLibraries);
+    }
+
+    renderStageTimings();
+  }
+
+  function stage(name:String, callback:Void->Void):Void
+  {
+    var startTime:Float = Sys.time();
+
+    callback();
+
+    var elapsed:Float = Sys.time() - startTime;
+    stageTimings.set(name, elapsed);
+  }
+
+  function renderStageTimings():Void
+  {
+    if (isDisplay() || isCleanCommand() || isRun() || isInstall()) return;
+
+    var names:Array<String> = [for (name in stageTimings.keys()) name];
+    names.sort(function(a, b) return stageTimings.get(b) > stageTimings.get(a) ? 1 : -1);
+
+    info("BUILD STAGE TIMINGS");
+
+    for (name in names)
+    {
+      var duration:Float = stageTimings.get(name) ?? 0;
+      info('  ${name.rpad(" ", 32)} ${Math.round(duration * 1000)}ms');
+    }
+  }
+
+  function validateEnvironment():Void
+  {
+    var missingTools:Array<String> = [];
+
+    for (tool in REQUIRED_HOST_TOOLS)
+    {
+      if (!hostToolExists(tool))
+      {
+        missingTools.push(tool);
+      }
+    }
+
+    if (missingTools.length > 0)
+    {
+      error('Missing required host tools: ${missingTools.join(", ")}. Install them and ensure they are on PATH before building.');
+    }
+  }
+
+  function hostToolExists(tool:String):Bool
+  {
+    try
+    {
+      var checkCommand:String = isWindowsHost() ? 'where' : 'which';
+      var process = new sys.io.Process(checkCommand, [tool]);
+      var exitCode:Int = process.exitCode();
+      process.close();
+      return exitCode == 0;
+    }
+    catch (e:Dynamic)
+    {
+      return false;
     }
   }
 
   function flair()
   {
     info("Friday Night Funkin' - " + VERSION);
+    info("Moon Engine Version: " + MOON_VERSION);
     info("Build Number:   " + BUILD_NUMBER);
     info("Initializing build...");
 
@@ -502,25 +598,57 @@ class Project extends HXProject
 
     FEATURE_DEBUG_DISPLAY.apply(this, !isMobile() || FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
 
-
-    // desativei temporariamente porque não tive tempo de resolver todos erros, mas depois tem que voltar a ser true
-    // temporarily disabled, didn't have time to fix all the errors yet, gotta flip this back to true later.
     FEATURE_ONLINE.apply(this, true);
-    // FEATURE_ONLINE.apply(this, !isWeb());
 
-    // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
-    // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
-    // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
+    FEATURE_MULTIPLAYER.apply(this, FEATURE_ONLINE.isEnabled(this) && !isWeb());
+    FEATURE_MULTIPLAYER_MOD_SYNC.apply(this, FEATURE_MULTIPLAYER.isEnabled(this) && FEATURE_POLYMOD_MODS.isEnabled(this));
+
+    FEATURE_CRASH_REPORTING.apply(this, isRelease() && envConfig != null);
+
+    FEATURE_ASSET_INTEGRITY.apply(this, isRelease() || FEATURE_MULTIPLAYER_MOD_SYNC.isEnabled(this));
+
+    FEATURE_INCREMENTAL_ASSETS.apply(this, isDebug() && isDesktop());
+
     FEATURE_3D_RENDERING.apply(this, false);
 
-    // Disabled by default: Away3D 5.0.9 (published years ago) still assumes Lib.getTimer()
-    // returns Int/UInt, but current OpenFL returns Float there - a known, unresolved
-    // upstream incompatibility (see HaxeFlixel/flixel#3561 for the same root cause hitting
-    // other libraries). Causes build errors in View3D.hx, ParserBase.hx, AnimatorBase.hx.
-    // Re-enable once Away3D publishes a fix, or after patching the installed haxelib locally.
     FEATURE_AWAY3D.apply(this, false);
 
     renderFlagsTable();
+  }
+
+  function validateFeatureFlags():Void
+  {
+    var conflicts:Array<String> = [];
+
+    if (FEATURE_3D_RENDERING.isEnabled(this) && FEATURE_AWAY3D.isEnabled(this))
+    {
+      conflicts.push("FEATURE_3D_RENDERING and FEATURE_AWAY3D cannot both be enabled (Polymod HScript macro conflict on the sprite inheritance chain)");
+    }
+
+    if (FEATURE_MULTIPLAYER_MOD_SYNC.isEnabled(this) && !FEATURE_POLYMOD_MODS.isEnabled(this))
+    {
+      conflicts.push("FEATURE_MULTIPLAYER_MOD_SYNC requires FEATURE_POLYMOD_MODS to be enabled");
+    }
+
+    if (FEATURE_MULTIPLAYER.isEnabled(this) && isWeb())
+    {
+      conflicts.push("FEATURE_MULTIPLAYER is not supported on the web target");
+    }
+
+    if (FEATURE_CRASH_REPORTING.isEnabled(this) && envConfig == null)
+    {
+      conflicts.push("FEATURE_CRASH_REPORTING requires a valid .env file");
+    }
+
+    if (conflicts.length > 0)
+    {
+      for (conflict in conflicts)
+      {
+        warn(conflict);
+      }
+
+      error('Feature flag validation failed with ${conflicts.length} conflict(s). Fix the conflicts above before continuing.');
+    }
   }
 
   function renderFlagsTable():Void
@@ -576,6 +704,7 @@ class Project extends HXProject
   function configureCompileDefines()
   {
     setHaxedef("funkin", VERSION);
+    setHaxedef("moonVersion", MOON_VERSION);
 
     setHaxedef("openfl-enable-handle-error");
 
@@ -630,6 +759,11 @@ class Project extends HXProject
     if (isMobile())
     {
       addHaxeMacro("include('funkin.mobile')");
+    }
+
+    if (FEATURE_MULTIPLAYER.isEnabled(this))
+    {
+      addHaxeMacro("include('funkin.multiplayer')");
     }
 
     if (FEATURE_HAXEUI.isEnabled(this))
@@ -687,6 +821,112 @@ class Project extends HXProject
     buildDir += "/";
 
     app.path = buildDir;
+  }
+
+  function configureLocalization():Void
+  {
+    info('Configuring localization for ${LANGUAGES.length} language(s)...');
+
+    var missingLocales:Array<String> = [];
+
+    for (language in LANGUAGES)
+    {
+      if (language == "en") continue;
+
+      var localePath:String = Path.join([LOCALES_DIR, '$language.json']);
+
+      if (!sys.FileSystem.exists(localePath))
+      {
+        missingLocales.push(language);
+      }
+    }
+
+    if (missingLocales.length > 0)
+    {
+      warn('Missing locale file(s) for: ${missingLocales.join(", ")}. Those languages will fall back to English at runtime.');
+    }
+
+    setHaxedef("supportedLanguages", LANGUAGES.join(","));
+  }
+
+  function configureOnlineServices():Void
+  {
+    if (!FEATURE_ONLINE.isEnabled(this)) return;
+
+    info('Configuring online services...');
+
+    setHaxedef("apiBaseUrl", API_BASE_URL);
+
+    if (FEATURE_MULTIPLAYER.isEnabled(this))
+    {
+      setHaxedef("multiplayerApiUrl", MULTIPLAYER_API_URL);
+    }
+
+    if (envConfig != null && envConfig.exists('API_TIMEOUT_MS'))
+    {
+      setHaxedef("apiTimeoutMs", Std.string(envConfig.get('API_TIMEOUT_MS')));
+    }
+    else
+    {
+      setHaxedef("apiTimeoutMs", "8000");
+    }
+  }
+
+  function configureMultiplayer():Void
+  {
+    if (!FEATURE_MULTIPLAYER.isEnabled(this)) return;
+
+    info('Configuring multiplayer mod compatibility system...');
+
+    if (!FEATURE_MULTIPLAYER_MOD_SYNC.isEnabled(this))
+    {
+      info('Multiplayer mod sync is disabled, skipping manifest generation.');
+      return;
+    }
+
+    var modsFolder:String = "mods";
+    var manifestEntries:Array<Dynamic> = [];
+
+    if (sys.FileSystem.exists(modsFolder) && sys.FileSystem.isDirectory(modsFolder))
+    {
+      for (entry in sys.FileSystem.readDirectory(modsFolder))
+      {
+        var modPath:String = Path.join([modsFolder, entry]);
+        if (!sys.FileSystem.isDirectory(modPath)) continue;
+
+        var metaPath:String = Path.join([modPath, 'pack.json']);
+        if (!sys.FileSystem.exists(metaPath)) continue;
+
+        try
+        {
+          var meta:Dynamic = haxe.Json.parse(sys.io.File.getContent(metaPath));
+
+          manifestEntries.push({
+            id: (meta.id != null) ? meta.id : entry,
+            name: (meta.name != null) ? meta.name : entry,
+            version: (meta.version != null) ? meta.version : "1.0.0",
+            required: (meta.required != null) ? meta.required : true
+          });
+        }
+        catch (e:Dynamic)
+        {
+          warn('Failed to parse mod metadata for "${entry}": ${e}');
+        }
+      }
+    }
+
+    var manifestDir:String = Path.directory(MULTIPLAYER_MOD_MANIFEST_PATH);
+
+    try
+    {
+      if (!sys.FileSystem.exists(manifestDir)) sys.FileSystem.createDirectory(manifestDir);
+      sys.io.File.saveContent(MULTIPLAYER_MOD_MANIFEST_PATH, haxe.Json.stringify(manifestEntries, null, '  '));
+      info('Wrote multiplayer mod manifest with ${manifestEntries.length} entr${manifestEntries.length == 1 ? "y" : "ies"} to ${MULTIPLAYER_MOD_MANIFEST_PATH}');
+    }
+    catch (e:Dynamic)
+    {
+      warn('Failed to write multiplayer mod manifest: ${e}');
+    }
   }
 
   function configureAndroid()
@@ -1023,6 +1263,65 @@ class Project extends HXProject
     }
   }
 
+  function configureAssetIntegrity():Void
+  {
+    if (!FEATURE_ASSET_INTEGRITY.isEnabled(this)) return;
+
+    info('Generating asset integrity manifest...');
+
+    var manifestEntries:Map<String, String> = new Map();
+    var criticalPaths:Array<String> = ["assets/preload", "assets/shared"];
+
+    for (rootPath in criticalPaths)
+    {
+      if (!sys.FileSystem.exists(rootPath) || !sys.FileSystem.isDirectory(rootPath)) continue;
+
+      hashDirectoryInto(rootPath, manifestEntries);
+    }
+
+    var manifestObject:Dynamic = {};
+
+    for (path => hash in manifestEntries)
+    {
+      Reflect.setField(manifestObject, path, hash);
+    }
+
+    var manifestDir:String = Path.directory(ASSET_MANIFEST_PATH);
+
+    try
+    {
+      if (!sys.FileSystem.exists(manifestDir)) sys.FileSystem.createDirectory(manifestDir);
+      sys.io.File.saveContent(ASSET_MANIFEST_PATH, haxe.Json.stringify(manifestObject));
+      info('Asset integrity manifest written with ${Lambda.count(manifestEntries)} entries.');
+    }
+    catch (e:Dynamic)
+    {
+      warn('Failed to write asset integrity manifest: ${e}');
+    }
+  }
+
+  function hashDirectoryInto(rootPath:String, output:Map<String, String>):Void
+  {
+    for (entry in sys.FileSystem.readDirectory(rootPath))
+    {
+      var fullPath:String = Path.join([rootPath, entry]);
+
+      if (sys.FileSystem.isDirectory(fullPath))
+      {
+        hashDirectoryInto(fullPath, output);
+      }
+      else
+      {
+        try
+        {
+          var bytes:Bytes = sys.io.File.getBytes(fullPath);
+          output.set(fullPath, haxe.crypto.Md5.make(bytes).toHex());
+        }
+        catch (e:Dynamic) {}
+      }
+    }
+  }
+
   function clearAssets():Void
   {
     if (!isBuild()) return;
@@ -1061,6 +1360,12 @@ class Project extends HXProject
         return;
     }
 
+    if (FEATURE_INCREMENTAL_ASSETS.isEnabled(this) && sys.FileSystem.exists(assetsPath))
+    {
+      info('Incremental asset mode enabled, skipping asset wipe ($assetsPath)');
+      return;
+    }
+
     if (sys.FileSystem.exists(assetsPath))
     {
       info('Deleting assets folder from export folder ($assetsPath)');
@@ -1097,12 +1402,20 @@ class Project extends HXProject
   {
     info('Embedding build info...');
 
+    var changelogSnippet:String = readChangelogSnippet();
+
     var buildInfo = {
       commit: getGitShortHash(),
       branch: getGitBranch(),
       buildType: isDebug() ? 'debug' : 'release',
       platform: targetPlatformName(),
-      builtAt: Date.now().toString()
+      builtAt: Date.now().toString(),
+      moonVersion: MOON_VERSION,
+      engineVersion: VERSION,
+      buildNumber: BUILD_NUMBER,
+      changelog: changelogSnippet,
+      multiplayerEnabled: FEATURE_MULTIPLAYER.isEnabled(this),
+      onlineEnabled: FEATURE_ONLINE.isEnabled(this)
     };
 
     var outputDir:String = 'assets/preload/data';
@@ -1117,6 +1430,36 @@ class Project extends HXProject
     catch (e:Dynamic)
     {
       info('  ! Failed to write build info: $e');
+    }
+  }
+
+  function readChangelogSnippet():String
+  {
+    if (!sys.FileSystem.exists(CHANGELOG_PATH)) return "";
+
+    try
+    {
+      var contents:String = sys.io.File.getContent(CHANGELOG_PATH);
+      var lines:Array<String> = contents.split('\n');
+      var snippetLines:Array<String> = [];
+      var headingsSeen:Int = 0;
+
+      for (line in lines)
+      {
+        if (line.startsWith('## '))
+        {
+          headingsSeen++;
+          if (headingsSeen > 1) break;
+        }
+
+        snippetLines.push(line);
+      }
+
+      return snippetLines.join('\n').trim();
+    }
+    catch (e:Dynamic)
+    {
+      return "";
     }
   }
 
