@@ -17,7 +17,6 @@ import funkin.api.discord.DiscordClient;
 class Preferences
 {
   public static var onPreferenceChanged(default, null):FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
-
   static var batchDepth:Int = 0;
   static var batchedChanges:Array<String> = [];
 
@@ -39,8 +38,7 @@ class Preferences
       var changes:Array<String> = batchedChanges;
       batchedChanges = [];
 
-      for (name in changes)
-        onPreferenceChanged.dispatch(name);
+      for (name in changes) onPreferenceChanged.dispatch(name);
     }
   }
 
@@ -702,8 +700,7 @@ class Preferences
 
     return switch (value)
     {
-      case FunkinHitboxControlSchemes.Arrows, FunkinHitboxControlSchemes.FourLanes, FunkinHitboxControlSchemes.DoubleThumbTriangle,
-        FunkinHitboxControlSchemes.DoubleThumbSquare, FunkinHitboxControlSchemes.DoubleThumbDPad:
+      case FunkinHitboxControlSchemes.Arrows, FunkinHitboxControlSchemes.FourLanes, FunkinHitboxControlSchemes.DoubleThumbTriangle, FunkinHitboxControlSchemes.DoubleThumbSquare, FunkinHitboxControlSchemes.DoubleThumbDPad:
         value;
       default:
         FunkinHitboxControlSchemes.Arrows;
