@@ -18,6 +18,7 @@ class SaveSystem
    */
   public function flush():Void
   {
+    trace("[SAVE] FLUSH FUNCIONOU E FOI EXECUTADO");
     FlxG.save.flush();
   }
 
@@ -38,6 +39,7 @@ class SaveSystem
   public function fetchLegacySaveData():Option<RawSaveData_v1_0_0>
   {
     trace("[SAVE] Checking for legacy save data...");
+
     var legacySave:FlxSave = new FlxSave();
     legacySave.bind(Constants.SAVE_NAME_LEGACY, Constants.SAVE_PATH_LEGACY);
 
@@ -55,7 +57,6 @@ class SaveSystem
 
   public function archiveBadSaveData(data:Dynamic):Int
   {
-    // We want to save this somewhere so we can try to recover it for the user in the future!
     final RECOVERY_SLOT_START = 1000;
     return writeToAvailableSlot(RECOVERY_SLOT_START, data);
   }
@@ -66,9 +67,9 @@ class SaveSystem
 
     var targetSaveData:FlxSave = new FlxSave();
     targetSaveData.bind(Constants.SAVE_NAME + slot, Constants.SAVE_PATH);
+
     while (!targetSaveData.isEmpty())
     {
-      // Keep trying to bind to slots until we find an empty slot.
       trace('[SAVE] Slot ${slot} is taken, continuing...');
       slot++;
       targetSaveData.bind(Constants.SAVE_NAME + slot, Constants.SAVE_PATH);

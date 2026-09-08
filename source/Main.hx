@@ -4,7 +4,6 @@ import lime.system.System;
 import flixel.FlxG;
 import flixel.FlxGame;
 import flixel.FlxState;
-
 import funkin.ui.FullScreenScaleMode;
 import funkin.Preferences;
 import funkin.PlayerSettings;
@@ -16,11 +15,9 @@ import funkin.util.logging.CrashHandler;
 import funkin.util.logging.AnsiTrace;
 import funkin.ui.debug.FunkinDebugDisplay;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
-
 #if hxvlc
 import hxvlc.util.Handle;
 #end
-
 import openfl.display.Sprite;
 import openfl.events.Event;
 import openfl.events.UncaughtErrorEvent;
@@ -43,7 +40,6 @@ class Main extends Sprite
 {
   public static inline var GAME_WIDTH:Int = 1280;
   public static inline var GAME_HEIGHT:Int = 720;
-
   public static var instance:Main;
   public static var debugDisplay:FunkinDebugDisplay;
   public static var buildInfo(default, null):Null<BuildInfo> = null;
@@ -296,9 +292,12 @@ class Main extends Sprite
       initializeHaxeUI();
       #end
 
+      // tinha literalmente uma linha de comentario falando que não era recomendado colocar o Save.load() depois do FlxGame.
+      Save.load();
+      trace("[SAVE] SAVE FOI CARREGADO COM SUCESSO");
+
       initializeDebugDisplay();
       initializeSignals();
-      initializeSaveSystem();
       initializeVideoSystem();
       initializeRendering();
 
@@ -357,18 +356,6 @@ class Main extends Sprite
     #if mobile
     FlxG.signals.preUpdate.add(repositionCounters.bind(true));
     #end
-  }
-
-  private function initializeSaveSystem():Void
-  {
-    try
-    {
-      Save.load();
-    }
-    catch (e:Dynamic)
-    {
-      FlxG.log.error('Failed to load save data: $e');
-    }
   }
 
   private function initializeVideoSystem():Void
