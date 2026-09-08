@@ -33,7 +33,7 @@ class OnlineMenuState extends MusicBeatState
   var hostLocked:Bool = false;
   var isMultiplayerMode:Bool;
   var connectButton:Null<FlxButton> = null;
-  var backButton:Null<FlxButton> = null;
+  var exitButton:Null<FlxButton> = null;
   var currentAccount:Dynamic = null;
   var selectedIndex:Int = 0;
 
@@ -63,7 +63,7 @@ class OnlineMenuState extends MusicBeatState
       add(subtitle);
     }
 
-    watermarkText = new FlxText(0, 250, FlxG.width, 'online feature in wip.', 18);
+    watermarkText = new FlxText(0, 230, FlxG.width, 'online feature in wip.', 18);
     if (watermarkText != null)
     {
       watermarkText.setFormat(Paths.font('vcr.ttf'), 18, 0xFFB7C8FF, CENTER);
@@ -105,27 +105,27 @@ class OnlineMenuState extends MusicBeatState
       add(connectButton);
     }
 
-    backButton = new FlxButton(340, 400, 'BACK', () ->
+    exitButton = new FlxButton(340, 400, 'BACK', () ->
     {
       trace('[MP] Back button clicked');
       FlxG.switchState(() -> new MainMenuState());
     });
-    if (backButton != null)
+    if (exitButton != null)
     {
-      backButton.color = 0xFF8B8B8B;
-      backButton.scale.set(1.8, 1.8);
-      backButton.updateHitbox();
-      backButton.onOver.callback = () ->
+      exitButton.color = 0xFF8B8B8B;
+      exitButton.scale.set(1.8, 1.8);
+      exitButton.updateHitbox();
+      exitButton.onOver.callback = () ->
       {
-        backButton.color = 0xFFC0C0C0;
-        backButton.scale.set(1.9, 1.9);
+        exitButton.color = 0xFFC0C0C0;
+        exitButton.scale.set(1.9, 1.9);
       };
-      backButton.onOut.callback = () ->
+      exitButton.onOut.callback = () ->
       {
-        backButton.color = 0xFF8B8B8B;
-        backButton.scale.set(1.8, 1.8);
+        exitButton.color = 0xFF8B8B8B;
+        exitButton.scale.set(1.8, 1.8);
       };
-      add(backButton);
+      add(exitButton);
     }
 
     currentAccount = MultiplayerAccountManager.getOrCreateAccount('Player');
@@ -253,11 +253,11 @@ class OnlineMenuState extends MusicBeatState
       connectButton.scale.set(selected ? 2.1 : 2.0, selected ? 2.1 : 2.0);
     }
 
-    if (backButton != null)
+    if (exitButton != null)
     {
       final selected:Bool = selectedIndex == 2;
-      backButton.color = selected ? 0xFFC0C0C0 : 0xFF8B8B8B;
-      backButton.scale.set(selected ? 1.9 : 1.8, selected ? 1.9 : 1.8);
+      exitButton.color = selected ? 0xFFC0C0C0 : 0xFF8B8B8B;
+      exitButton.scale.set(selected ? 1.9 : 1.8, selected ? 1.9 : 1.8);
     }
   }
 
