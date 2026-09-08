@@ -28,13 +28,10 @@ import funkin.util.HapticUtil;
 class DebugMenuSubState extends MusicBeatSubState
 {
   var items:TextMenuList;
-
   var camFocusPoint:FlxObject;
-
-  var closing:Bool = false;
-
   #if mobile
-  var touchableItems:Array<{item:TextMenuItem, callback:Void->Void}> = [];
+  var touchableItems:Array<
+    {item:TextMenuItem, callback:Void->Void}> = [];
   var mobileHint:Null<FlxText> = null;
   #end
 
@@ -112,8 +109,6 @@ class DebugMenuSubState extends MusicBeatSubState
 
   override function update(elapsed:Float):Void
   {
-    if (closing) return;
-
     try
     {
       updateDebugMenu(elapsed);
@@ -149,8 +144,6 @@ class DebugMenuSubState extends MusicBeatSubState
   #if mobile
   function handleTouchInput():Void
   {
-    if (closing) return;
-
     if (TouchUtil.justPressed && !ControlsHandler.usingExternalInputDevice)
     {
       for (entry in touchableItems)
@@ -178,11 +171,19 @@ class DebugMenuSubState extends MusicBeatSubState
     FunkinSound.playOnce(Paths.sound('confirmMenu'));
 
     FlxTween.cancelTweensOf(item);
-    FlxTween.tween(item, {"scale.x": 0.92, "scale.y": 0.92}, 0.08, {
+    FlxTween.tween(item, {
+      "scale.x": 0.92,
+      "scale.y": 0.92
+    }, 0.08, {
       ease: FlxEase.quadOut,
       onComplete: (_) ->
       {
-        FlxTween.tween(item, {"scale.x": 1, "scale.y": 1}, 0.12, {ease: FlxEase.quadOut});
+        FlxTween.tween(item, {
+          "scale.x": 1,
+          "scale.y": 1
+        }, 0.12, {
+          ease: FlxEase.quadOut
+        });
         callback();
       }
     });
@@ -196,7 +197,10 @@ class DebugMenuSubState extends MusicBeatSubState
     item.screenCenter(X);
 
     #if mobile
-    touchableItems.push({item: item, callback: callback});
+    touchableItems.push({
+      item: item,
+      callback: callback
+    });
     #end
 
     return item;
@@ -204,15 +208,8 @@ class DebugMenuSubState extends MusicBeatSubState
 
   function switchToState(stateFactory:Void->flixel.FlxState):Void
   {
-    if (closing) return;
-    closing = true;
-
     FlxTransitionableState.skipNextTransIn = true;
-
-    FlxG.camera.follow(null);
-
     this.close();
-
     FlxG.switchState(stateFactory);
   }
 
@@ -271,18 +268,11 @@ class DebugMenuSubState extends MusicBeatSubState
 
   function exitDebugMenu():Void
   {
-    if (closing) return;
-    closing = true;
-
-    FlxG.camera.follow(null);
-
     this.close();
   }
 
   override public function destroy():Void
   {
-    if (FlxG.camera != null) FlxG.camera.follow(null);
-
     super.destroy();
   }
 }

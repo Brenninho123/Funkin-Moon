@@ -487,7 +487,20 @@ class MainMenuState extends MusicBeatState
   {
     FlxG.camera.follow(camFollow, null, 0.06);
 
-    if (snap) FlxG.camera.snapToTarget();
+    trace('=== CAMERA RESET ===');
+    trace('target: ${FlxG.camera.target}');
+    trace('followLerp: ${FlxG.camera.followLerp}');
+    trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
+    trace('zoom: ${FlxG.camera.zoom}');
+    trace('deadzone: ${FlxG.camera.deadzone}');
+
+    if (snap)
+    {
+      FlxG.camera.snapToTarget();
+
+      trace('AFTER SNAP');
+      trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
+    }
   }
 
   function createMenuItem(name:String, atlas:String, callback:Void->Void, fireInstantly:Bool = false):Void
@@ -506,6 +519,10 @@ class MainMenuState extends MusicBeatState
 
   override function closeSubState():Void
   {
+    trace('=== closeSubState ===');
+    trace('persistentUpdate BEFORE: $persistentUpdate');
+    trace('camera target BEFORE: ${FlxG.camera.target}');
+
     magenta.visible = false;
 
     if (!(subState is flixel.addons.transition.Transition))
@@ -515,21 +532,30 @@ class MainMenuState extends MusicBeatState
       #if FEATURE_TOUCH_CONTROLS
       backButton?.animation.play('idle');
       backButton?.resetCallbacks();
-
       optionsButton?.animation.play('idle');
       optionsButton?.resetCallbacks();
       #end
     }
 
     super.closeSubState();
+
+    persistentUpdate = true;
+
+    trace('persistentUpdate AFTER: $persistentUpdate');
+    trace('camera target AFTER: ${FlxG.camera.target}');
   }
 
   function onMenuItemChange(selected:MenuListItem)
   {
-    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end) camFollow.setPosition(
-      selected.getGraphicMidpoint().x,
-      selected.getGraphicMidpoint().y
-    );
+    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end)
+    {
+      camFollow.setPosition(selected.getGraphicMidpoint().x, selected.getGraphicMidpoint().y);
+
+      trace('=== MENU CHANGE ===');
+      trace('camFollow: ${camFollow.x}, ${camFollow.y}');
+      trace('camera target: ${FlxG.camera.target}');
+      trace('camera scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
+    }
   }
 
   #if FEATURE_OPEN_URL

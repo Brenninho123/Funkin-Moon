@@ -191,7 +191,7 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       },
       Preferences.flashingLights
     );
-    createPrefItemCheckbox('Camera Movement', 'When enabled, the camera nudges slightly in the direction of the note you hit.', function(value:Bool):Void
+    createPrefItemCheckbox('Camera Movement (WIP)', 'When enabled, the camera nudges slightly in the direction of the note you hit.', function(value:Bool):Void
     {
       Preferences.cameraMovement = value;
     }, Preferences.cameraMovement);

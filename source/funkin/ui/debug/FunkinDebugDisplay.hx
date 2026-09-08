@@ -22,7 +22,6 @@ class FunkinDebugDisplay extends Sprite
   static final ACCENT_BAR_WIDTH:Float = 4;
 
   public var isAdvanced(default, set):Bool = false;
-
   public var backgroundOpacity(default, set):Float = 0.5;
 
   var deltaTimeout:Float;
@@ -52,7 +51,6 @@ class FunkinDebugDisplay extends Sprite
   var cachedLowFps:Int = 0;
   var panelWidth:Float = 0;
   var panelHeight:Float = 0;
-
   var lastRenderedFps:Int = -1;
   var lastRenderedAvg:Int = -1;
   var lastRenderedLow:Int = -1;
@@ -235,8 +233,13 @@ class FunkinDebugDisplay extends Sprite
     {
       var previousGraph:FunkinStatsGraph = gcMemGraph != null ? gcMemGraph : fpsGraph;
 
-      taskMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (previousGraph.y + previousGraph.axisHeight) + 22), graphsWidth,
-        graphsHeight, color);
+      taskMemGraph = new FunkinStatsGraph(
+        OTHERS_OFFSET,
+        Math.floor(OTHERS_OFFSET + (previousGraph.y + previousGraph.axisHeight) + 22),
+        graphsWidth,
+        graphsHeight,
+        color
+      );
       taskMemGraph.minValue = 0;
       addChild(taskMemGraph);
     }
@@ -329,8 +332,7 @@ class FunkinDebugDisplay extends Sprite
 
     var lowest:Int = fpsHistory[0];
 
-    for (value in fpsHistory)
-      if (value < lowest) lowest = value;
+    for (value in fpsHistory) if (value < lowest) lowest = value;
 
     return lowest;
   }
@@ -357,7 +359,8 @@ class FunkinDebugDisplay extends Sprite
     var gcMemRounded:Int = Math.round(gcMem);
     var taskMemRounded:Int = Math.round(taskMem);
 
-    var changed:Bool = fps != lastRenderedFps
+    var changed:Bool =
+      fps != lastRenderedFps
       || cachedAverageFps != lastRenderedAvg
       || cachedLowFps != lastRenderedLow
       || stutterCount != lastRenderedStutters
