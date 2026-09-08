@@ -298,7 +298,7 @@ class Project extends HXProject
     if (isDisplay() || isCleanCommand() || isRun() || isInstall()) return;
 
     var names:Array<String> = [for (name in stageTimings.keys()) name];
-    names.sort(function(a, b) return stageTimings.get(b) > stageTimings.get(a) ? 1 : -1);
+    names.sort(function(a, b) return (stageTimings.get(b) ?? 0) > (stageTimings.get(a) ?? 0) ? 1 : -1);
 
     info("BUILD STAGE TIMINGS");
 
@@ -333,9 +333,9 @@ class Project extends HXProject
     {
       var checkCommand:String = isWindowsHost() ? 'where' : 'which';
       var process = new sys.io.Process(checkCommand, [tool]);
-      var exitCode:Int = process.exitCode();
+      var exitCode:Null<Int> = process.exitCode();
       process.close();
-      return exitCode == 0;
+      return (exitCode ?? -1) == 0;
     }
     catch (e:Dynamic)
     {
