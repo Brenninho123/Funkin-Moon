@@ -71,8 +71,13 @@ class DebugMenuSubState extends MusicBeatSubState
     createItem("STAGE EDITOR", openStageEditor);
     #end
     #if FEATURE_MUSIC_EDITOR
-    createItem("MUSIC EDITOR", openMusicEditor);
+    createItem("MUSIC EDITOR (WIP)", openMusicEditor);
     #end
+
+    #if FEATURE_MOD_MENU
+    createItem("MOD MENU (WIP)", openModMenu);
+    #end
+
     #if FEATURE_RESULTS_DEBUG
     createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
     #end
@@ -242,6 +247,13 @@ class DebugMenuSubState extends MusicBeatSubState
   function openStageEditor():Void
   {
     switchToState(() -> new funkin.ui.debug.stageeditor.StageEditorState());
+  }
+  #end
+
+  #if FEATURE_MOD_MENU
+  function openModMenu():Void
+  {
+    switchToState(() -> new funkin.ui.modmenu.ModMenuState());
   }
   #end
 

@@ -185,7 +185,10 @@ class DebugBoundingState extends FlxState
 
     for (i in frameShit)
     {
-      var lineStyle:LineStyle = {color: FlxColor.RED, thickness: 2};
+      var lineStyle:LineStyle = {
+        color: FlxColor.RED,
+        thickness: 2
+      };
 
       var uvW:Float = (i.uv.right * i.parent.width) - (i.uv.left * i.parent.width);
       var uvH:Float = (i.uv.bottom * i.parent.height) - (i.uv.top * i.parent.height);
@@ -239,7 +242,9 @@ class DebugBoundingState extends FlxState
     var charDropdown:DropDown = offsetEditorDialog.findComponent('characterDropdown', DropDown);
     for (char in characters)
     {
-      charDropdown.dataSource.add({text: char});
+      charDropdown.dataSource.add({
+        text: char
+      });
     }
 
     charDropdown.onChange = function(e:UIEvent)
@@ -405,13 +410,16 @@ class DebugBoundingState extends FlxState
 
     if (forward)
     {
-      offsetAnimationDropdown.selectedIndex = (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size)
-        ? offsetAnimationDropdown.selectedIndex + 1 : 0;
+      offsetAnimationDropdown.selectedIndex =
+        (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size) ? offsetAnimationDropdown.selectedIndex
+          + 1
+          : 0;
     }
     else
     {
-      offsetAnimationDropdown.selectedIndex = (offsetAnimationDropdown.selectedIndex - 1 >= 0) ? offsetAnimationDropdown.selectedIndex - 1
-        : offsetAnimationDropdown.dataSource.size - 1;
+      offsetAnimationDropdown.selectedIndex =
+        (offsetAnimationDropdown.selectedIndex - 1 >= 0) ? offsetAnimationDropdown.selectedIndex - 1 : offsetAnimationDropdown.dataSource.size
+          - 1;
     }
 
     playCharacterAnimation(currentAnimationName, true);
@@ -455,7 +463,10 @@ class DebugBoundingState extends FlxState
 
       if (targetLabel != currentAnimationName)
       {
-        offsetAnimationDropdown.value = {id: targetLabel, text: targetLabel};
+        offsetAnimationDropdown.value = {
+          id: targetLabel,
+          text: targetLabel
+        };
 
         // Play the new animation if the IDs are different.
         // Override the onion skin.
@@ -484,9 +495,15 @@ class DebugBoundingState extends FlxState
     // Plays the idle animation
     if (FlxG.keys.justPressed.SPACE)
     {
-      if (swagChar?.hasAnimation('danceLeft')) offsetAnimationDropdown.value = {id: 'danceLeft', text: 'danceLeft'};
+      if (swagChar?.hasAnimation('danceLeft')) offsetAnimationDropdown.value = {
+        id: 'danceLeft',
+        text: 'danceLeft'
+      };
       else
-        offsetAnimationDropdown.value = {id: 'idle', text: 'idle'};
+        offsetAnimationDropdown.value = {
+          id: 'idle',
+          text: 'idle'
+        };
 
       playCharacterAnimation(currentAnimationName, true);
     }
@@ -603,7 +620,10 @@ class DebugBoundingState extends FlxState
 
     for (charAnim in characterAnimNames)
     {
-      offsetAnimationDropdown.dataSource.add({id: charAnim, text: charAnim});
+      offsetAnimationDropdown.dataSource.add({
+        id: charAnim,
+        text: charAnim
+      });
     }
 
     offsetAnimationDropdown.selectedIndex = 0;
@@ -728,7 +748,10 @@ class DebugBoundingState extends FlxState
     buttonLabel.cameras = [hudCam];
     add(buttonLabel);
 
-    touchButtons.push({sprite: buttonSprite, onTap: onTap});
+    touchButtons.push({
+      sprite: buttonSprite,
+      onTap: onTap
+    });
   }
 
   function checkTouchControls():Void
