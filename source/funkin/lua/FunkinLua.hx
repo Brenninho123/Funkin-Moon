@@ -5,6 +5,8 @@ import hxlua.LuaL;
 import hxlua.Types;
 import funkin.play.PlayState;
 import funkin.audio.FunkinSound;
+import funkin.lowend.FunkinLow;
+import funkin.ui.system.FunkinCosmic;
 import flixel.FlxG;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
@@ -21,11 +23,6 @@ class FunkinLua
   public var closed:Bool = false;
   public var errorCount(default, null):Int = 0;
 
-  /**
-   * Text objects created by this Lua script.
-   *
-   * They are automatically removed when the script is destroyed.
-   */
   var luaTexts:Map<String, FlxText> = new Map();
 
   public function new(scriptPath:String)
@@ -71,22 +68,31 @@ class FunkinLua
   function registerCallbacks():Void
   {
     Lua.register(lua, 'debugPrint', cpp.Function.fromStaticFunction(cb_debugPrint));
+    Lua.register(lua, 'logWarn', cpp.Function.fromStaticFunction(cb_logWarn));
+    Lua.register(lua, 'logError', cpp.Function.fromStaticFunction(cb_logError));
 
     Lua.register(lua, 'getSongName', cpp.Function.fromStaticFunction(cb_getSongName));
     Lua.register(lua, 'getDifficulty', cpp.Function.fromStaticFunction(cb_getDifficulty));
     Lua.register(lua, 'getVariation', cpp.Function.fromStaticFunction(cb_getVariation));
     Lua.register(lua, 'getPlaybackRate', cpp.Function.fromStaticFunction(cb_getPlaybackRate));
+    Lua.register(lua, 'setPlaybackRate', cpp.Function.fromStaticFunction(cb_setPlaybackRate));
 
     Lua.register(lua, 'triggerEvent', cpp.Function.fromStaticFunction(cb_triggerEvent));
 
     Lua.register(lua, 'getHealth', cpp.Function.fromStaticFunction(cb_getHealth));
     Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
     Lua.register(lua, 'addHealth', cpp.Function.fromStaticFunction(cb_addHealth));
+    Lua.register(lua, 'getHealthPercent', cpp.Function.fromStaticFunction(cb_getHealthPercent));
 
     Lua.register(lua, 'getScore', cpp.Function.fromStaticFunction(cb_getScore));
     Lua.register(lua, 'addScore', cpp.Function.fromStaticFunction(cb_addScore));
+    Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
 
     Lua.register(lua, 'getCombo', cpp.Function.fromStaticFunction(cb_getCombo));
+    Lua.register(lua, 'getMaxCombo', cpp.Function.fromStaticFunction(cb_getMaxCombo));
+    Lua.register(lua, 'getAccuracy', cpp.Function.fromStaticFunction(cb_getAccuracy));
+    Lua.register(lua, 'getJudgementCount', cpp.Function.fromStaticFunction(cb_getJudgementCount));
+
     Lua.register(lua, 'getSongPosition', cpp.Function.fromStaticFunction(cb_getSongPosition));
     Lua.register(lua, 'getBPM', cpp.Function.fromStaticFunction(cb_getBPM));
     Lua.register(lua, 'getCurrentStep', cpp.Function.fromStaticFunction(cb_getCurrentStep));
@@ -97,23 +103,28 @@ class FunkinLua
     Lua.register(lua, 'isBotPlayMode', cpp.Function.fromStaticFunction(cb_isBotPlayMode));
 
     Lua.register(lua, 'playSound', cpp.Function.fromStaticFunction(cb_playSound));
+    Lua.register(lua, 'stopAllSounds', cpp.Function.fromStaticFunction(cb_stopAllSounds));
+    Lua.register(lua, 'setMusicPitch', cpp.Function.fromStaticFunction(cb_setMusicPitch));
 
     Lua.register(lua, 'setVar', cpp.Function.fromStaticFunction(cb_setVar));
     Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
     Lua.register(lua, 'hasVar', cpp.Function.fromStaticFunction(cb_hasVar));
+    Lua.register(lua, 'removeVar', cpp.Function.fromStaticFunction(cb_removeVar));
 
     Lua.register(lua, 'getMisses', cpp.Function.fromStaticFunction(cb_getMisses));
 
     Lua.register(lua, 'randomFloat', cpp.Function.fromStaticFunction(cb_randomFloat));
     Lua.register(lua, 'randomInt', cpp.Function.fromStaticFunction(cb_randomInt));
+    Lua.register(lua, 'randomBool', cpp.Function.fromStaticFunction(cb_randomBool));
 
     Lua.register(lua, 'triggerCameraMovement', cpp.Function.fromStaticFunction(cb_triggerCameraMovement));
+    Lua.register(lua, 'setCameraMovementEnabled', cpp.Function.fromStaticFunction(cb_setCameraMovementEnabled));
+    Lua.register(lua, 'flashCamera', cpp.Function.fromStaticFunction(cb_flashCamera));
+    Lua.register(lua, 'shakeCamera', cpp.Function.fromStaticFunction(cb_shakeCamera));
 
     Lua.register(lua, 'getSongId', cpp.Function.fromStaticFunction(cb_getSongId));
     Lua.register(lua, 'getDifficultyId', cpp.Function.fromStaticFunction(cb_getDifficultyId));
     Lua.register(lua, 'getVariationId', cpp.Function.fromStaticFunction(cb_getVariationId));
-
-    Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
 
     Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
     Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
@@ -124,31 +135,56 @@ class FunkinLua
     Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
 
     Lua.register(lua, 'runLater', cpp.Function.fromStaticFunction(cb_runLater));
+    Lua.register(lua, 'runRepeating', cpp.Function.fromStaticFunction(cb_runRepeating));
 
     Lua.register(lua, 'getQualityTier', cpp.Function.fromStaticFunction(cb_getQualityTier));
     Lua.register(lua, 'forceQualityTier', cpp.Function.fromStaticFunction(cb_forceQualityTier));
     Lua.register(lua, 'resetQualityAuto', cpp.Function.fromStaticFunction(cb_resetQualityAuto));
-
-    Lua.register(lua, 'setCameraMovementEnabled', cpp.Function.fromStaticFunction(cb_setCameraMovementEnabled));
+    Lua.register(lua, 'shouldSkipEffect', cpp.Function.fromStaticFunction(cb_shouldSkipEffect));
 
     Lua.register(lua, 'getFullComboCount', cpp.Function.fromStaticFunction(cb_getFullComboCount));
     Lua.register(lua, 'getPerfectSongCount', cpp.Function.fromStaticFunction(cb_getPerfectSongCount));
     Lua.register(lua, 'getAverageScorePerSong', cpp.Function.fromStaticFunction(cb_getAverageScorePerSong));
 
-    // Lua input API.
     Lua.register(lua, 'keyJustPressed', cpp.Function.fromStaticFunction(cb_keyJustPressed));
+    Lua.register(lua, 'keyPressed', cpp.Function.fromStaticFunction(cb_keyPressed));
+    Lua.register(lua, 'keyJustReleased', cpp.Function.fromStaticFunction(cb_keyJustReleased));
 
-    // Lua text API.
     Lua.register(lua, 'createLuaText', cpp.Function.fromStaticFunction(cb_createLuaText));
     Lua.register(lua, 'setLuaTextColor', cpp.Function.fromStaticFunction(cb_setLuaTextColor));
+    Lua.register(lua, 'setLuaTextString', cpp.Function.fromStaticFunction(cb_setLuaTextString));
+    Lua.register(lua, 'setLuaTextPosition', cpp.Function.fromStaticFunction(cb_setLuaTextPosition));
+    Lua.register(lua, 'setLuaTextAlpha', cpp.Function.fromStaticFunction(cb_setLuaTextAlpha));
     Lua.register(lua, 'addLuaText', cpp.Function.fromStaticFunction(cb_addLuaText));
     Lua.register(lua, 'setLuaTextVisible', cpp.Function.fromStaticFunction(cb_setLuaTextVisible));
     Lua.register(lua, 'removeLuaText', cpp.Function.fromStaticFunction(cb_removeLuaText));
+
+    Lua.register(lua, 'characterPlayAnim', cpp.Function.fromStaticFunction(cb_characterPlayAnim));
+    Lua.register(lua, 'characterDance', cpp.Function.fromStaticFunction(cb_characterDance));
+    Lua.register(lua, 'setCharacterVisible', cpp.Function.fromStaticFunction(cb_setCharacterVisible));
+    Lua.register(lua, 'setCharacterPosition', cpp.Function.fromStaticFunction(cb_setCharacterPosition));
+
+    Lua.register(lua, 'getWindowWidth', cpp.Function.fromStaticFunction(cb_getWindowWidth));
+    Lua.register(lua, 'getWindowHeight', cpp.Function.fromStaticFunction(cb_getWindowHeight));
+    Lua.register(lua, 'getFPS', cpp.Function.fromStaticFunction(cb_getFPS));
+    Lua.register(lua, 'isMobilePlatform', cpp.Function.fromStaticFunction(cb_isMobilePlatform));
+    Lua.register(lua, 'getPlatformName', cpp.Function.fromStaticFunction(cb_getPlatformName));
+
+    Lua.register(lua, 'saveReadString', cpp.Function.fromStaticFunction(cb_saveReadString));
+    Lua.register(lua, 'saveWriteString', cpp.Function.fromStaticFunction(cb_saveWriteString));
+
+    Lua.register(lua, 'stringTrim', cpp.Function.fromStaticFunction(cb_stringTrim));
+    Lua.register(lua, 'stringSplitCount', cpp.Function.fromStaticFunction(cb_stringSplitCount));
 
     #if FEATURE_ONLINE
     Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
     Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
     Lua.register(lua, 'sendOnlineMessage', cpp.Function.fromStaticFunction(cb_sendOnlineMessage));
+    #end
+
+    #if FEATURE_MULTIPLAYER
+    Lua.register(lua, 'isMultiplayerActive', cpp.Function.fromStaticFunction(cb_isMultiplayerActive));
+    Lua.register(lua, 'getLocalModCount', cpp.Function.fromStaticFunction(cb_getLocalModCount));
     #end
   }
 
@@ -297,9 +333,6 @@ class FunkinLua
     FlxG.log.error('[$scriptName] $message');
   }
 
-  /**
-   * Removes every FlxText created by this script.
-   */
   function destroyLuaTexts():Void
   {
     for (id => text in luaTexts)
@@ -329,15 +362,22 @@ class FunkinLua
     closed = true;
   }
 
-  /**
-   * Returns whether a keyboard key was just pressed this frame.
-   *
-   * Lua:
-   *   if keyJustPressed("C") then
-   *       ...
-   *   end
-   */
   static function cb_keyJustPressed(l:LuaState):Int
+  {
+    return keyStateCallback(l, function(name) return FlxG.keys.justPressed.exists(name));
+  }
+
+  static function cb_keyPressed(l:LuaState):Int
+  {
+    return keyStateCallback(l, function(name) return FlxG.keys.pressed.exists(name));
+  }
+
+  static function cb_keyJustReleased(l:LuaState):Int
+  {
+    return keyStateCallback(l, function(name) return FlxG.keys.justReleased.exists(name));
+  }
+
+  static function keyStateCallback(l:LuaState, resolver:String->Bool):Int
   {
     final n:Int = Lua.gettop(l);
 
@@ -357,12 +397,7 @@ class FunkinLua
 
     try
     {
-      var keyValue:Dynamic = Reflect.field(FlxG.keys.justPressed, keyName);
-
-      if (keyValue != null)
-      {
-        pressed = keyValue == true;
-      }
+      pressed = resolver(keyName);
     }
     catch (e:Dynamic)
     {
@@ -374,12 +409,6 @@ class FunkinLua
     return 1;
   }
 
-  /**
-   * Creates a FlxText but does not add it to the current state yet.
-   *
-   * Lua:
-   *   createLuaText("myText", "Hello!", 400, 300, 32)
-   */
   static function cb_createLuaText(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -400,7 +429,6 @@ class FunkinLua
 
     if (id == '') return 0;
 
-    // Replace an existing text with the same ID.
     lastCalledScript.removeLuaText(id);
 
     var text:FlxText = new FlxText(x, y, 0, textString, size);
@@ -412,12 +440,6 @@ class FunkinLua
     return 0;
   }
 
-  /**
-   * Sets the color of a Lua text.
-   *
-   * Lua:
-   *   setLuaTextColor("myText", 0x00FF00)
-   */
   static function cb_setLuaTextColor(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -429,7 +451,6 @@ class FunkinLua
     }
 
     var id:String = (Lua.tostring(l, 1) : String);
-
     var colorValue:Int = Std.int((Lua.tonumber(l, 2) : Float));
 
     Lua.pop(l, n);
@@ -443,12 +464,80 @@ class FunkinLua
     return 0;
   }
 
-  /**
-   * Adds a Lua text to the current FlxState.
-   *
-   * Lua:
-   *   addLuaText("myText")
-   */
+  static function cb_setLuaTextString(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var id:String = (Lua.tostring(l, 1) : String);
+    var newText:String = (Lua.tostring(l, 2) : String);
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript.luaTexts.get(id);
+
+    if (text == null) return 0;
+
+    text.text = newText;
+
+    return 0;
+  }
+
+  static function cb_setLuaTextPosition(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 3 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var id:String = (Lua.tostring(l, 1) : String);
+    var x:Float = (Lua.tonumber(l, 2) : Float);
+    var y:Float = (Lua.tonumber(l, 3) : Float);
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript.luaTexts.get(id);
+
+    if (text == null) return 0;
+
+    text.x = x;
+    text.y = y;
+
+    return 0;
+  }
+
+  static function cb_setLuaTextAlpha(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var id:String = (Lua.tostring(l, 1) : String);
+    var alpha:Float = (Lua.tonumber(l, 2) : Float);
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript.luaTexts.get(id);
+
+    if (text == null) return 0;
+
+    text.alpha = alpha;
+
+    return 0;
+  }
+
   static function cb_addLuaText(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -474,12 +563,6 @@ class FunkinLua
     return 0;
   }
 
-  /**
-   * Changes the visibility of a Lua text.
-   *
-   * Lua:
-   *   setLuaTextVisible("myText", false)
-   */
   static function cb_setLuaTextVisible(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -491,7 +574,6 @@ class FunkinLua
     }
 
     var id:String = (Lua.tostring(l, 1) : String);
-
     var visible:Bool = Lua.toboolean(l, 2) == 1;
 
     Lua.pop(l, n);
@@ -505,12 +587,6 @@ class FunkinLua
     return 0;
   }
 
-  /**
-   * Removes and destroys a Lua text.
-   *
-   * Lua:
-   *   removeLuaText("myText")
-   */
   static function cb_removeLuaText(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -546,7 +622,116 @@ class FunkinLua
     luaTexts.remove(id);
   }
 
+  static function cb_characterPlayAnim(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var animName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    var force:Bool = n >= 3 ? Lua.toboolean(l, 3) == 1 : false;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null || animName == '') return 0;
+
+    character.playAnimation(animName, force);
+
+    return 0;
+  }
+
+  static function cb_characterDance(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.dance();
+
+    return 0;
+  }
+
+  static function cb_setCharacterVisible(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var visible:Bool = n >= 2 ? Lua.toboolean(l, 2) == 1 : true;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.visible = visible;
+
+    return 0;
+  }
+
+  static function cb_setCharacterPosition(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var x:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+    var y:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.x = x;
+    character.y = y;
+
+    return 0;
+  }
+
+  static function resolveCharacter(target:String):Null<funkin.play.character.BaseCharacter>
+  {
+    if (PlayState.instance == null) return null;
+
+    return switch (target.toLowerCase())
+    {
+      case 'boyfriend', 'bf':
+        PlayState.instance.currentStage?.getBoyfriend();
+
+      case 'girlfriend', 'gf':
+        PlayState.instance.currentStage?.getGirlfriend();
+
+      case 'dad', 'opponent':
+        PlayState.instance.currentStage?.getDad();
+
+      default:
+        null;
+    }
+  }
+
   static function cb_debugPrint(l:LuaState):Int
+  {
+    return logCallback(l, FlxG.log.add);
+  }
+
+  static function cb_logWarn(l:LuaState):Int
+  {
+    return logCallback(l, FlxG.log.warn);
+  }
+
+  static function cb_logError(l:LuaState):Int
+  {
+    return logCallback(l, FlxG.log.error);
+  }
+
+  static function logCallback(l:LuaState, sink:Dynamic->Void):Int
   {
     final n:Int = Lua.gettop(l);
 
@@ -559,9 +744,9 @@ class FunkinLua
       if (i < n) message += '\t';
     }
 
-    FlxG.log.add(message);
-
     Lua.pop(l, n);
+
+    sink(message);
 
     return 0;
   }
@@ -602,6 +787,19 @@ class FunkinLua
     return 1;
   }
 
+  static function cb_setPlaybackRate(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.playbackRate = value;
+
+    return 0;
+  }
+
   static function cb_getHealth(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
@@ -637,6 +835,18 @@ class FunkinLua
     return 0;
   }
 
+  static function cb_getHealthPercent(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    var maxHealth:Float = PlayState.instance?.maxHealth ?? 2.0;
+    var health:Float = PlayState.instance?.health ?? 0.0;
+
+    Lua.pushnumber(l, maxHealth > 0 ? (health / maxHealth) * 100 : 0);
+
+    return 1;
+  }
+
   static function cb_getScore(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
@@ -659,11 +869,69 @@ class FunkinLua
     return 0;
   }
 
+  static function cb_setScore(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
+
+    Lua.pop(l, n);
+
+    if (PlayState.instance != null) PlayState.instance.songScore = value;
+
+    return 0;
+  }
+
   static function cb_getCombo(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
 
     Lua.pushnumber(l, Highscore.tallies?.combo ?? 0);
+
+    return 1;
+  }
+
+  static function cb_getMaxCombo(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, Highscore.tallies?.maxCombo ?? 0);
+
+    return 1;
+  }
+
+  static function cb_getAccuracy(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    var tallies = Highscore.tallies;
+
+    Lua.pushnumber(l, tallies != null ? Highscore.calculateAccuracy(tallies) : 0);
+
+    return 1;
+  }
+
+  static function cb_getJudgementCount(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var judgement:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    var tallies = Highscore.tallies;
+
+    var value:Int = tallies == null ? 0 : switch (judgement.toLowerCase())
+    {
+      case 'sick': tallies.sick;
+      case 'good': tallies.good;
+      case 'bad': tallies.bad;
+      case 'shit': tallies.shit;
+      case 'missed': tallies.missed;
+      default: 0;
+    };
+
+    Lua.pushnumber(l, value);
 
     return 1;
   }
@@ -736,7 +1004,6 @@ class FunkinLua
     final n:Int = Lua.gettop(l);
 
     var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
-
     var volume:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
@@ -744,6 +1011,28 @@ class FunkinLua
     if (path == '') return 0;
 
     FunkinSound.playOnce(Paths.sound(path), volume);
+
+    return 0;
+  }
+
+  static function cb_stopAllSounds(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    FunkinSound.stopAllAudio(false, false);
+
+    return 0;
+  }
+
+  static function cb_setMusicPitch(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    if (FlxG.sound.music != null) FlxG.sound.music.pitch = value;
 
     return 0;
   }
@@ -759,7 +1048,6 @@ class FunkinLua
     }
 
     var name:String = (Lua.tostring(l, 1) : String);
-
     var value:Dynamic = lastCalledScript.pullValue(2);
 
     sharedVariables.set(name, value);
@@ -797,6 +1085,19 @@ class FunkinLua
     return 1;
   }
 
+  static function cb_removeVar(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    sharedVariables.remove(name);
+
+    return 0;
+  }
+
   static function cb_getMisses(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
@@ -811,7 +1112,6 @@ class FunkinLua
     final n:Int = Lua.gettop(l);
 
     var min:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
-
     var max:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
@@ -826,7 +1126,6 @@ class FunkinLua
     final n:Int = Lua.gettop(l);
 
     var min:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
-
     var max:Int = n >= 2 ? Std.int((Lua.tonumber(l, 2) : Float)) : 1;
 
     Lua.pop(l, n);
@@ -836,32 +1135,35 @@ class FunkinLua
     return 1;
   }
 
+  static function cb_randomBool(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var chance:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.5;
+
+    Lua.pop(l, n);
+
+    Lua.pushboolean(l, FlxG.random.bool(chance * 100) ? 1 : 0);
+
+    return 1;
+  }
+
   static function cb_triggerCameraMovement(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
     var directionStr:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
-
     var intensity:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
 
     var direction:Null<funkin.play.notes.NoteDirection> = switch (directionStr.toLowerCase())
     {
-      case 'left':
-        LEFT;
-
-      case 'down':
-        DOWN;
-
-      case 'up':
-        UP;
-
-      case 'right':
-        RIGHT;
-
-      default:
-        null;
+      case 'left': LEFT;
+      case 'down': DOWN;
+      case 'up': UP;
+      case 'right': RIGHT;
+      default: null;
     };
 
     if (direction == null || PlayState.instance == null) return 0;
@@ -874,40 +1176,55 @@ class FunkinLua
     return 0;
   }
 
-  #if FEATURE_ONLINE
-  static function cb_isOnline(l:LuaState):Int
-  {
-    Lua.pop(l, Lua.gettop(l));
-
-    Lua.pushboolean(l, funkin.online.FunkinOnline.instance.isConnected() ? 1 : 0);
-
-    return 1;
-  }
-
-  static function cb_getOnlineUserCount(l:LuaState):Int
-  {
-    Lua.pop(l, Lua.gettop(l));
-
-    Lua.pushnumber(l, funkin.online.FunkinUser.instance.getActiveUserCount());
-
-    return 1;
-  }
-
-  static function cb_sendOnlineMessage(l:LuaState):Int
+  static function cb_setCameraMovementEnabled(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var messageType:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var value:Bool = n >= 1 ? Lua.toboolean(l, 1) == 1 : true;
 
     Lua.pop(l, n);
-
-    if (messageType == '') return 0;
-
-    funkin.online.FunkinOnline.instance.send(messageType);
+    @:privateAccess
+    if (PlayState.instance?.camMovement != null)
+    {
+      PlayState.instance.camMovement.enabled = value;
+    }
 
     return 0;
   }
-  #end
+
+  static function cb_flashCamera(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var colorValue:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0xFFFFFF;
+    var duration:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.5;
+
+    Lua.pop(l, n);
+
+    if (PlayState.instance?.camGame != null)
+    {
+      PlayState.instance.camGame.flash(FlxColor.fromInt(colorValue), duration);
+    }
+
+    return 0;
+  }
+
+  static function cb_shakeCamera(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var intensity:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.05;
+    var duration:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.5;
+
+    Lua.pop(l, n);
+
+    if (PlayState.instance?.camGame != null)
+    {
+      PlayState.instance.camGame.shake(intensity, duration);
+    }
+
+    return 0;
+  }
 
   static function cb_getSongId(l:LuaState):Int
   {
@@ -934,19 +1251,6 @@ class FunkinLua
     Lua.pushstring(l, PlayState.instance?.currentVariation ?? '');
 
     return 1;
-  }
-
-  static function cb_setScore(l:LuaState):Int
-  {
-    final n:Int = Lua.gettop(l);
-
-    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
-
-    Lua.pop(l, n);
-
-    if (PlayState.instance != null) PlayState.instance.songScore = value;
-
-    return 0;
   }
 
   static function cb_getCameraX(l:LuaState):Int
@@ -1011,7 +1315,6 @@ class FunkinLua
     final n:Int = Lua.gettop(l);
 
     var delay:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
-
     var funcName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
 
     Lua.pop(l, n);
@@ -1030,11 +1333,35 @@ class FunkinLua
     return 0;
   }
 
+  static function cb_runRepeating(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var interval:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+    var funcName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    var repeatCount:Int = n >= 3 ? Std.int((Lua.tonumber(l, 3) : Float)) : 0;
+
+    Lua.pop(l, n);
+
+    if (funcName == '' || lastCalledScript == null) return 0;
+
+    var script:FunkinLua = lastCalledScript;
+
+    new flixel.util.FlxTimer().start(interval, (_) ->
+    {
+      if (script.closed) return;
+
+      script.call(funcName, []);
+    }, repeatCount);
+
+    return 0;
+  }
+
   static function cb_getQualityTier(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
 
-    Lua.pushstring(l, funkin.lowend.FunkinLow.getTierName());
+    Lua.pushstring(l, FunkinLow.getTierName());
 
     return 1;
   }
@@ -1049,26 +1376,15 @@ class FunkinLua
 
     var tier:Null<funkin.lowend.FunkinLow.FunkinQualityTier> = switch (tierName.toLowerCase())
     {
-      case 'ultra':
-        Ultra;
-
-      case 'high':
-        High;
-
-      case 'medium':
-        Medium;
-
-      case 'low':
-        Low;
-
-      case 'potato':
-        Potato;
-
-      default:
-        null;
+      case 'ultra': Ultra;
+      case 'high': High;
+      case 'medium': Medium;
+      case 'low': Low;
+      case 'potato': Potato;
+      default: null;
     };
 
-    if (tier != null) funkin.lowend.FunkinLow.forceTier(tier);
+    if (tier != null) FunkinLow.forceTier(tier);
 
     return 0;
   }
@@ -1077,25 +1393,29 @@ class FunkinLua
   {
     Lua.pop(l, Lua.gettop(l));
 
-    funkin.lowend.FunkinLow.resetToAuto();
+    FunkinLow.resetToAuto();
 
     return 0;
   }
 
-  static function cb_setCameraMovementEnabled(l:LuaState):Int
+  static function cb_shouldSkipEffect(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Bool = n >= 1 ? Lua.toboolean(l, 1) == 1 : true;
+    var costName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : 'normal';
 
     Lua.pop(l, n);
-    @:privateAccess
-    if (PlayState.instance?.camMovement != null)
-    {
-      PlayState.instance.camMovement.enabled = value;
-    }
 
-    return 0;
+    var cost:funkin.lowend.FunkinLow.FunkinLowCost = switch (costName.toLowerCase())
+    {
+      case 'low': LOW;
+      case 'high': HIGH;
+      default: NORMAL;
+    };
+
+    Lua.pushboolean(l, FunkinLow.shouldSkipEffect(cost) ? 1 : 0);
+
+    return 1;
   }
 
   static function cb_getFullComboCount(l:LuaState):Int
@@ -1124,6 +1444,187 @@ class FunkinLua
 
     return 1;
   }
+
+  static function cb_getWindowWidth(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.width);
+
+    return 1;
+  }
+
+  static function cb_getWindowHeight(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.height);
+
+    return 1;
+  }
+
+  static function cb_getFPS(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.updateFramerate);
+
+    return 1;
+  }
+
+  static function cb_isMobilePlatform(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    #if mobile
+    Lua.pushboolean(l, 1);
+    #else
+    Lua.pushboolean(l, 0);
+    #end
+
+    return 1;
+  }
+
+  static function cb_getPlatformName(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushstring(l, lime.system.System.platformName ?? 'Unknown');
+
+    return 1;
+  }
+
+  static function cb_saveReadString(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    if (path == '')
+    {
+      Lua.pushnil(l);
+      return 1;
+    }
+
+    var content:Null<String> = FunkinCosmic.readText(path);
+
+    if (content == null)
+    {
+      Lua.pushnil(l);
+    }
+    else
+    {
+      Lua.pushstring(l, content);
+    }
+
+    return 1;
+  }
+
+  static function cb_saveWriteString(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var content:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+
+    Lua.pop(l, n);
+
+    if (path == '')
+    {
+      Lua.pushboolean(l, 0);
+      return 1;
+    }
+
+    Lua.pushboolean(l, FunkinCosmic.writeTextAtomic(path, content) ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_stringTrim(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushstring(l, StringTools.trim(value));
+
+    return 1;
+  }
+
+  static function cb_stringSplitCount(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var separator:String = n >= 2 ? (Lua.tostring(l, 2) : String) : ',';
+
+    Lua.pop(l, n);
+
+    var parts:Array<String> = value.split(separator);
+
+    Lua.pushnumber(l, parts.length);
+
+    return 1;
+  }
+
+  #if FEATURE_ONLINE
+  static function cb_isOnline(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushboolean(l, funkin.online.FunkinOnline.instance.isConnected() ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_getOnlineUserCount(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, funkin.online.FunkinUser.instance.getActiveUserCount());
+
+    return 1;
+  }
+
+  static function cb_sendOnlineMessage(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var messageType:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    if (messageType == '') return 0;
+
+    funkin.online.FunkinOnline.instance.send(messageType);
+
+    return 0;
+  }
+  #end
+
+  #if FEATURE_MULTIPLAYER
+  static function cb_isMultiplayerActive(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushboolean(l, funkin.multiplayer.MultiplayerModding.localManifest.length > 0 ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_getLocalModCount(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, funkin.multiplayer.MultiplayerModding.localManifest.length);
+
+    return 1;
+  }
+  #end
 
   static function cb_triggerEvent(l:LuaState):Int
   {
