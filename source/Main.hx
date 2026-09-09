@@ -119,7 +119,7 @@ class Main extends Sprite
     }
   }
 
-  private function stage(name:String, callback:Void->Void):Void
+  private function runStage(name:String, callback:Void->Void):Void
   {
     var startTime:Float = haxe.Timer.stamp();
 
@@ -382,32 +382,32 @@ class Main extends Sprite
   {
     try
     {
-      stage("logBuildInfo", logBuildInfo);
+      runStage("logBuildInfo", logBuildInfo);
 
       #if FEATURE_HAXEUI
-      stage("initializeHaxeUI", initializeHaxeUI);
+      runStage("initializeHaxeUI", initializeHaxeUI);
       #end
 
-      stage("checkAssetIntegrity", checkAssetIntegrity);
+      runStage("checkAssetIntegrity", checkAssetIntegrity);
 
-      stage("initializeLowEnd", initializeLowEnd);
+      runStage("initializeLowEnd", initializeLowEnd);
 
       #if FEATURE_MULTIPLAYER
-      stage("initializeMultiplayer", initializeMultiplayer);
+      runStage("initializeMultiplayer", initializeMultiplayer);
       #end
 
-      stage("loadSave", Save.load);
+      runStage("loadSave", Save.load);
 
-      stage("initializeDebugDisplay", initializeDebugDisplay);
-      stage("initializeSignals", initializeSignals);
-      stage("initializeVideoSystem", initializeVideoSystem);
-      stage("initializeRendering", initializeRendering);
+      runStage("initializeDebugDisplay", initializeDebugDisplay);
+      runStage("initializeSignals", initializeSignals);
+      runStage("initializeVideoSystem", initializeVideoSystem);
+      runStage("initializeRendering", initializeRendering);
 
-      stage("createGame", createGame);
+      runStage("createGame", createGame);
 
-      stage("initializeWindow", initializeWindow);
+      runStage("initializeWindow", initializeWindow);
 
-      stage("finalizeGameSetup", finalizeGameSetup);
+      runStage("finalizeGameSetup", finalizeGameSetup);
 
       logStartupSummary();
     }
@@ -565,15 +565,6 @@ class Main extends Sprite
     #if sys
     try
     {
-      var diagnostics:StartupDiagnostics = {
-        stageTimingsMs: stageTimings,
-        uncaughtErrorCount: uncaughtErrorCount,
-        safeModeTriggered: safeMode,
-        assetIntegrityOk: assetIntegrityOk,
-        buildInfo: buildInfo,
-        startedAt: Date.now().toString()
-      };
-
       var timingsObject:Dynamic = {};
       for (name => duration in stageTimings) Reflect.setField(timingsObject, name, duration);
 
