@@ -24,7 +24,7 @@ class FunkinLow
 
   public static var batteryLevelProvider:Null<Void->Null<Float>> = null;
 
-  public static var persistenceHandler:Null<{save:String->Void, load:String->Null<String>}> = null;
+  public static var persistenceHandler:Null<{save:String->String->Void, load:String->Null<String>}> = null;
 
   static final FPS_HISTORY_SIZE:Int = 90;
 
