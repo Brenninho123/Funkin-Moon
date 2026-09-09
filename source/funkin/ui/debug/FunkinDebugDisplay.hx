@@ -1,6 +1,7 @@
 package funkin.ui.debug;
 
 import flixel.util.FlxStringUtil;
+import funkin.lowend.FunkinLow;
 import funkin.ui.debug.stats.FunkinStatsGraph;
 import funkin.util.MemoryUtil;
 import openfl.display.GradientType;
@@ -9,6 +10,7 @@ import openfl.display.Sprite;
 import openfl.geom.Matrix;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
+import openfl.text.TextFormatAlign;
 
 class FunkinDebugDisplay extends Sprite
 {
@@ -17,12 +19,16 @@ class FunkinDebugDisplay extends Sprite
   static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 245];
   static final OTHERS_OFFSET:Int = 8;
   static final FPS_HISTORY_SIZE:Int = 30;
+  static final FRAME_TIME_HISTORY_SIZE:Int = 120;
   static final STUTTER_THRESHOLD_MS:Float = 33.3;
   static final PANEL_CORNER_RADIUS:Float = 10;
   static final ACCENT_BAR_WIDTH:Float = 4;
+  static final FADE_SPEED:Float = 6.0;
 
   public var isAdvanced(default, set):Bool = false;
   public var backgroundOpacity(default, set):Float = 0.5;
+  public var targetOpacity:Float = 0.5;
+  public var fadeEnabled:Bool = false;
 
   var deltaTimeout:Float;
   var fpsAccumTime:Float;
@@ -31,6 +37,8 @@ class FunkinDebugDisplay extends Sprite
   var fps:Int;
   var fpsPeak:Int;
   var frameTimeMs:Float;
+  var frameTimeMinMs:Float;
+  var frameTimeMaxMs:Float;
   var stutterCount:Int;
   var gcMem:Float;
   var gcMemPeak:Float;
@@ -42,11 +50,13 @@ class FunkinDebugDisplay extends Sprite
   var fpsGraph:FunkinStatsGraph;
   var gcMemGraph:FunkinStatsGraph;
   var taskMemGraph:FunkinStatsGraph;
+  var frameTimeGraph:FunkinStatsGraph;
   var infoDisplay:TextField;
   var osInfo:String;
   var lastFpsColorTier:Int = -1;
   var fpsHistory:Array<Int> = [];
   var fpsHistorySum:Int = 0;
+  var frameTimeHistory:Array<Float> = [];
   var cachedAverageFps:Int = 0;
   var cachedLowFps:Int = 0;
   var panelWidth:Float = 0;
@@ -58,6 +68,7 @@ class FunkinDebugDisplay extends Sprite
   var lastRenderedFrameTimeTenths:Int = -1;
   var lastRenderedGcMemRounded:Int = -1;
   var lastRenderedTaskMemRounded:Int = -1;
+  var lastRenderedTier:Int = -1;
 
   static final FPS_GOOD_THRESHOLD:Int = 50;
   static final FPS_OK_THRESHOLD:Int = 30;
@@ -80,6 +91,8 @@ class FunkinDebugDisplay extends Sprite
     this.fps = 0;
     this.fpsPeak = 0;
     this.frameTimeMs = 0.0;
+    this.frameTimeMinMs = 999.0;
+    this.frameTimeMaxMs = 0.0;
     this.stutterCount = 0;
     this.gcMem = 0.0;
     this.gcMemPeak = 0.0;
@@ -89,6 +102,7 @@ class FunkinDebugDisplay extends Sprite
     this.osInfo = computeOSInfo();
 
     this.backgroundOpacity = 0;
+    this.targetOpacity = 0.5;
     this.isAdvanced = false;
   }
 
@@ -132,6 +146,7 @@ class FunkinDebugDisplay extends Sprite
     lastRenderedFrameTimeTenths = -1;
     lastRenderedGcMemRounded = -1;
     lastRenderedTaskMemRounded = -1;
+    lastRenderedTier = -1;
 
     var bgWidthMultiplier:Float = advanced ? 1 : 0.3;
 
@@ -144,11 +159,11 @@ class FunkinDebugDisplay extends Sprite
 
     if (MemoryUtil.supportsGCMem() && MemoryUtil.supportsTaskMem())
     {
-      bgHeightMultiplier = advanced ? 1 : 0.35;
+      bgHeightMultiplier = advanced ? 1.2 : 0.35;
     }
     else if (MemoryUtil.supportsGCMem() || MemoryUtil.supportsTaskMem())
     {
-      bgHeightMultiplier = advanced ? 0.7 : 0.25;
+      bgHeightMultiplier = advanced ? 0.9 : 0.25;
     }
 
     panelWidth = (OUTER_RECT_DIMENSIONS[0] * bgWidthMultiplier) + (INNER_RECT_DIFF * 2);
@@ -222,16 +237,22 @@ class FunkinDebugDisplay extends Sprite
     fpsGraph.minValue = 0;
     addChild(fpsGraph);
 
+    frameTimeGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22), graphsWidth, graphsHeight,
+      color);
+    frameTimeGraph.minValue = 0;
+    addChild(frameTimeGraph);
+
     if (MemoryUtil.supportsGCMem())
     {
-      gcMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22), graphsWidth, graphsHeight, color);
+      gcMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (frameTimeGraph.y + frameTimeGraph.axisHeight) + 22), graphsWidth,
+        graphsHeight, color);
       gcMemGraph.minValue = 0;
       addChild(gcMemGraph);
     }
 
     if (MemoryUtil.supportsTaskMem())
     {
-      var previousGraph:FunkinStatsGraph = gcMemGraph != null ? gcMemGraph : fpsGraph;
+      var previousGraph:FunkinStatsGraph = gcMemGraph != null ? gcMemGraph : frameTimeGraph;
 
       taskMemGraph = new FunkinStatsGraph(
         OTHERS_OFFSET,
@@ -253,7 +274,7 @@ class FunkinDebugDisplay extends Sprite
     infoDisplay.width = 500;
     infoDisplay.selectable = false;
     infoDisplay.mouseEnabled = false;
-    infoDisplay.defaultTextFormat = new TextFormat('Montserrat', 12, color, JUSTIFY);
+    infoDisplay.defaultTextFormat = new TextFormat('Montserrat', 12, color, false, false, false, null, null, TextFormatAlign.LEFT);
     infoDisplay.antiAliasType = NORMAL;
     infoDisplay.multiline = true;
     addChild(infoDisplay);
@@ -261,9 +282,17 @@ class FunkinDebugDisplay extends Sprite
 
   override function __enterFrame(deltaTime:Float):Void
   {
+    updateFade(deltaTime);
+
     if (backgroundOpacity <= 0) return;
 
     frameTimeMs = deltaTime;
+
+    if (deltaTime < frameTimeMinMs) frameTimeMinMs = deltaTime;
+    if (deltaTime > frameTimeMaxMs) frameTimeMaxMs = deltaTime;
+
+    pushFrameTimeHistory(deltaTime);
+
     if (deltaTime > STUTTER_THRESHOLD_MS) stutterCount++;
 
     frameCounter++;
@@ -312,6 +341,23 @@ class FunkinDebugDisplay extends Sprite
     deltaTimeout = 0.0;
   }
 
+  function updateFade(deltaTime:Float):Void
+  {
+    if (!fadeEnabled) return;
+    if (Math.abs(backgroundOpacity - targetOpacity) < 0.01) return;
+
+    var step:Float = FADE_SPEED * (deltaTime / 1000);
+    var direction:Float = targetOpacity > backgroundOpacity ? 1 : -1;
+
+    backgroundOpacity = Math.max(0, Math.min(1, backgroundOpacity + (direction * step)));
+  }
+
+  public function fadeTo(value:Float):Void
+  {
+    fadeEnabled = true;
+    targetOpacity = Math.max(0, Math.min(1, value));
+  }
+
   function pushFpsHistory(value:Int):Void
   {
     fpsHistory.push(value);
@@ -324,6 +370,16 @@ class FunkinDebugDisplay extends Sprite
 
     cachedAverageFps = fpsHistory.length > 0 ? Math.round(fpsHistorySum / fpsHistory.length) : value;
     cachedLowFps = computeLowFps();
+  }
+
+  function pushFrameTimeHistory(value:Float):Void
+  {
+    frameTimeHistory.push(value);
+
+    if (frameTimeHistory.length > FRAME_TIME_HISTORY_SIZE)
+    {
+      frameTimeHistory.shift();
+    }
   }
 
   function computeLowFps():Int
@@ -358,6 +414,7 @@ class FunkinDebugDisplay extends Sprite
     var frameTimeTenths:Int = Math.round(formatFrameTime() * 10);
     var gcMemRounded:Int = Math.round(gcMem);
     var taskMemRounded:Int = Math.round(taskMem);
+    var tier:Int = FunkinLow.tier;
 
     var changed:Bool =
       fps != lastRenderedFps
@@ -366,7 +423,8 @@ class FunkinDebugDisplay extends Sprite
       || stutterCount != lastRenderedStutters
       || frameTimeTenths != lastRenderedFrameTimeTenths
       || gcMemRounded != lastRenderedGcMemRounded
-      || taskMemRounded != lastRenderedTaskMemRounded;
+      || taskMemRounded != lastRenderedTaskMemRounded
+      || tier != lastRenderedTier;
 
     if (!changed) return false;
 
@@ -377,6 +435,7 @@ class FunkinDebugDisplay extends Sprite
     lastRenderedFrameTimeTenths = frameTimeTenths;
     lastRenderedGcMemRounded = gcMemRounded;
     lastRenderedTaskMemRounded = taskMemRounded;
+    lastRenderedTier = tier;
 
     return true;
   }
@@ -384,6 +443,7 @@ class FunkinDebugDisplay extends Sprite
   function updateAdvancedDisplay():Void
   {
     updateFPSGraph();
+    updateFrameTimeGraph();
     updateGcMemGraph();
     updateTaskMemGraph();
 
@@ -394,7 +454,9 @@ class FunkinDebugDisplay extends Sprite
     info.push(fpsLine);
     info.push('AVG FPS: ${getAverageFps()}');
     info.push('1% LOW FPS: ${getLowFps()}');
+    info.push('FRAME MIN/MAX: ${Math.round(frameTimeMinMs * 10) / 10}/${Math.round(frameTimeMaxMs * 10) / 10}ms');
     info.push('STUTTERS: $stutterCount');
+    info.push('QUALITY: ${FunkinLow.getTierName()}');
     info.push('OS: $osInfo');
     var newFpsText:String = info.join('\n');
     fpsGraph.textDisplay.text = newFpsText;
@@ -408,6 +470,11 @@ class FunkinDebugDisplay extends Sprite
       redrawStatusIndicator(tierColor);
       redrawAccentBar(tierColor);
       lastFpsColorTier = currentTier;
+    }
+
+    if (frameTimeGraph != null)
+    {
+      frameTimeGraph.textDisplay.text = 'FRAME TIME: ${Math.round(frameTimeMs * 10) / 10}ms';
     }
 
     if (gcMemGraph != null)
@@ -431,6 +498,7 @@ class FunkinDebugDisplay extends Sprite
     var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
     info.push(fpsLine);
     info.push('AVG: ${getAverageFps()}  LOW: ${getLowFps()}');
+    info.push('QUALITY: ${FunkinLow.getTierName()}');
 
     if (MemoryUtil.supportsGCMem())
     {
@@ -488,6 +556,15 @@ class FunkinDebugDisplay extends Sprite
     fpsGraph.update(fps);
   }
 
+  function updateFrameTimeGraph():Void
+  {
+    if (frameTimeGraph != null)
+    {
+      frameTimeGraph.maxValue = Math.max(frameTimeMaxMs, STUTTER_THRESHOLD_MS);
+      frameTimeGraph.update(frameTimeMs);
+    }
+  }
+
   function updateGcMemGraph():Void
   {
     if (gcMemGraph != null)
@@ -531,6 +608,9 @@ class FunkinDebugDisplay extends Sprite
     stutterCount = 0;
     fpsHistory = [];
     fpsHistorySum = 0;
+    frameTimeHistory = [];
+    frameTimeMinMs = 999.0;
+    frameTimeMaxMs = 0.0;
     cachedAverageFps = fps;
     cachedLowFps = fps;
     gcMemPeak = gcMem;
