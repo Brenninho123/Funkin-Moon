@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.7";
 
-  static final BUILD_NUMBER:Int = 135;
+  static final BUILD_NUMBER:Int = 143;
 
   static final MOON_VERSION:String = '0.0.1';
 
@@ -151,6 +151,8 @@ class Project extends HXProject
 
   static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
 
+  static final FEATURE_MOD_MENU:FeatureFlag = "FEATURE_MOD_MENU";
+
   static final FEATURE_SCREENSHOTS:FeatureFlag = "FEATURE_SCREENSHOTS";
 
   static final FEATURE_HAXEUI:FeatureFlag = "FEATURE_HAXEUI";
@@ -251,6 +253,7 @@ class Project extends HXProject
   function flair()
   {
     info("Friday Night Funkin' - " + VERSION);
+    info("Moon Engine:    " + MOON_VERSION);
     info("Build Number:   " + BUILD_NUMBER);
     info("Initializing build...");
 
@@ -450,6 +453,7 @@ class Project extends HXProject
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
     FEATURE_LUA_SCRIPTS.apply(this, true);
+    FEATURE_MOD_MENU.apply(this, true);
 
     FEATURE_VIDEO_PLAYBACK.apply(this, true);
 
@@ -1117,7 +1121,6 @@ class Project extends HXProject
     catch (e:Dynamic)
     {
       info('  ! Failed to write build info: $e');
-;
     }
   }
 
