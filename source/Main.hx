@@ -15,6 +15,10 @@ import funkin.util.logging.CrashHandler;
 import funkin.util.logging.AnsiTrace;
 import funkin.ui.debug.FunkinDebugDisplay;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
+import funkin.lowend.FunkinLow;
+#if FEATURE_MULTIPLAYER
+import funkin.multiplayer.MultiplayerModding;
+#end
 #if hxvlc
 import hxvlc.util.Handle;
 #end
@@ -34,6 +38,20 @@ typedef BuildInfo =
   var buildType:String;
   var platform:String;
   var builtAt:String;
+  @:optional var moonVersion:String;
+  @:optional var buildNumber:Int;
+  @:optional var multiplayerEnabled:Bool;
+  @:optional var onlineEnabled:Bool;
+}
+
+typedef StartupDiagnostics =
+{
+  var stageTimingsMs:Map<String, Float>;
+  var uncaughtErrorCount:Int;
+  var safeModeTriggered:Bool;
+  var assetIntegrityOk:Bool;
+  var buildInfo:Null<BuildInfo>;
+  var startedAt:String;
 }
 
 class Main extends Sprite
@@ -43,6 +61,7 @@ class Main extends Sprite
   public static var instance:Main;
   public static var debugDisplay:FunkinDebugDisplay;
   public static var buildInfo(default, null):Null<BuildInfo> = null;
+  public static var safeMode(default, null):Bool = false;
 
   private var initialState:Class<FlxState> = funkin.InitState;
   private var zoom:Float = -1;
@@ -50,8 +69,17 @@ class Main extends Sprite
   private var initialized:Bool = false;
   private var shuttingDown:Bool = false;
   private var uncaughtErrorCount:Int = 0;
+  private var startupErrorTimestamps:Array<Float> = [];
+  private var stageTimings:Map<String, Float> = new Map();
+  private var assetIntegrityOk:Bool = true;
+  private var graphicsContextRetries:Int = 0;
 
   private static final MAX_UNCAUGHT_ERRORS_BEFORE_EXIT:Int = 25;
+  private static final SAFE_MODE_ERROR_THRESHOLD:Int = 5;
+  private static final SAFE_MODE_WINDOW_SECONDS:Float = 3.0;
+  private static final MAX_GRAPHICS_CONTEXT_RETRIES:Int = 3;
+  private static final GRAPHICS_CONTEXT_RETRY_DELAY_MS:Int = 250;
+  private static final CRITICAL_INTEGRITY_PATHS:Array<String> = ["data/credits.json", "images/logoBumpin.png"];
 
   public static function main():Void
   {
@@ -91,11 +119,17 @@ class Main extends Sprite
     }
   }
 
+  private function stage(name:String, callback:Void->Void):Void
+  {
+    var startTime:Float = haxe.Timer.stamp();
+
+    callback();
+
+    stageTimings.set(name, (haxe.Timer.stamp() - startTime) * 1000);
+  }
+
   private function initializeLogging():Void
   {
-    haxe.Log.trace = AnsiTrace.trace;
-    AnsiTrace.traceBF();
-
     openfl.utils._internal.Log.level = openfl.utils._internal.Log.LogLevel.INFO;
   }
 
@@ -107,7 +141,7 @@ class Main extends Sprite
     }
     catch (e:Dynamic)
     {
-      FlxG.log.error('Failed to load mods, continuing with none loaded: $e');
+      FlxG.log.error('Failed to load mods, falling back to no mods: $e');
 
       try
       {
@@ -115,6 +149,8 @@ class Main extends Sprite
       }
       catch (e2:Dynamic)
       {
+        FlxG.log.error('Failed to load with no mods, entering safe mode: $e2');
+        safeMode = true;
       }
     }
   }
@@ -134,9 +170,26 @@ class Main extends Sprite
     initializeUncaughtErrorHandler();
     initializeLifecycleHandlers();
 
-    if (!validateGraphicsContext()) return;
+    attemptGraphicsValidation();
+  }
 
-    setupGame();
+  private function attemptGraphicsValidation():Void
+  {
+    if (validateGraphicsContext())
+    {
+      setupGame();
+      return;
+    }
+
+    graphicsContextRetries++;
+
+    if (graphicsContextRetries >= MAX_GRAPHICS_CONTEXT_RETRIES)
+    {
+      failGraphicsInitialization();
+      return;
+    }
+
+    haxe.Timer.delay(attemptGraphicsValidation, GRAPHICS_CONTEXT_RETRY_DELAY_MS);
   }
 
   private function initializeShutdownHandler():Void
@@ -164,13 +217,56 @@ class Main extends Sprite
 
     uncaughtErrorCount++;
 
+    var now:Float = haxe.Timer.stamp();
+    startupErrorTimestamps.push(now);
+    startupErrorTimestamps = startupErrorTimestamps.filter(t -> (now - t) <= SAFE_MODE_WINDOW_SECONDS);
+
     var errorMessage:String = Std.string(event.error);
 
     FlxG.log.error('Uncaught error #$uncaughtErrorCount: $errorMessage');
 
+    if (!safeMode && startupErrorTimestamps.length >= SAFE_MODE_ERROR_THRESHOLD)
+    {
+      triggerSafeModeRestart(errorMessage);
+      return;
+    }
+
     if (uncaughtErrorCount >= MAX_UNCAUGHT_ERRORS_BEFORE_EXIT)
     {
+      writeCrashDiagnostics(errorMessage);
       WindowUtil.showError('Unstable Session', 'The game has hit too many unhandled errors in a row and needs to close.\n\nLast error:\n$errorMessage');
+
+      #if !html5
+      Sys.exit(1);
+      #end
+    }
+  }
+
+  private function triggerSafeModeRestart(lastError:String):Void
+  {
+    safeMode = true;
+
+    FlxG.log.error('Too many errors in a short window ($SAFE_MODE_ERROR_THRESHOLD in ${SAFE_MODE_WINDOW_SECONDS}s), restarting in safe mode.');
+
+    try
+    {
+      funkin.modding.PolymodHandler.loadNoMods();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Safe mode mod reload also failed: $e');
+    }
+
+    startupErrorTimestamps = [];
+
+    try
+    {
+      FlxG.switchState(() -> new funkin.InitState());
+    }
+    catch (e:Dynamic)
+    {
+      writeCrashDiagnostics(lastError);
+      WindowUtil.showError('Safe Mode Failure', 'The game could not recover automatically and needs to close.\n\n$lastError');
 
       #if !html5
       Sys.exit(1);
@@ -253,13 +349,15 @@ class Main extends Sprite
 
   private function validateGraphicsContext():Bool
   {
+    if (stage == null || stage.window == null || stage.window.context == null) return false;
+
     var contextType = stage.window.context.type;
 
-    if (contextType == WEBGL || contextType == OPENGL || contextType == OPENGLES)
-    {
-      return true;
-    }
+    return contextType == WEBGL || contextType == OPENGL || contextType == OPENGLES;
+  }
 
+  private function failGraphicsInitialization():Void
+  {
     var technology:String = #if web 'WebGL' #elseif desktop 'OpenGL' #else 'OpenGL ES' #end;
     var requiredVersion:String = #if web '$technology 1.0 or newer' #elseif desktop '$technology 3.0 or newer' #else '$technology 2.0 or newer' #end;
 
@@ -278,34 +376,40 @@ class Main extends Sprite
     #if !html5
     System.exit(1);
     #end
-
-    return false;
   }
 
   private function setupGame():Void
   {
     try
     {
-      logBuildInfo();
+      stage("logBuildInfo", logBuildInfo);
 
       #if FEATURE_HAXEUI
-      initializeHaxeUI();
+      stage("initializeHaxeUI", initializeHaxeUI);
       #end
 
-      // tinha literalmente uma linha de comentario falando que não era recomendado colocar o Save.load() depois do FlxGame.
-      Save.load();
-      trace("[SAVE] SAVE FOI CARREGADO COM SUCESSO");
+      stage("checkAssetIntegrity", checkAssetIntegrity);
 
-      initializeDebugDisplay();
-      initializeSignals();
-      initializeVideoSystem();
-      initializeRendering();
+      stage("initializeLowEnd", initializeLowEnd);
 
-      createGame();
+      #if FEATURE_MULTIPLAYER
+      stage("initializeMultiplayer", initializeMultiplayer);
+      #end
 
-      initializeWindow();
+      stage("loadSave", Save.load);
 
-      finalizeGameSetup();
+      stage("initializeDebugDisplay", initializeDebugDisplay);
+      stage("initializeSignals", initializeSignals);
+      stage("initializeVideoSystem", initializeVideoSystem);
+      stage("initializeRendering", initializeRendering);
+
+      stage("createGame", createGame);
+
+      stage("initializeWindow", initializeWindow);
+
+      stage("finalizeGameSetup", finalizeGameSetup);
+
+      logStartupSummary();
     }
     catch (e:Dynamic)
     {
@@ -335,8 +439,164 @@ class Main extends Sprite
     }
   }
 
+  private function checkAssetIntegrity():Void
+  {
+    #if FEATURE_ASSET_INTEGRITY
+    try
+    {
+      var manifestPath:String = Paths.json('asset-manifest');
+
+      if (!Assets.exists(manifestPath, TEXT))
+      {
+        assetIntegrityOk = true;
+        return;
+      }
+
+      var manifest:Dynamic = haxe.Json.parse(Assets.getText(manifestPath));
+
+      for (relativePath in CRITICAL_INTEGRITY_PATHS)
+      {
+        var assetPath:String = Paths.file(relativePath);
+        var expectedHash:Dynamic = Reflect.field(manifest, assetPath);
+
+        if (expectedHash == null || !Assets.exists(assetPath)) continue;
+
+        var bytes:haxe.io.Bytes = Assets.getBytes(assetPath);
+        var actualHash:String = haxe.crypto.Md5.make(bytes).toHex();
+
+        if (actualHash != Std.string(expectedHash))
+        {
+          assetIntegrityOk = false;
+          FlxG.log.error('Asset integrity mismatch for $assetPath');
+        }
+      }
+
+      if (!assetIntegrityOk)
+      {
+        FlxG.log.warn('One or more critical assets failed integrity verification. The installation may be corrupted or tampered with.');
+      }
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.warn('Failed to verify asset integrity: $e');
+      assetIntegrityOk = true;
+    }
+    #end
+  }
+
+  private function initializeLowEnd():Void
+  {
+    FunkinLow.persistenceHandler = {
+      save: function(key:String, value:String):Void
+      {
+        try
+        {
+          var shared = openfl.net.SharedObject.getLocal(key);
+          shared.data.payload = value;
+          shared.flush();
+        }
+        catch (e:Dynamic) {}
+      },
+      load: function(key:String):Null<String>
+      {
+        try
+        {
+          var shared = openfl.net.SharedObject.getLocal(key);
+          var payload:Dynamic = shared.data.payload;
+          return payload == null ? null : Std.string(payload);
+        }
+        catch (e:Dynamic)
+        {
+          return null;
+        }
+      }
+    };
+
+    #if mobile
+    FunkinLow.batteryLevelProvider = function():Null<Float>
+    {
+      #if android
+      try
+      {
+        return extension.androidtools.content.Context.getBatteryLevel();
+      }
+      catch (e:Dynamic)
+      {
+        return null;
+      }
+      #else
+      return null;
+      #end
+    };
+    #end
+
+    FunkinLow.init(false, true);
+  }
+
+  #if FEATURE_MULTIPLAYER
+  private function initializeMultiplayer():Void
+  {
+    try
+    {
+      MultiplayerModding.buildLocalManifest();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.warn('Failed to build local mod manifest for multiplayer: $e');
+    }
+  }
+  #end
+
+  private function logStartupSummary():Void
+  {
+    var totalMs:Float = 0;
+    for (duration in stageTimings) totalMs += duration;
+
+    FlxG.log.add('Startup complete in ${Math.round(totalMs)}ms across ${Lambda.count(stageTimings)} stage(s).');
+
+    if (safeMode)
+    {
+      FlxG.log.warn('Running in safe mode.');
+    }
+  }
+
+  private function writeCrashDiagnostics(lastError:String):Void
+  {
+    #if sys
+    try
+    {
+      var diagnostics:StartupDiagnostics = {
+        stageTimingsMs: stageTimings,
+        uncaughtErrorCount: uncaughtErrorCount,
+        safeModeTriggered: safeMode,
+        assetIntegrityOk: assetIntegrityOk,
+        buildInfo: buildInfo,
+        startedAt: Date.now().toString()
+      };
+
+      var timingsObject:Dynamic = {};
+      for (name => duration in stageTimings) Reflect.setField(timingsObject, name, duration);
+
+      var payload:Dynamic = {
+        stageTimingsMs: timingsObject,
+        uncaughtErrorCount: uncaughtErrorCount,
+        safeModeTriggered: safeMode,
+        assetIntegrityOk: assetIntegrityOk,
+        lastError: lastError,
+        buildInfo: buildInfo,
+        generatedAt: Date.now().toString()
+      };
+
+      sys.io.File.saveContent('crash-diagnostics.json', haxe.Json.stringify(payload, null, '  '));
+    }
+    catch (e:Dynamic) {}
+    #end
+  }
+
   private function reportFatalStartupError(e:Dynamic):Void
   {
+    writeCrashDiagnostics(Std.string(e));
+
     WindowUtil.showError('Startup Error', 'The game failed to start.\n\n${Std.string(e)}');
 
     #if !html5
@@ -352,10 +612,16 @@ class Main extends Sprite
   private function initializeSignals():Void
   {
     FlxG.signals.postUpdate.add(handleDebugDisplayKeys);
+    FlxG.signals.postUpdate.add(handleLowEndUpdate);
 
     #if mobile
     FlxG.signals.preUpdate.add(repositionCounters.bind(true));
     #end
+  }
+
+  private function handleLowEndUpdate():Void
+  {
+    FunkinLow.update(FlxG.elapsed);
   }
 
   private function initializeVideoSystem():Void
