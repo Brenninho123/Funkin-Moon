@@ -364,17 +364,24 @@ class FunkinLua
 
   static function cb_keyJustPressed(l:LuaState):Int
   {
-    return keyStateCallback(l, function(name) return FlxG.keys.justPressed.exists(name));
+    return keyStateCallback(l, function(name) return resolveKeyState(FlxG.keys.justPressed, name));
   }
 
   static function cb_keyPressed(l:LuaState):Int
   {
-    return keyStateCallback(l, function(name) return FlxG.keys.pressed.exists(name));
+    return keyStateCallback(l, function(name) return resolveKeyState(FlxG.keys.pressed, name));
   }
 
   static function cb_keyJustReleased(l:LuaState):Int
   {
-    return keyStateCallback(l, function(name) return FlxG.keys.justReleased.exists(name));
+    return keyStateCallback(l, function(name) return resolveKeyState(FlxG.keys.justReleased, name));
+  }
+
+  static function resolveKeyState(list:Dynamic, keyName:String):Bool
+  {
+    var value:Dynamic = Reflect.field(list, keyName);
+
+    return value == true;
   }
 
   static function keyStateCallback(l:LuaState, resolver:String->Bool):Int
@@ -718,17 +725,17 @@ class FunkinLua
 
   static function cb_debugPrint(l:LuaState):Int
   {
-    return logCallback(l, FlxG.log.add);
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.add(message));
   }
 
   static function cb_logWarn(l:LuaState):Int
   {
-    return logCallback(l, FlxG.log.warn);
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.warn(message));
   }
 
   static function cb_logError(l:LuaState):Int
   {
-    return logCallback(l, FlxG.log.error);
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.error(message));
   }
 
   static function logCallback(l:LuaState, sink:Dynamic->Void):Int
@@ -839,7 +846,7 @@ class FunkinLua
   {
     Lua.pop(l, Lua.gettop(l));
 
-    var maxHealth:Float = PlayState.instance?.maxHealth ?? 2.0;
+    var maxHealth:Float = 2.0;
     var health:Float = PlayState.instance?.health ?? 0.0;
 
     Lua.pushnumber(l, maxHealth > 0 ? (health / maxHealth) * 100 : 0);
