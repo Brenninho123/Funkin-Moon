@@ -77,11 +77,23 @@ class PolymodHandler
     FileUtil.createDirIfNotExists(MOD_FOLDER);
   }
 
+  /**
+   * Returns the physical folder where mods are stored.
+   *
+   * Used by systems which need direct filesystem access,
+   * such as the Lua module loader.
+   */
+  public static function getModFolder():String
+  {
+    return MOD_FOLDER;
+  }
+
   public static function loadAllMods():Void
   {
     #if sys
     createModRoot();
     #end
+
     loadModsByDir(getAllModDirs());
   }
 
@@ -90,6 +102,7 @@ class PolymodHandler
     #if sys
     createModRoot();
     #end
+
     loadModsByDir(Save.instance.enabledModDirs.value);
   }
 
@@ -98,13 +111,13 @@ class PolymodHandler
     #if sys
     createModRoot();
     #end
+
     loadModsByDir([]);
   }
 
   public static function loadModsByDir(dirs:Array<String>):Void
   {
     buildImports();
-
     refreshModCache();
 
     var resolvedDirs:Array<String> = resolveModDirs(dirs);
@@ -138,14 +151,17 @@ class PolymodHandler
         loadedModIds.push(mod.id);
 
         var tier:ModApiTier = classifyModApiVersion(mod.apiVersion);
+
         modApiTiers.set(mod.dirName, tier);
 
         switch (tier)
         {
           case Engine:
             FlxG.log.add('[Polymod] "${mod.id}" targets the native engine API (${mod.apiVersion}).');
+
           case Support:
             FlxG.log.add('[Polymod] "${mod.id}" targets the compatibility API (${mod.apiVersion}), running in support mode.');
+
           case Unsupported:
             FlxG.log.warn('[Polymod] "${mod.id}" declares an unrecognized API version (${mod.apiVersion}).');
         }
@@ -164,7 +180,9 @@ class PolymodHandler
     if (StringTools.endsWith(dirName, CONVERTED_SUFFIX)) return dirName;
 
     var modPath:String = '$MOD_FOLDER/$dirName';
+
     var format:FunkinModFormat = FunkinConverter.detectFormat(modPath);
+
     modFormats.set(dirName, format);
 
     if (format != Psych) return dirName;
@@ -177,10 +195,12 @@ class PolymodHandler
       FlxG.log.add('[Polymod] Detected Psych Engine mod "$dirName", converting automatically...');
 
       var report:ConversionReport = FunkinConverter.convertMod(modPath, convertedPath);
+
       conversionReports.set(dirName, report);
 
       FlxG.log.add(
-        '[Polymod] Converted "$dirName": ${report.songsConverted.length} songs, ${report.charactersConverted.length} characters, ${report.stagesConverted.length} stages, ${report.weeksConverted.length} weeks.'
+        '[Polymod] Converted "$dirName": ' + '${report.songsConverted.length} songs, ' + '${report.charactersConverted.length} characters, ' +
+        '${report.stagesConverted.length} stages, ' + '${report.weeksConverted.length} weeks.'
       );
 
       for (error in report.errors)
@@ -195,7 +215,9 @@ class PolymodHandler
   public static function forceReconvertMod(dirName:String):Void
   {
     var convertedPath:String = '$MOD_FOLDER/$dirName$CONVERTED_SUFFIX';
+
     if (sys.FileSystem.exists(convertedPath)) deleteDirectoryRecursive(convertedPath);
+
     conversionReports.remove(dirName);
   }
 
@@ -206,6 +228,7 @@ class PolymodHandler
     for (entry in sys.FileSystem.readDirectory(path))
     {
       var full:String = '$path/$entry';
+
       if (sys.FileSystem.isDirectory(full))
       {
         deleteDirectoryRecursive(full);
@@ -228,6 +251,7 @@ class PolymodHandler
   public static function getModFormat(dirName:String):FunkinModFormat
   {
     var format:Null<FunkinModFormat> = modFormats.get(dirName);
+
     return format == null ? Native : format;
   }
 
@@ -236,6 +260,7 @@ class PolymodHandler
     if (version == null) return Unsupported;
 
     var parts:Array<String> = version.split('.');
+
     if (parts.length < 3) return Unsupported;
 
     var major:Null<Int> = Std.parseInt(parts[0]);
@@ -249,6 +274,7 @@ class PolymodHandler
     var patchInt:Int = patch;
 
     if (majorInt == 0 && minorInt == 0 && patchInt == 1) return Engine;
+
     if (majorInt == 0 && minorInt >= 1 && minorInt <= 9 && patchInt == 0) return Support;
 
     return Unsupported;
@@ -267,12 +293,14 @@ class PolymodHandler
   public static function getModApiTier(dirName:String):ModApiTier
   {
     var tier:Null<ModApiTier> = modApiTiers.get(dirName);
+
     return tier == null ? Unsupported : tier;
   }
 
   static function buildFileSystem():polymod.fs.ZipFileSystem
   {
     polymod.Polymod.onError = PolymodErrorHandler.onPolymodError;
+
     return new ZipFileSystem({
       modRoot: MOD_FOLDER,
       autoScan: true
@@ -284,8 +312,11 @@ class PolymodHandler
     for (cls in classes)
     {
       if (cls == null) continue;
+
       var className:String = Type.getClassName(cls);
+
       if (skipIf != null && skipIf(className)) continue;
+
       Polymod.blacklistImport(className);
     }
   }
@@ -306,26 +337,36 @@ class PolymodHandler
     }
 
     Polymod.addImportAlias('lime.utils.Assets', funkin.Assets);
+
     Polymod.addImportAlias('openfl.utils.Assets', funkin.Assets);
 
     Polymod.addImportAlias('funkin.modding.base.ScriptedFunkinSprite', funkin.graphics.ScriptedFunkinSprite);
+
     Polymod.addImportAlias('funkin.modding.base.ScriptedMusicBeatState', funkin.ui.ScriptedMusicBeatState);
+
     Polymod.addImportAlias('funkin.modding.base.ScriptedMusicBeatSubState', funkin.ui.ScriptedMusicBeatSubState);
 
     Polymod.addImportAlias('funkin.data.dialogue.conversation.ConversationRegistry', funkin.data.dialogue.ConversationRegistry);
+
     Polymod.addImportAlias('funkin.data.dialogue.dialoguebox.DialogueBoxRegistry', funkin.data.dialogue.DialogueBoxRegistry);
+
     Polymod.addImportAlias('funkin.data.dialogue.speaker.SpeakerRegistry', funkin.data.dialogue.SpeakerRegistry);
+
     Polymod.addImportAlias('funkin.play.character.CharacterDataParser', funkin.data.character.CharacterData.CharacterDataParser);
+
     Polymod.addImportAlias('funkin.play.character.CharacterData.CharacterDataParser', funkin.data.character.CharacterData.CharacterDataParser);
 
     Polymod.addImportAlias('funkin.graphics.adobeanimate.FlxAtlasSprite', funkin.graphics.FunkinSprite);
+
     Polymod.addImportAlias('funkin.modding.base.ScriptedFlxAtlasSprite', funkin.graphics.ScriptedFunkinSprite);
 
     Polymod.addImportAlias('funkin.util.FileUtil', funkin.util.FileUtilSandboxed);
 
     #if FEATURE_NEWGROUNDS
     Polymod.addImportAlias('funkin.api.newgrounds.Leaderboards', funkin.api.newgrounds.Leaderboards.LeaderboardsSandboxed);
+
     Polymod.addImportAlias('funkin.api.newgrounds.Medals', funkin.api.newgrounds.Medals.MedalsSandboxed);
+
     Polymod.addImportAlias('funkin.api.newgrounds.NewgroundsClient', funkin.api.newgrounds.NewgroundsClient.NewgroundsClientSandboxed);
     #end
 
@@ -338,34 +379,25 @@ class PolymodHandler
     Polymod.addImportAlias('Type', funkin.util.ReflectUtil);
 
     Polymod.blacklistImport('cpp.Lib');
-
     Polymod.blacklistImport('haxe.Http');
-
     Polymod.blacklistImport('haxe.Unserializer');
-
     Polymod.blacklistImport('lime.utils.AssetLibrary');
-
-    blacklistClasses(ClassMacro.listClassesInPackage('funkin.mobile.util'));
-    blacklistClasses(ClassMacro.listClassesInPackage('extension'));
-
     Polymod.blacklistImport('lime.system.CFFI');
-
     Polymod.blacklistImport('lime.system.JNI');
-
     Polymod.blacklistImport('lime.system.System');
-
     Polymod.blacklistImport('lime.utils.Assets');
     Polymod.blacklistImport('openfl.utils.Assets');
     Polymod.blacklistImport('openfl.Lib');
     Polymod.blacklistImport('openfl.system.ApplicationDomain');
     Polymod.blacklistImport('openfl.net.SharedObject');
-
     Polymod.blacklistImport('openfl.desktop.NativeProcess');
 
     Polymod.blacklistStaticFields(flixel.util.FlxSave, ['resolveFlixelClasses']);
+
     Polymod.blacklistStaticFields(flixel.FlxG, ['save']);
 
     Polymod.blacklistStaticFields(haxe.Unserializer, ['run']);
+
     Polymod.blacklistInstanceFields(haxe.Unserializer, ['unserialize']);
 
     Polymod.blacklistInstanceFields(funkin.save.Save, [
@@ -376,22 +408,33 @@ class PolymodHandler
       'applySongRank'
     ]);
 
-    #if !html5 Polymod.blacklistInstanceFields(openfl.filesystem.FileStream, ['readObject']); #end
+    #if !html5
+    Polymod.blacklistInstanceFields(openfl.filesystem.FileStream, ['readObject']);
+    #end
+
     Polymod.blacklistInstanceFields(openfl.net.Socket, ['readObject']);
+
     Polymod.blacklistInstanceFields(openfl.utils.ByteArray.ByteArrayData, ['readObject']);
 
     blacklistClasses(
       ClassMacro.listClassesInPackage('funkin.api'),
       (className) -> polymod.hscript._internal.PolymodScriptClass.importOverrides.exists(className)
     );
+
     blacklistClasses(ClassMacro.listClassesInPackage('polymod'));
+
     blacklistClasses(ClassMacro.listClassesInPackage('hscript'));
+
     blacklistClasses(ClassMacro.listClassesInPackage('io.newgrounds'));
+
     blacklistClasses(ClassMacro.listClassesInPackage('sys'));
+
     blacklistClasses(ClassMacro.listClassesInPackage('funkin.util.macro'));
 
     Polymod.blacklistImport('funkin.external.android.CallbackUtil');
+
     Polymod.blacklistImport('funkin.external.android.DataFolderUtil');
+
     Polymod.blacklistImport('funkin.external.android.JNIUtil');
 
     Polymod.blacklistInstanceFields(polymod.hscript._internal.PolymodScriptClass.PolymodScriptClass, ['_interp']);
@@ -399,7 +442,7 @@ class PolymodHandler
 
   static function buildIgnoreList():Array<String>
   {
-    var result = Polymod.getDefaultIgnoreList();
+    var result:Array<String> = Polymod.getDefaultIgnoreList();
 
     result.push('.vscode');
     result.push('.idea');
@@ -414,7 +457,9 @@ class PolymodHandler
   static function buildParseRules():polymod.format.ParseRules
   {
     var output:polymod.format.ParseRules = polymod.format.ParseRules.getDefault();
+
     output.addType('txt', TextFileFormat.LINES);
+
     return output;
   }
 
@@ -437,8 +482,9 @@ class PolymodHandler
         'weekend1' => 'weekend1',
         'sserafim' => 'sserafim'
       ],
+
       coreAssetRedirect: CORE_FOLDER,
-    }
+    };
   }
 
   public static function refreshModCache():Void
@@ -462,26 +508,32 @@ class PolymodHandler
     var filtered:Array<ModMetadata> = [for (m in modMetadata) if (!StringTools.endsWith(m.dirName, CONVERTED_SUFFIX)) m];
 
     cachedModMetadata = filtered;
+
     return filtered;
   }
 
   public static function getAllModIds():Array<String>
   {
     var modIds:Array<String> = [for (i in getAllMods()) i.id];
+
     return modIds;
   }
 
   public static function getAllModDirs():Array<String>
   {
     var modDirs:Array<String> = [for (i in getAllMods()) i.dirName];
+
     return modDirs;
   }
 
   public static function getEnabledMods():Array<ModMetadata>
   {
     var modDirs:Array<String> = Save.instance.enabledModDirs.value;
+
     var modMetadata:Array<ModMetadata> = getAllMods();
+
     var enabledMods:Array<ModMetadata> = [];
+
     for (item in modMetadata)
     {
       if (modDirs.indexOf(item.dirName) != -1)
@@ -489,20 +541,22 @@ class PolymodHandler
         enabledMods.push(item);
       }
     }
+
     return enabledMods;
   }
 
   public static function forceReloadAssets():Void
   {
     ModuleHandler.clearModuleCache();
+
     Polymod.clearScripts();
 
     refreshModCache();
 
-    funkin.modding.PolymodHandler.loadAllMods();
+    // Load only the mods enabled in the ModMenu.
+    funkin.modding.PolymodHandler.loadEnabledMods();
 
     SongEventRegistry.loadEventCache();
-
     SongRegistry.instance.loadEntries();
     LevelRegistry.instance.loadEntries();
     NoteStyleRegistry.instance.loadEntries();
@@ -514,9 +568,9 @@ class PolymodHandler
     StageRegistry.instance.loadEntries();
     StickerRegistry.instance.loadEntries();
     FreeplayStyleRegistry.instance.loadEntries();
-
     CharacterDataParser.loadCharacterCache();
     NoteKindManager.initialize();
+
     ModuleHandler.loadModuleCache();
     ModuleHandler.callOnCreate();
   }
