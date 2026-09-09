@@ -16,6 +16,7 @@ import funkin.util.logging.AnsiTrace;
 import funkin.ui.debug.FunkinDebugDisplay;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 import funkin.lowend.FunkinLow;
+import funkin.ui.system.FunkinCosmic;
 #if FEATURE_MULTIPLAYER
 import funkin.multiplayer.MultiplayerModding;
 #end
@@ -44,16 +45,6 @@ typedef BuildInfo =
   @:optional var onlineEnabled:Bool;
 }
 
-typedef StartupDiagnostics =
-{
-  var stageTimingsMs:Map<String, Float>;
-  var uncaughtErrorCount:Int;
-  var safeModeTriggered:Bool;
-  var assetIntegrityOk:Bool;
-  var buildInfo:Null<BuildInfo>;
-  var startedAt:String;
-}
-
 class Main extends Sprite
 {
   public static inline var GAME_WIDTH:Int = 1280;
@@ -73,6 +64,10 @@ class Main extends Sprite
   private var stageTimings:Map<String, Float> = new Map();
   private var assetIntegrityOk:Bool = true;
   private var graphicsContextRetries:Int = 0;
+  private var lastFrameStamp:Float = 0.0;
+  private var freezeWatchdogArmed:Bool = false;
+  private var watchdogWarningIssued:Bool = false;
+  private var qualityTierChangeCount:Int = 0;
 
   private static final MAX_UNCAUGHT_ERRORS_BEFORE_EXIT:Int = 25;
   private static final SAFE_MODE_ERROR_THRESHOLD:Int = 5;
@@ -80,6 +75,8 @@ class Main extends Sprite
   private static final MAX_GRAPHICS_CONTEXT_RETRIES:Int = 3;
   private static final GRAPHICS_CONTEXT_RETRY_DELAY_MS:Int = 250;
   private static final CRITICAL_INTEGRITY_PATHS:Array<String> = ["data/credits.json", "images/logoBumpin.png"];
+  private static final FREEZE_WATCHDOG_THRESHOLD_SECONDS:Float = 5.0;
+  private static final COSMIC_WATCHER_TICK_MS:Float = 1000.0;
 
   public static function main():Void
   {
@@ -307,6 +304,8 @@ class Main extends Sprite
 
   private function onStageActivate(event:Event):Void
   {
+    lastFrameStamp = haxe.Timer.stamp();
+    watchdogWarningIssued = false;
   }
 
   private function shutdown():Void
@@ -408,6 +407,9 @@ class Main extends Sprite
       runStage("initializeWindow", initializeWindow);
 
       runStage("finalizeGameSetup", finalizeGameSetup);
+
+      lastFrameStamp = haxe.Timer.stamp();
+      freezeWatchdogArmed = true;
 
       logStartupSummary();
     }
@@ -512,25 +514,37 @@ class Main extends Sprite
       }
     };
 
-    #if mobile
-    FunkinLow.batteryLevelProvider = function():Null<Float>
+    FunkinLow.onQualityChanged.add(onQualityTierChanged);
+    FunkinLow.onStutterDetected.add(onStutterDetected);
+
+    FunkinLow.init(false, true);
+  }
+
+  private function onQualityTierChanged(newTier:funkin.lowend.FunkinLow.FunkinQualityTier):Void
+  {
+    qualityTierChangeCount++;
+
+    FlxG.log.add('Quality tier changed to ${FunkinLow.getTierName()} (change #$qualityTierChangeCount)');
+
+    if ((newTier : Int) >= (funkin.lowend.FunkinLow.FunkinQualityTier.Potato : Int))
     {
-      #if android
       try
       {
-        return extension.androidtools.content.Context.getBatteryLevel();
+        FunkinMemory.purgeCache();
       }
       catch (e:Dynamic)
       {
-        return null;
+        FlxG.log.error('Failed to purge memory after dropping to Potato tier: $e');
       }
-      #else
-      return null;
-      #end
-    };
-    #end
+    }
+  }
 
-    FunkinLow.init(false, true);
+  private function onStutterDetected(count:Int):Void
+  {
+    if (count % 20 == 0)
+    {
+      FlxG.log.warn('$count stutters detected this session.');
+    }
   }
 
   #if FEATURE_MULTIPLAYER
@@ -573,12 +587,14 @@ class Main extends Sprite
         uncaughtErrorCount: uncaughtErrorCount,
         safeModeTriggered: safeMode,
         assetIntegrityOk: assetIntegrityOk,
+        qualityTier: FunkinLow.getTierName(),
+        stutterCount: FunkinLow.getStutterCount(),
         lastError: lastError,
         buildInfo: buildInfo,
         generatedAt: Date.now().toString()
       };
 
-      sys.io.File.saveContent('crash-diagnostics.json', haxe.Json.stringify(payload, null, '  '));
+      FunkinCosmic.writeTextAtomic('crash-diagnostics.json', haxe.Json.stringify(payload, null, '  '), false);
     }
     catch (e:Dynamic) {}
     #end
@@ -604,6 +620,8 @@ class Main extends Sprite
   {
     FlxG.signals.postUpdate.add(handleDebugDisplayKeys);
     FlxG.signals.postUpdate.add(handleLowEndUpdate);
+    FlxG.signals.postUpdate.add(handleCosmicWatchers);
+    FlxG.signals.postUpdate.add(handleFreezeWatchdog);
 
     #if mobile
     FlxG.signals.preUpdate.add(repositionCounters.bind(true));
@@ -613,6 +631,31 @@ class Main extends Sprite
   private function handleLowEndUpdate():Void
   {
     FunkinLow.update(FlxG.elapsed);
+  }
+
+  private function handleCosmicWatchers():Void
+  {
+    FunkinCosmic.updateWatchers(FlxG.elapsed * 1000);
+  }
+
+  private function handleFreezeWatchdog():Void
+  {
+    if (!freezeWatchdogArmed) return;
+
+    var now:Float = haxe.Timer.stamp();
+    var delta:Float = now - lastFrameStamp;
+
+    lastFrameStamp = now;
+
+    if (delta >= FREEZE_WATCHDOG_THRESHOLD_SECONDS && !watchdogWarningIssued)
+    {
+      watchdogWarningIssued = true;
+      FlxG.log.warn('Main loop resumed after a ${Math.round(delta * 10) / 10}s stall.');
+    }
+    else if (delta < FREEZE_WATCHDOG_THRESHOLD_SECONDS)
+    {
+      watchdogWarningIssued = false;
+    }
   }
 
   private function initializeVideoSystem():Void
