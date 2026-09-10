@@ -71,7 +71,7 @@ class DebugMenuSubState extends MusicBeatSubState
     createItem("STAGE EDITOR", openStageEditor);
     #end
     #if FEATURE_MUSIC_EDITOR
-    createItem("MUSIC EDITOR (WIP)", openMusicEditor);
+    createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
     #end
 
     #if FEATURE_MOD_MENU
