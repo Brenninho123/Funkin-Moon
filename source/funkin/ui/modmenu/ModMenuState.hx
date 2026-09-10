@@ -7,87 +7,104 @@ import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.text.FlxText;
 import flixel.text.FlxText.FlxTextBorderStyle;
 import flixel.util.FlxColor;
+import flixel.util.FlxTimer;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
+import flixel.math.FlxMath;
+import funkin.Paths;
+import funkin.audio.FunkinSound;
 import funkin.graphics.FunkinSprite;
 import funkin.modding.PolymodHandler;
 import funkin.save.Save;
-import funkin.ui.MusicBeatState;
+import funkin.util.modmenu.ModMenuUtils;
 import funkin.ui.mainmenu.MainMenuState;
-import polymod.Polymod.ModMetadata;
-import funkin.Paths;
+import funkin.ui.MusicBeatState;
+import funkin.ui.mods.transition.ModLoadingSubState;
+import polymod.Polymod;
 #end
 
 class ModMenuState extends MusicBeatState
 {
   #if FEATURE_MOD_MENU
-  var vcrFont:String;
-  // ---- dados dos mods ----
   var disabledMods:Array<ModMetadata> = [];
   var enabledMods:Array<ModMetadata> = [];
-  // ---- coluna atual: 0 = disabled, 1 = enabled ----
   var currentColumn:Int = 1;
   var disabledIndex:Int = 0;
   var enabledIndex:Int = 0;
-  // ---- foco geral: 0 = lista de mods, 1 = OPEN MOD FOLDER, 2 = DONE ----
   var focusRow:Int = 0;
+  var background:FunkinSprite;
+  var backgroundWires:FunkinSprite;
+  var topText:FunkinSprite;
+  var disabledBox:FunkinSprite;
+  var enabledBox:FunkinSprite;
+  var disabledLabel:FlxText;
+  var enabledLabel:FlxText;
   var disabledGroup:FlxTypedGroup<FlxSprite>;
   var enabledGroup:FlxTypedGroup<FlxSprite>;
-  var openFolderBtn:FlxText;
-  var doneBtn:FlxText;
+  var openFolderBtn:FunkinSprite;
+  var openFolderHighlighted:FunkinSprite;
+  var doneBtn:FunkinSprite;
+  var doneHighlighted:FunkinSprite;
+  var transitioning:Bool = false;
 
   public function new()
   {
     super();
   }
 
-  public override function create():Void
+  override public function create():Void
   {
     super.create();
 
-    vcrFont = Paths.font('vcr.ttf');
+    FunkinSound.playMusic("mod-menu-ambience", {
+      startingVolume: 0.0,
+      overrideExisting: true,
+      restartTrack: true,
+      persist: false
+    });
 
-    // Fundo sólido, placeholder.
-    var bg = new FlxSprite(0, 0);
-    bg.makeGraphic(Std.int(FlxG.width), Std.int(FlxG.height), 0xFF2A2438);
-    add(bg);
+    if (FlxG.sound.music != null)
+    {
+      FlxG.sound.music.fadeIn(1.0, 0.0, 1.0);
+    }
 
-    var title = new FlxText(0, 20, FlxG.width, 'CHOOSE YOUR MODS', 40);
-    title.setFormat(vcrFont, 40, FlxColor.WHITE, "center", FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-    add(title);
+    background = new FunkinSprite(0, 0);
+    background.loadGraphic(Paths.image("modmenu/bg"));
+    background.setGraphicSize(FlxG.width, FlxG.height);
+    background.updateHitbox();
+    add(background);
 
-    var subtitle = new FlxText(0, 70, FlxG.width, 'Drag packs onto this window to add new stuff', 18);
-    subtitle.setFormat(vcrFont, 18, 0xFFCCCCCC, "center");
-    add(subtitle);
+    backgroundWires = new FunkinSprite(0, 0);
+    backgroundWires.loadGraphic(Paths.image("modmenu/bgwires"));
+    backgroundWires.setGraphicSize(FlxG.width, FlxG.height);
+    backgroundWires.updateHitbox();
+    add(backgroundWires);
+
+    topText = new FunkinSprite();
+    topText.loadGraphic(Paths.image("modmenu/top-text"));
+    topText.screenCenter(X);
+    topText.y = 20;
+    add(topText);
 
     loadModLists();
-
-    setupColumn(60, 130, 'DISABLED', true);
-    setupColumn(FlxG.width - 60 - 400, 130, 'ENABLED', false);
-
-    openFolderBtn = new FlxText(60, FlxG.height - 60, 260, 'OPEN MOD FOLDER', 26);
-    openFolderBtn.setFormat(vcrFont, 26, FlxColor.WHITE, "center", FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-    add(openFolderBtn);
-
-    doneBtn = new FlxText(FlxG.width - 60 - 200, FlxG.height - 60, 200, 'DONE', 26);
-    doneBtn.setFormat(vcrFont, 26, FlxColor.WHITE, "center", FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-    add(doneBtn);
-
+    createColumns();
+    createButtons();
     refreshVisuals();
     refreshFocusVisuals();
   }
 
   function loadModLists():Void
   {
-    var allMods:Array<ModMetadata> = PolymodHandler.getAllMods();
-
     disabledMods = [];
     enabledMods = [];
 
-    // Mods que estão realmente habilitados no Save.
-    var enabledDirs:Array<String> = Save.instance.enabledModDirs.value;
+    var allMods:Array<ModMetadata> = PolymodHandler.getAllMods();
 
     for (mod in allMods)
     {
-      if (enabledDirs.indexOf(mod.dirName) != -1)
+      if (mod.id == ModMenuUtils.MOD_MENU_ID) continue;
+
+      if (ModMenuUtils.isModEnabled(mod))
       {
         enabledMods.push(mod);
       }
@@ -96,28 +113,69 @@ class ModMenuState extends MusicBeatState
         disabledMods.push(mod);
       }
     }
+
+    disabledIndex = clampIndex(disabledIndex, disabledMods.length - 1);
+    enabledIndex = clampIndex(enabledIndex, enabledMods.length);
   }
 
-  function setupColumn(x:Float, y:Float, label:String, isDisabledColumn:Bool):Void
+  function createColumns():Void
   {
-    var box = new FlxSprite(x, y);
-    box.makeGraphic(400, Std.int(FlxG.height - y - 100), 0xFF141018);
-    add(box);
+    var margin:Float = 55;
+    var columnWidth:Float = 400;
+    var leftX:Float = margin;
+    var rightX:Float = FlxG.width - margin - columnWidth;
+    var columnY:Float = 135;
 
-    var header = new FlxText(x, y - 35, 400, label, 28);
-    header.setFormat(vcrFont, 28, FlxColor.WHITE, "center", FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-    add(header);
+    disabledBox = new FunkinSprite(leftX, columnY);
+    disabledBox.loadGraphic(Paths.image("modmenu/box"));
+    disabledBox.setGraphicSize(Std.int(columnWidth), Std.int(FlxG.height - columnY - 115));
+    disabledBox.updateHitbox();
+    add(disabledBox);
 
-    if (isDisabledColumn)
-    {
-      disabledGroup = new FlxTypedGroup<FlxSprite>();
-      add(disabledGroup);
-    }
-    else
-    {
-      enabledGroup = new FlxTypedGroup<FlxSprite>();
-      add(enabledGroup);
-    }
+    enabledBox = new FunkinSprite(rightX, columnY);
+    enabledBox.loadGraphic(Paths.image("modmenu/box"));
+    enabledBox.setGraphicSize(Std.int(columnWidth), Std.int(FlxG.height - columnY - 115));
+    enabledBox.updateHitbox();
+    add(enabledBox);
+
+    disabledLabel = new FlxText(leftX, columnY + 8, columnWidth, "DISABLED", 28);
+    disabledLabel.setFormat(Paths.font("FunkinLingLong.otf"), 28, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    add(disabledLabel);
+
+    enabledLabel = new FlxText(rightX, columnY + 8, columnWidth, "ENABLED", 28);
+    enabledLabel.setFormat(Paths.font("FunkinLingLong.otf"), 28, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    add(enabledLabel);
+
+    disabledGroup = new FlxTypedGroup<FlxSprite>();
+    enabledGroup = new FlxTypedGroup<FlxSprite>();
+
+    add(disabledGroup);
+    add(enabledGroup);
+  }
+
+  function createButtons():Void
+  {
+    openFolderBtn = new FunkinSprite();
+    openFolderBtn.loadGraphic(Paths.image("modmenu/open-folder"));
+    openFolderBtn.x = 55;
+    openFolderBtn.y = FlxG.height - openFolderBtn.height - 30;
+    add(openFolderBtn);
+
+    doneBtn = new FunkinSprite();
+    doneBtn.loadGraphic(Paths.image("modmenu/done"));
+    doneBtn.x = FlxG.width - doneBtn.width - 55;
+    doneBtn.y = FlxG.height - doneBtn.height - 30;
+    add(doneBtn);
+
+    openFolderHighlighted = new FunkinSprite(openFolderBtn.x, openFolderBtn.y);
+    openFolderHighlighted.loadGraphic(Paths.image("modmenu/open-folder-highlighted"));
+    openFolderHighlighted.visible = false;
+    add(openFolderHighlighted);
+
+    doneHighlighted = new FunkinSprite(doneBtn.x, doneBtn.y);
+    doneHighlighted.loadGraphic(Paths.image("modmenu/done-highlighted"));
+    doneHighlighted.visible = false;
+    add(doneHighlighted);
   }
 
   function refreshVisuals():Void
@@ -125,21 +183,25 @@ class ModMenuState extends MusicBeatState
     disabledGroup.clear();
     enabledGroup.clear();
 
-    buildColumnEntries(disabledGroup, disabledMods, 60, 130, currentColumn == 0 ? disabledIndex : -1, false);
+    var leftX:Float = disabledBox.x;
+    var rightX:Float = enabledBox.x;
+    var y:Float = disabledBox.y + 55;
 
-    buildColumnEntries(enabledGroup, enabledMods, FlxG.width - 60 - 400, 130, currentColumn == 1 ? enabledIndex : -1, true);
+    buildColumnEntries(disabledGroup, disabledMods, leftX, y, currentColumn == 0 ? disabledIndex : -1, false);
+
+    buildColumnEntries(enabledGroup, enabledMods, rightX, y, currentColumn == 1 ? enabledIndex : -1, true);
   }
 
   function buildColumnEntries(group:FlxTypedGroup<FlxSprite>, mods:Array<ModMetadata>, x:Float, y:Float, selectedIndex:Int, isEnabledColumn:Bool):Void
   {
-    var rowHeight = 90;
-    var startY = y + 10;
-    var index = 0;
+    var rowWidth:Float = 380;
+    var rowHeight:Float = 90;
+    var startY:Float = y;
+    var index:Int = 0;
 
-    // BASE GAME fica no topo da coluna ENABLED.
     if (isEnabledColumn)
     {
-      addModRow(group, x + 10, startY, 380, rowHeight, null, selectedIndex == 0);
+      addModRow(group, x + 10, startY, rowWidth, rowHeight, null, selectedIndex == 0);
 
       index = 1;
       startY += rowHeight + 10;
@@ -147,7 +209,7 @@ class ModMenuState extends MusicBeatState
 
     for (mod in mods)
     {
-      addModRow(group, x + 10, startY, 380, rowHeight, mod, selectedIndex == index);
+      addModRow(group, x + 10, startY, rowWidth, rowHeight, mod, selectedIndex == index);
 
       startY += rowHeight + 10;
       index++;
@@ -156,70 +218,77 @@ class ModMenuState extends MusicBeatState
 
   function addModRow(group:FlxTypedGroup<FlxSprite>, x:Float, y:Float, w:Float, h:Float, mod:Null<ModMetadata>, selected:Bool):Void
   {
-    var rowBg = new FlxSprite(x, y);
-
-    rowBg.makeGraphic(Std.int(w), Std.int(h), selected ? 0xFF6A6A6A : 0xFF000000);
-
+    var rowBg:FunkinSprite = new FunkinSprite(x, y);
+    rowBg.loadGraphic(Paths.image("modmenu/box"));
+    rowBg.setGraphicSize(Std.int(w), Std.int(h));
+    rowBg.updateHitbox();
+    rowBg.alpha = selected ? 1.0 : 0.75;
     group.add(rowBg);
 
-    // Ícone do mod.
-    var icon = new FunkinSprite(x + 8, y + 8);
-    var iconSize = Std.int(h - 16);
+    var icon:FunkinSprite = new FunkinSprite(x + 10, y + 10);
 
-    #if sys
-    if (mod != null)
+    var iconSize:Int = Std.int(h - 20);
+
+    if (mod == null)
     {
-      var iconPath:String = 'mods/${mod.dirName}/_polymod_icon.png';
-
-      if (sys.FileSystem.exists(iconPath))
-      {
-        icon.loadGraphic(iconPath);
-        icon.setGraphicSize(iconSize, iconSize);
-        icon.updateHitbox();
-      }
-      else
-      {
-        icon.makeGraphic(iconSize, iconSize, 0xFFFFE55C);
-      }
+      icon.loadGraphic(Paths.image("modmenu/base-icon"));
     }
     else
     {
-      // BASE GAME ainda não possui caminho de imagem definido.
-      icon.makeGraphic(iconSize, iconSize, 0xFFFFE55C);
+      icon.loadGraphic(ModMenuUtils.getModIcon(mod));
     }
-    #else
-    icon.makeGraphic(iconSize, iconSize, 0xFFFFE55C);
-    #end
 
+    icon.setGraphicSize(iconSize, iconSize);
+    icon.updateHitbox();
     group.add(icon);
 
-    var modTitle = mod != null ? mod.title : 'BASE GAME';
-    var modDesc = mod != null ? (Reflect.field(mod, 'description') ?? '') : 'Default game content';
+    var modTitle:String = mod != null ? mod.title : "BASE GAME";
 
-    var titleText = new FlxText(x + iconSize + 20, y + 10, w - iconSize - 30, modTitle, 22);
+    var titleText:FlxText = new FlxText(x + iconSize + 25, y + 12, w - iconSize - 35, modTitle, 22);
 
-    titleText.setFormat(vcrFont, 22, FlxColor.WHITE, "left");
+    titleText.setFormat(Paths.font("FunkinLingLong.otf"), 22, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+
     group.add(titleText);
 
-    var descText = new FlxText(x + iconSize + 20, y + 38, w - iconSize - 30, modDesc, 16);
+    var description:String;
 
-    descText.setFormat(vcrFont, 16, 0xFFAAAAAA, "left");
+    if (mod == null)
+    {
+      description = "Default game content";
+    }
+    else
+    {
+      var value:Dynamic = Reflect.field(mod, "description");
+      description = value != null ? Std.string(value) : "";
+    }
+
+    var descText:FlxText = new FlxText(x + iconSize + 25, y + 42, w - iconSize - 35, description, 15);
+
+    descText.setFormat(Paths.font("FunkinLingLong.otf"), 15, 0xFFCCCCCC, LEFT);
+
     group.add(descText);
   }
 
-  public override function update(elapsed:Float):Void
+  override public function update(elapsed:Float):Void
   {
     super.update(elapsed);
+
+    if (transitioning) return;
 
     if (focusRow == 0)
     {
       updateListNavigation();
     }
 
-    // TAB alterna entre lista de mods / OPEN MOD FOLDER / DONE
     if (FlxG.keys.justPressed.TAB)
     {
-      focusRow = (focusRow + 1) % 3;
+      focusRow++;
+
+      if (focusRow > 2)
+      {
+        focusRow = 0;
+      }
+
       refreshFocusVisuals();
     }
 
@@ -230,15 +299,13 @@ class ModMenuState extends MusicBeatState
 
     if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE)
     {
-      FlxG.switchState(() -> new MainMenuState());
+      leaveMenu();
     }
   }
 
   function updateListNavigation():Void
   {
-    var leftRight = FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.A || FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.D;
-
-    if (leftRight)
+    if (FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.A || FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.D)
     {
       currentColumn = currentColumn == 0 ? 1 : 0;
       refreshVisuals();
@@ -252,7 +319,6 @@ class ModMenuState extends MusicBeatState
       }
       else
       {
-        // ENABLED tem BASE GAME no índice 0.
         enabledIndex = clampIndex(enabledIndex + 1, enabledMods.length);
       }
 
@@ -274,17 +340,6 @@ class ModMenuState extends MusicBeatState
     }
   }
 
-  function clampIndex(value:Int, max:Int):Int
-  {
-    if (max < 0) return 0;
-
-    if (value < 0) return 0;
-
-    if (value > max) return max;
-
-    return value;
-  }
-
   function confirmFocus():Void
   {
     switch (focusRow)
@@ -296,52 +351,61 @@ class ModMenuState extends MusicBeatState
         openModFolder();
 
       case 2:
-        FlxG.switchState(() -> new MainMenuState());
+        leaveMenu();
     }
   }
 
   function toggleSelectedMod():Void
   {
-    var enabledDirs:Array<String> = Save.instance.enabledModDirs.value;
-
     if (currentColumn == 0)
     {
-      // DISABLED -> ENABLED
       if (disabledMods.length == 0) return;
 
-      if (disabledIndex < 0 || disabledIndex >= disabledMods.length) return;
-
-      var mod = disabledMods[disabledIndex];
-
-      if (enabledDirs.indexOf(mod.dirName) == -1)
+      if (disabledIndex < 0 || disabledIndex >= disabledMods.length)
       {
-        enabledDirs.push(mod.dirName);
+        return;
       }
 
-      Save.instance.enabledModDirs.value = enabledDirs;
+      var mod:ModMetadata = disabledMods[disabledIndex];
 
+      ModMenuUtils.toggleMod(mod);
       loadModLists();
 
-      disabledIndex = clampIndex(disabledIndex, disabledMods.length - 1);
+      enabledIndex = enabledMods.indexOf(mod);
 
-      enabledIndex = clampIndex(enabledIndex, enabledMods.length);
+      if (enabledIndex < 0)
+      {
+        enabledIndex = 0;
+      }
+      else
+      {
+        enabledIndex++;
+      }
+
+      disabledIndex = clampIndex(disabledIndex, disabledMods.length - 1);
     }
     else
     {
-      // BASE GAME não pode ser desativado.
       if (enabledIndex == 0) return;
 
-      if (enabledMods.length == 0) return;
+      var modIndex:Int = enabledIndex - 1;
 
-      var mod = enabledMods[enabledIndex - 1];
+      if (modIndex < 0 || modIndex >= enabledMods.length)
+      {
+        return;
+      }
 
-      enabledDirs.remove(mod.dirName);
+      var mod:ModMetadata = enabledMods[modIndex];
 
-      Save.instance.enabledModDirs.value = enabledDirs;
-
+      ModMenuUtils.toggleMod(mod);
       loadModLists();
 
-      disabledIndex = clampIndex(disabledIndex, disabledMods.length - 1);
+      disabledIndex = disabledMods.indexOf(mod);
+
+      if (disabledIndex < 0)
+      {
+        disabledIndex = 0;
+      }
 
       enabledIndex = clampIndex(enabledIndex, enabledMods.length);
     }
@@ -351,18 +415,50 @@ class ModMenuState extends MusicBeatState
 
   function openModFolder():Void
   {
-    // essa porra aqui não funciona no Linux, mas no Windows abre a pasta de mods, urgente arrumar isso depois
-
     #if sys
-    Sys.command('explorer', ['mods']);
+    #if windows
+    Sys.command("explorer", [PolymodHandler.getModFolder()]);
+    #elseif linux
+    Sys.command("xdg-open", [PolymodHandler.getModFolder()]);
+    #elseif mac
+    Sys.command("open", [PolymodHandler.getModFolder()]);
+    #end
     #end
   }
 
   function refreshFocusVisuals():Void
   {
-    openFolderBtn.color = focusRow == 1 ? FlxColor.YELLOW : FlxColor.WHITE;
+    openFolderBtn.visible = focusRow != 1;
+    openFolderHighlighted.visible = focusRow == 1;
 
-    doneBtn.color = focusRow == 2 ? FlxColor.YELLOW : FlxColor.WHITE;
+    doneBtn.visible = focusRow != 2;
+    doneHighlighted.visible = focusRow == 2;
+  }
+
+  function leaveMenu():Void
+  {
+    if (transitioning) return;
+
+    transitioning = true;
+
+    if (FlxG.sound.music != null)
+    {
+      FlxG.sound.music.fadeOut(0.5, 0.0);
+    }
+
+    new FlxTimer().start(2.5, function(timer:FlxTimer)
+    {
+      openSubState(new ModLoadingSubState(new MainMenuState()));
+    });
+  }
+
+  function clampIndex(value:Int, max:Int):Int
+  {
+    if (max < 0) return 0;
+    if (value < 0) return 0;
+    if (value > max) return max;
+
+    return value;
   }
   #end
 }
