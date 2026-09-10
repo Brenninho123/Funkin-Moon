@@ -38,7 +38,7 @@ class Constants
 
   static function get_BUILD_NUMBER():String
   {
-    return #if (BUILD_NUMBER) BUILD_NUMBER #else '146' #end;
+    return #if (BUILD_NUMBER) BUILD_NUMBER #else '174' #end;
   }
 
   /**
