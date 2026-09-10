@@ -2,6 +2,7 @@ package funkin.ui;
 
 import funkin.modding.IScriptedClass.IEventHandler;
 import funkin.ui.mainmenu.MainMenuState;
+import funkin.ui.mods.transition.ModLoadingSubState;
 import flixel.FlxSubState;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.text.FlxText;
@@ -35,9 +36,7 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
   public var leftWatermarkText:Null<FlxText> = null;
   public var rightWatermarkText:Null<FlxText> = null;
   public var conductorInUse(get, set):Conductor;
-
   public var moduleErrorCount(default, null):Int = 0;
-
   public var onModuleError:FlxTypedSignal<Dynamic->Void> = new FlxTypedSignal<Dynamic->Void>();
 
   var _conductorInUse:Null<Conductor>;
@@ -89,8 +88,7 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     return cam;
   }
 
-  public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
-      ?colorsOverride:Array<FlxColor>):Void
+  public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>, ?colorsOverride:Array<FlxColor>):Void
   {
     removeHitbox();
 
@@ -114,8 +112,8 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
     hitbox = null;
   }
 
-  public function addBackButton(?xPos:Float = 0, ?yPos:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void = null,
-      ?restOpacity:Float = 0.3, ?instant:Bool = false):Void
+  public function addBackButton(?xPos:Float = 0, ?yPos:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->
+    Void = null, ?restOpacity:Float = 0.3, ?instant:Bool = false):Void
   {
     removeBackButton();
 
@@ -188,6 +186,13 @@ class MusicBeatState extends FlxTransitionableState implements IEventHandler
       FlxG.switchState(() -> new MainMenuState());
       WindowUtil.setWindowTitle('Friday Night Funkin\'');
     }
+    #if FEATURE_MOD_LOADING
+    if (controls.RESET)
+    {
+      openSubState(new ModLoadingSubState(this));
+      return;
+    }
+    #end
   }
 
   override function update(elapsed:Float)
