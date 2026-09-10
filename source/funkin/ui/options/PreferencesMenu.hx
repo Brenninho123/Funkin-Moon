@@ -191,10 +191,15 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       },
       Preferences.flashingLights
     );
-    createPrefItemCheckbox('Camera Movement (WIP)', 'When enabled, the camera nudges slightly in the direction of the note you hit.', function(value:Bool):Void
-    {
-      Preferences.cameraMovement = value;
-    }, Preferences.cameraMovement);
+    createPrefItemCheckbox(
+      'Camera Movement (WIP)',
+      'When enabled, the camera nudges slightly in the direction of the note you hit. Report Bugs or change tips by creating an issue on our GitHub',
+      function(value:Bool):Void
+      {
+        Preferences.cameraMovement = value;
+      },
+      Preferences.cameraMovement
+    );
     #if (FEATURE_3D_RENDERING || FEATURE_AWAY3D)
     createPrefItemCheckbox('3D Mode', 'When enabled, supported stages and menus render with 3D backgrounds instead of flat 2D art.', function(value:Bool):Void
     {
