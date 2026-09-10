@@ -553,8 +553,13 @@ class PolymodHandler
 
     refreshModCache();
 
-    // Load only the mods enabled in the ModMenu.
+    #if FEATURE_MOD_MENU
+    // Load only the mods enabled in the Mod Menu.
     funkin.modding.PolymodHandler.loadEnabledMods();
+    #else
+    // The Mod Menu is disabled, so load all mods normally.
+    funkin.modding.PolymodHandler.loadAllMods();
+    #end
 
     SongEventRegistry.loadEventCache();
     SongRegistry.instance.loadEntries();

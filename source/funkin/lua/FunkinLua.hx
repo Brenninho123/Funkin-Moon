@@ -10,6 +10,8 @@ import funkin.ui.system.FunkinCosmic;
 import flixel.FlxG;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
+import funkin.util.WindowUtil;
+import funkin.Paths;
 
 typedef LuaState = cpp.RawPointer<Lua_State>;
 
@@ -24,16 +26,27 @@ class FunkinLua
   public var errorCount(default, null):Int = 0;
 
   var luaTexts:Map<String, FlxText> = new Map();
+  var currentFunction:String = '';
 
   public function new(scriptPath:String)
   {
     scriptName = scriptPath;
+
+    trace('[FunkinLua] Criando LuaState -> $scriptName');
 
     lua = LuaL.newstate();
 
     if (lua == null)
     {
       FlxG.log.error('FunkinLua: Could not create a Lua state for $scriptName');
+      Sys.println('[FunkinLua] ERRO: Não foi possível criar LuaState para $scriptName');
+
+      WindowUtil.showError(
+        'Lua Initialization Error',
+        'Could not initialize the Lua interpreter.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'The Lua state could not be created.\n' +
+        'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon'
+      );
+
       closed = true;
       return;
     }
@@ -45,10 +58,24 @@ class FunkinLua
 
     lastCalledScript = this;
 
-    if (LuaL.dofile(lua, scriptPath) != 0)
+    trace('[FunkinLua] Executando arquivo Lua -> $scriptName');
+
+    var result:Int = LuaL.dofile(lua, scriptPath);
+
+    trace('[FunkinLua] dofile retornou: $result -> $scriptName');
+
+    if (result != 0)
     {
-      reportError();
+      trace('[FunkinLua] (ERROR) NO DOFILE -> $scriptName');
+
+      reportLoadError();
       destroy();
+    }
+    else
+    {
+      trace('[FunkinLua] LUA CARREGADO COM SUCESSO -> $scriptName');
+
+      Sys.println('[FunkinLua] LUA CARREGADO COM SUCESSO: $scriptName');
     }
   }
 
@@ -128,8 +155,8 @@ class FunkinLua
 
     Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
     Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
-
     Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
+
     Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
 
     Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
@@ -214,9 +241,19 @@ class FunkinLua
 
   public function call(funcName:String, args:Array<Dynamic> = null):Dynamic
   {
-    if (closed) return null;
+    if (closed)
+    {
+      trace('[FunkinLua] Script FECHADO -> $scriptName');
+      return null;
+    }
+
+    currentFunction = funcName;
 
     if (args == null) args = [];
+
+    trace('[FunkinLua] Tentando chamar "$funcName" em $scriptName');
+
+    Sys.println('[FunkinLua] Chamando "$funcName" -> $scriptName');
 
     lastCalledScript = this;
 
@@ -224,9 +261,15 @@ class FunkinLua
 
     if (Lua.isfunction(lua, -1) != 1)
     {
+      trace('[FunkinLua] "$funcName" NÃO existe em $scriptName');
+
+      Sys.println('[FunkinLua] FUNÇÃO NÃO ENCONTRADA: "$funcName" -> $scriptName');
+
       Lua.pop(lua, 1);
       return null;
     }
+
+    trace('[FunkinLua] "$funcName" encontrada em $scriptName');
 
     for (arg in args)
     {
@@ -241,8 +284,29 @@ class FunkinLua
     }
 
     var result:Dynamic = pullValue(-1);
+    Lua.pop(lua, 1);
+
+    return result;
+
+    if (Lua.pcall(lua, args.length, 1, 0) != 0)
+    {
+      trace('[FunkinLua] ERRO ao executar "$funcName" em $scriptName');
+
+      Sys.println('[FunkinLua] ERRO AO EXECUTAR "$funcName" -> $scriptName');
+
+      reportError();
+
+      Lua.pop(lua, 1);
+      return null;
+    }
+
+    var result:Dynamic = pullValue(-1);
 
     Lua.pop(lua, 1);
+
+    trace('[FunkinLua] "$funcName" executado com sucesso em $scriptName');
+
+    Sys.println('[FunkinLua] "$funcName" EXECUTADO COM SUCESSO -> $scriptName');
 
     return result;
   }
@@ -296,11 +360,20 @@ class FunkinLua
   {
     var luaType:Int = Lua.type(lua, index);
 
-    if (luaType == Lua.TBOOLEAN) return Lua.toboolean(lua, index) != 0;
+    if (luaType == Lua.TBOOLEAN)
+    {
+      return Lua.toboolean(lua, index) != 0;
+    }
 
-    if (luaType == Lua.TNUMBER) return (Lua.tonumber(lua, index) : Float);
+    if (luaType == Lua.TNUMBER)
+    {
+      return (Lua.tonumber(lua, index) : Float);
+    }
 
-    if (luaType == Lua.TSTRING) return (Lua.tostring(lua, index) : String);
+    if (luaType == Lua.TSTRING)
+    {
+      return (Lua.tostring(lua, index) : String);
+    }
 
     if (luaType == Lua.TTABLE)
     {
@@ -328,9 +401,83 @@ class FunkinLua
   {
     errorCount++;
 
-    var message:String = (Lua.tostring(lua, -1) : String);
+    var message:String = 'Unknown Lua error';
+
+    if (lua != null)
+    {
+      var rawMessage:Dynamic = Lua.tostring(lua, -1);
+
+      if (rawMessage != null)
+      {
+        message = Std.string(rawMessage);
+      }
+    }
 
     FlxG.log.error('[$scriptName] $message');
+
+    Sys.println('');
+    Sys.println('============================================================');
+    Sys.println('                    LUA SCRIPT ERROR');
+    Sys.println('============================================================');
+    Sys.println('');
+    Sys.println('Script:');
+    Sys.println('  $scriptName');
+    Sys.println('');
+    Sys.println('Error:');
+    Sys.println('  $message');
+    Sys.println('');
+    Sys.println('Error count: $errorCount');
+    Sys.println('');
+    Sys.println('============================================================');
+    Sys.println('');
+
+    var errorMessage:String =
+      'Script: $scriptName\n\n'
+      + 'Function: $currentFunction\n\n'
+      + 'Error:\n$message\n\n'
+      + 'Report bugs or share suggestions by creating an issue on our GitHub:\n'
+      + 'https://github.com/Brenninho123/Funkin-Moon';
+
+    WindowUtil.showError('Lua Script Error', errorMessage);
+  }
+
+  public function reportLoadError():Void
+  {
+    errorCount++;
+
+    var message:String = 'Unknown Lua load error';
+
+    if (lua != null)
+    {
+      var rawMessage:Dynamic = Lua.tostring(lua, -1);
+
+      if (rawMessage != null)
+      {
+        message = Std.string(rawMessage);
+      }
+    }
+
+    FlxG.log.error('[$scriptName] $message');
+
+    Sys.println('');
+    Sys.println('============================================================');
+    Sys.println('                    LUA SCRIPT LOAD ERROR');
+    Sys.println('============================================================');
+    Sys.println('');
+    Sys.println('Script:');
+    Sys.println('  $scriptName');
+    Sys.println('');
+    Sys.println('Error:');
+    Sys.println('  $message');
+    Sys.println('');
+    Sys.println('============================================================');
+    Sys.println('');
+
+    WindowUtil.showError(
+      'Lua Script Load Error',
+      'Failed to load the Lua script.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'Error:\n' + '$message\n\n' +
+      'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon'
+    );
   }
 
   function destroyLuaTexts():Void
@@ -362,6 +509,14 @@ class FunkinLua
     closed = true;
   }
 
+  /**
+   * Returns whether a keyboard key was just pressed this frame.
+   *
+   * Lua:
+   *   if keyJustPressed("C") then
+   *     ...
+   *   end
+   */
   static function cb_keyJustPressed(l:LuaState):Int
   {
     return keyStateCallback(l, function(name) return resolveKeyState(FlxG.keys.justPressed, name));
@@ -725,7 +880,14 @@ class FunkinLua
 
   static function cb_debugPrint(l:LuaState):Int
   {
-    return logCallback(l, function(message:Dynamic):Void FlxG.log.add(message));
+    return logCallback(l, function(message:Dynamic):Void
+    {
+      FlxG.log.add(message);
+
+      var scriptName:String = 'Unknown';
+      if (lastCalledScript != null) scriptName = lastCalledScript.scriptName;
+      Sys.println('[Lua:$scriptName] $message');
+    });
   }
 
   static function cb_logWarn(l:LuaState):Int
@@ -746,7 +908,7 @@ class FunkinLua
 
     for (i in 1...n + 1)
     {
-      message += (Lua.tostring(l, i) : String);
+      message += Std.string(Lua.tostring(l, i));
 
       if (i < n) message += '\t';
     }
@@ -824,7 +986,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.health = value;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.health = value;
+    }
 
     return 0;
   }
@@ -837,7 +1002,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.health += amount;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.health += amount;
+    }
 
     return 0;
   }
@@ -871,7 +1039,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.songScore += amount;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.songScore += amount;
+    }
 
     return 0;
   }
@@ -930,12 +1101,18 @@ class FunkinLua
 
     var value:Int = tallies == null ? 0 : switch (judgement.toLowerCase())
     {
-      case 'sick': tallies.sick;
-      case 'good': tallies.good;
-      case 'bad': tallies.bad;
-      case 'shit': tallies.shit;
-      case 'missed': tallies.missed;
-      default: 0;
+      case 'sick':
+        tallies.sick;
+      case 'good':
+        tallies.good;
+      case 'bad':
+        tallies.bad;
+      case 'shit':
+        tallies.shit;
+      case 'missed':
+        tallies.missed;
+      default:
+        0;
     };
 
     Lua.pushnumber(l, value);
@@ -1072,7 +1249,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (lastCalledScript == null || !sharedVariables.exists(name)) return 0;
+    if (lastCalledScript == null || !sharedVariables.exists(name))
+    {
+      return 0;
+    }
 
     lastCalledScript.pushValue(sharedVariables.get(name));
 
@@ -1166,14 +1346,22 @@ class FunkinLua
 
     var direction:Null<funkin.play.notes.NoteDirection> = switch (directionStr.toLowerCase())
     {
-      case 'left': LEFT;
-      case 'down': DOWN;
-      case 'up': UP;
-      case 'right': RIGHT;
-      default: null;
+      case 'left':
+        LEFT;
+      case 'down':
+        DOWN;
+      case 'up':
+        UP;
+      case 'right':
+        RIGHT;
+      default:
+        null;
     };
 
-    if (direction == null || PlayState.instance == null) return 0;
+    if (direction == null || PlayState.instance == null)
+    {
+      return 0;
+    }
     @:privateAccess
     if (PlayState.instance.camMovement != null)
     {
@@ -1286,7 +1474,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (PlayState.instance?.camGame != null) PlayState.instance.camGame.zoom = value;
+    if (PlayState.instance?.camGame != null)
+    {
+      PlayState.instance.camGame.zoom = value;
+    }
 
     return 0;
   }
@@ -1299,7 +1490,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (FlxG.sound.music != null) FlxG.sound.music.volume = value;
+    if (FlxG.sound.music != null)
+    {
+      FlxG.sound.music.volume = value;
+    }
 
     return 0;
   }
@@ -1326,7 +1520,10 @@ class FunkinLua
 
     Lua.pop(l, n);
 
-    if (funcName == '' || lastCalledScript == null) return 0;
+    if (funcName == '' || lastCalledScript == null)
+    {
+      return 0;
+    }
 
     var script:FunkinLua = lastCalledScript;
 
@@ -1383,12 +1580,18 @@ class FunkinLua
 
     var tier:Null<funkin.lowend.FunkinLow.FunkinQualityTier> = switch (tierName.toLowerCase())
     {
-      case 'ultra': Ultra;
-      case 'high': High;
-      case 'medium': Medium;
-      case 'low': Low;
-      case 'potato': Potato;
-      default: null;
+      case 'ultra':
+        Ultra;
+      case 'high':
+        High;
+      case 'medium':
+        Medium;
+      case 'low':
+        Low;
+      case 'potato':
+        Potato;
+      default:
+        null;
     };
 
     if (tier != null) FunkinLow.forceTier(tier);
@@ -1415,9 +1618,12 @@ class FunkinLua
 
     var cost:funkin.lowend.FunkinLow.FunkinLowCost = switch (costName.toLowerCase())
     {
-      case 'low': LOW;
-      case 'high': HIGH;
-      default: NORMAL;
+      case 'low':
+        LOW;
+      case 'high':
+        HIGH;
+      default:
+        NORMAL;
     };
 
     Lua.pushboolean(l, FunkinLow.shouldSkipEffect(cost) ? 1 : 0);
