@@ -8,7 +8,6 @@ import flixel.input.actions.FlxActionSet;
 import flixel.input.gamepad.FlxGamepadInputID;
 import flixel.input.keyboard.FlxKey;
 import flixel.math.FlxPoint;
-import flixel.util.FlxSignal.FlxTypedSignal;
 
 class Controls extends FlxActionSet
 {
@@ -52,11 +51,6 @@ class Controls extends FlxActionSet
 
   public var gamepadsAdded:Array<Int> = [];
   public var keyboardScheme = KeyboardScheme.None;
-  public var onDeviceChanged:FlxTypedSignal<FlxInputDevice->Void> = new FlxTypedSignal<FlxInputDevice->Void>();
-
-  var pressBuffer:Map<String, Float> = new Map();
-  var holdStartTimes:Map<String, Float> = new Map();
-
   public var UI_UP(get, never):Bool;
 
   inline function get_UI_UP():Bool
@@ -476,13 +470,6 @@ class Controls extends FlxActionSet
     if (scheme == null) scheme = None;
 
     setKeyboardScheme(scheme, false);
-
-    FunkinAction.onDeviceChanged.add(onDeviceChangedInternal);
-  }
-
-  function onDeviceChangedInternal(device:FlxInputDevice):Void
-  {
-    onDeviceChanged.dispatch(device);
   }
 
   override function update():Void
@@ -500,53 +487,6 @@ class Controls extends FlxActionSet
     var result:Bool = gamepadOnly ? action.checkFiltered(trigger, GAMEPAD) : action.checkFiltered(trigger);
     if (result) action.updateLastDeviceUsed();
     return result;
-  }
-
-  public function checkBuffered(name:Action, windowMs:Float):Bool
-  {
-    var action = byName.get(name);
-    if (action == null) return false;
-
-    var now:Float = haxe.Timer.stamp() * 1000;
-
-    if (action.checkFiltered(JUST_PRESSED))
-    {
-      pressBuffer.set(name, now);
-    }
-
-    var bufferedAt:Null<Float> = pressBuffer.get(name);
-    if (bufferedAt == null) return false;
-
-    return (now - bufferedAt) <= windowMs;
-  }
-
-  public function consumeBuffered(name:Action):Void
-  {
-    pressBuffer.remove(name);
-  }
-
-  public function getHoldDuration(name:Action):Float
-  {
-    var action = byName.get(name);
-    if (action == null) return 0;
-
-    var now:Float = haxe.Timer.stamp() * 1000;
-
-    if (action.checkFiltered(JUST_PRESSED))
-    {
-      holdStartTimes.set(name, now);
-    }
-
-    if (!action.checkFiltered(PRESSED))
-    {
-      holdStartTimes.remove(name);
-      return 0;
-    }
-
-    var startTime:Null<Float> = holdStartTimes.get(name);
-    if (startTime == null) return 0;
-
-    return now - startTime;
   }
 
   public function getKeysForAction(name:Action):Array<FlxKey>
@@ -881,98 +821,6 @@ class Controls extends FlxActionSet
     {
       addButtons(action, [toAdd], state, deviceID);
     }
-  }
-
-  public function findKeyConflicts(control:Control, key:FlxKey):Array<Control>
-  {
-    return findConflicts(control, Keys, key);
-  }
-
-  public function findButtonConflicts(control:Control, gamepadID:Int, button:FlxGamepadInputID):Array<Control>
-  {
-    return findConflicts(control, Gamepad(gamepadID), button);
-  }
-
-  function findConflicts(control:Control, device:Device, inputId:Int):Array<Control>
-  {
-    var conflicts:Array<Control> = [];
-
-    for (candidateControl in Control.createAll())
-    {
-      if (candidateControl == control) continue;
-
-      var candidateAction:FlxActionDigital = getActionFromControl(candidateControl);
-
-      for (input in candidateAction.inputs)
-      {
-        if (isDevice(input, device) && input.inputID == inputId)
-        {
-          conflicts.push(candidateControl);
-          break;
-        }
-      }
-    }
-
-    return conflicts;
-  }
-
-  public function rebindKeySafe(control:Control, newKey:FlxKey, oldKey:FlxKey, allowConflicts:Bool = false):Array<Control>
-  {
-    var conflicts:Array<Control> = findKeyConflicts(control, newKey);
-
-    if (conflicts.length > 0 && !allowConflicts)
-    {
-      return conflicts;
-    }
-
-    if (!allowConflicts)
-    {
-      for (conflictingControl in conflicts)
-      {
-        forEachBound(conflictingControl, function(action, state) removeKeys(action, [newKey]));
-      }
-    }
-
-    replaceBinding(control, Keys, newKey, oldKey);
-
-    return [];
-  }
-
-  public function rumble(gamepadID:Int, duration:Float, intensity:Float):Void
-  {
-    var pad = FlxG.gamepads.getByID(gamepadID);
-    if (pad == null) return;
-
-    try
-    {
-      pad.vibrationRumble(intensity, intensity, duration);
-    }
-    catch (e:Dynamic) {}
-  }
-
-  public function handleGamepadConnected(gamepadID:Int):Void
-  {
-    if (gamepadsAdded.indexOf(gamepadID) == -1)
-    {
-      addDefaultGamepad(gamepadID);
-    }
-  }
-
-  public function handleGamepadDisconnected(gamepadID:Int):Void
-  {
-    removeGamepad(gamepadID);
-  }
-
-  public function getAllBindingsSummary():Map<Control, {keys:Array<FlxKey>, buttons:Array<FlxGamepadInputID>}>
-  {
-    var summary:Map<Control, {keys:Array<FlxKey>, buttons:Array<FlxGamepadInputID>}> = new Map();
-
-    for (control in Control.createAll())
-    {
-      summary.set(control, {keys: getKeysForAction(control), buttons: getButtonsForAction(control)});
-    }
-
-    return summary;
   }
 
   public function copyFrom(controls:Controls, ?device:Device):Void
@@ -1749,32 +1597,22 @@ class FunkinAction extends FlxActionDigital
   }
 
   public static var lastDeviceUsed:FlxInputDevice;
-  public static var onDeviceChanged:FlxTypedSignal<FlxInputDevice->Void> = new FlxTypedSignal<FlxInputDevice->Void>();
 
   public function updateLastDeviceUsed()
   {
-    var previous:FlxInputDevice = lastDeviceUsed;
-    var next:FlxInputDevice;
-
     if (FlxG.keys.pressed.ANY)
     {
-      next = FlxInputDevice.KEYBOARD;
-    }
-    else if (FlxG.gamepads.lastActive != null)
-    {
-      next = FlxInputDevice.GAMEPAD;
-    }
-    else
-    {
-      next = FlxInputDevice.KEYBOARD;
+      lastDeviceUsed = FlxInputDevice.KEYBOARD;
+      return;
     }
 
-    lastDeviceUsed = next;
-
-    if (previous != next)
+    if (FlxG.gamepads.lastActive != null)
     {
-      onDeviceChanged.dispatch(next);
+      lastDeviceUsed = FlxInputDevice.GAMEPAD;
+      return;
     }
+
+    lastDeviceUsed = FlxInputDevice.KEYBOARD;
   }
 }
 
