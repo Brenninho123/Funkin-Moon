@@ -943,14 +943,9 @@ class Controls extends FlxActionSet
     var pad = FlxG.gamepads.getByID(gamepadID);
     if (pad == null) return;
 
-    var dynamicPad:Dynamic = pad;
-
     try
     {
-      if (Reflect.hasField(dynamicPad, 'rumble'))
-      {
-        Reflect.callMethod(dynamicPad, Reflect.field(dynamicPad, 'rumble'), [intensity, duration]);
-      }
+      pad.vibrationRumble(intensity, intensity, duration);
     }
     catch (e:Dynamic) {}
   }
@@ -974,17 +969,7 @@ class Controls extends FlxActionSet
 
     for (control in Control.createAll())
     {
-      var action:FlxActionDigital = getActionFromControl(control);
-      var keys:Array<FlxKey> = [];
-      var buttons:Array<FlxGamepadInputID> = [];
-
-      for (input in action.inputs)
-      {
-        if (input.device == KEYBOARD) keys.push(input.inputID);
-        if (input.device == GAMEPAD) buttons.push(input.inputID);
-      }
-
-      summary.set(control, {keys: keys, buttons: buttons});
+      summary.set(control, {keys: getKeysForAction(control), buttons: getButtonsForAction(control)});
     }
 
     return summary;
