@@ -237,15 +237,25 @@ class FunkinDebugDisplay extends Sprite
     fpsGraph.minValue = 0;
     addChild(fpsGraph);
 
-    frameTimeGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22), graphsWidth, graphsHeight,
-      color);
+    frameTimeGraph = new FunkinStatsGraph(
+      OTHERS_OFFSET,
+      Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22),
+      graphsWidth,
+      graphsHeight,
+      color
+    );
     frameTimeGraph.minValue = 0;
     addChild(frameTimeGraph);
 
     if (MemoryUtil.supportsGCMem())
     {
-      gcMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (frameTimeGraph.y + frameTimeGraph.axisHeight) + 22), graphsWidth,
-        graphsHeight, color);
+      gcMemGraph = new FunkinStatsGraph(
+        OTHERS_OFFSET,
+        Math.floor(OTHERS_OFFSET + (frameTimeGraph.y + frameTimeGraph.axisHeight) + 22),
+        graphsWidth,
+        graphsHeight,
+        color
+      );
       gcMemGraph.minValue = 0;
       addChild(gcMemGraph);
     }
@@ -270,11 +280,11 @@ class FunkinDebugDisplay extends Sprite
   {
     infoDisplay = new TextField();
     infoDisplay.x = OTHERS_OFFSET + ACCENT_BAR_WIDTH;
-    infoDisplay.y = OTHERS_OFFSET;
+    infoDisplay.y = OTHERS_OFFSET - 5;
     infoDisplay.width = 500;
     infoDisplay.selectable = false;
     infoDisplay.mouseEnabled = false;
-    infoDisplay.defaultTextFormat = new TextFormat('Montserrat', 12, color, false, false, false, null, null, TextFormatAlign.LEFT);
+    infoDisplay.defaultTextFormat = new TextFormat('FunkinLingLong', 12, color, false, false, false, null, null, TextFormatAlign.LEFT);
     infoDisplay.antiAliasType = NORMAL;
     infoDisplay.multiline = true;
     addChild(infoDisplay);

@@ -271,5 +271,19 @@
     "newBuildNumber": 174,
     "bumpLevel": "build-only",
     "timestamp": "2026-09-10T01:45:52.600381+00:00"
+  },
+  {
+    "moonVersion": "0.0.1",
+    "oldBuildNumber": 174,
+    "newBuildNumber": 175,
+    "bumpLevel": "build-only",
+    "timestamp": "2026-09-11T10:58:10.370248+00:00"
+  },
+  {
+    "moonVersion": "0.0.2",
+    "oldBuildNumber": 175,
+    "newBuildNumber": 176,
+    "bumpLevel": "build-only",
+    "timestamp": "2026-09-11T11:10:57.475358+00:00"
   }
 ]

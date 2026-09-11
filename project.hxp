@@ -17,9 +17,9 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.7";
 
-  static final BUILD_NUMBER:Int = 174;
+  static final BUILD_NUMBER:Int = 176;
 
-  static final MOON_VERSION:String = '0.0.1';
+  static final MOON_VERSION:String = '0.0.2';
 
   static final TITLE:String = "Friday Night Funkin': Moon Engine";
 
@@ -41,7 +41,7 @@ class Project extends HXProject
 
   static final MAIN_CLASS:String = "Main";
 
-  static final COMPANY:String = "The Funkin' Crew";
+  static final COMPANY:String = "The Squere' Team";
 
   static final LANGUAGES:Array<String> = ["en"];
 
@@ -455,8 +455,8 @@ class Project extends HXProject
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
     FEATURE_LUA_SCRIPTS.apply(this, true);
-    FEATURE_MOD_MENU.apply(this, false);
-    FEATURE_MOD_LOADING.apply(this, false);
+    FEATURE_MOD_MENU.apply(this, true);
+    FEATURE_MOD_LOADING.apply(this, true);
 
     FEATURE_VIDEO_PLAYBACK.apply(this, true);
 
@@ -512,7 +512,7 @@ class Project extends HXProject
 
     // Nem adianta ativar isso, o servidor ta offline.
     // Don't enable this, the server is offline.
-    FEATURE_ONLINE.apply(this, false);
+    FEATURE_ONLINE.apply(this, true);
     // FEATURE_ONLINE.apply(this, !isWeb());
 
     // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this

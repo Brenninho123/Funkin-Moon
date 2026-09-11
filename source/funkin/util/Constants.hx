@@ -28,7 +28,7 @@ class Constants
 
   static function get_MOON_VERSION():String
   {
-    return #if (MOON_VERSION) MOON_VERSION #else '0.0.1' #end;
+    return #if (MOON_VERSION) MOON_VERSION #else '0.0.2' #end;
   }
 
   /**
@@ -38,7 +38,7 @@ class Constants
 
   static function get_BUILD_NUMBER():String
   {
-    return #if (BUILD_NUMBER) BUILD_NUMBER #else '174' #end;
+    return #if (BUILD_NUMBER) BUILD_NUMBER #else '176' #end;
   }
 
   /**
