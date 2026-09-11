@@ -48,12 +48,12 @@ class Project extends HXProject
   /**
    * The game's name on mobile. Used as the title for the game on the home screen.
    */
-  static final TITLE_MOBILE:String = "FNF";
+  static final TITLE_MOBILE:String = "FNF: PlayTest";
 
   /**
    * A package name used for identifying the app on various app stores.
    */
-  static final PACKAGE_NAME:String = "me.funkin.fnf";
+  static final PACKAGE_NAME:String = "me.funkintest.fnf";
 
   /**
    * The name of the generated executable file.
