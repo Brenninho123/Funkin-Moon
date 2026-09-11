@@ -121,7 +121,6 @@ class ChartConverterEditor extends MusicBeatState
     inputArea.y = TAB_HEIGHT + 40;
     inputArea.width = Std.int(FlxG.width * 0.45);
     inputArea.height = 360;
-    inputArea.multiline = true;
     add(inputArea);
 
     var fieldsX:Float = 16;
@@ -186,8 +185,7 @@ class ChartConverterEditor extends MusicBeatState
     metadataOutput.y = TAB_HEIGHT + 40;
     metadataOutput.width = Std.int(FlxG.width * 0.24);
     metadataOutput.height = 360;
-    metadataOutput.multiline = true;
-    metadataOutput.readOnly = true;
+    metadataOutput.disabled = true;
     add(metadataOutput);
 
     var labelChart = new Label();
@@ -201,8 +199,7 @@ class ChartConverterEditor extends MusicBeatState
     chartOutput.y = TAB_HEIGHT + 40;
     chartOutput.width = Std.int(FlxG.width * 0.24);
     chartOutput.height = 360;
-    chartOutput.multiline = true;
-    chartOutput.readOnly = true;
+    chartOutput.disabled = true;
     add(chartOutput);
   }
 
@@ -347,7 +344,7 @@ class ChartConverterEditor extends MusicBeatState
     metadata.playData.characters.instrumental = '';
     metadata.playData.stage = stageName;
     metadata.playData.ratings = [difficultyName => 0];
-    cast(metadata, Dynamic).timeChanges = timeChanges;
+    (metadata : Dynamic).timeChanges = timeChanges;
 
     lastSongId = songName.trim().length == 0 ? 'converted-song' : songName;
     lastMetadataJson = Json.stringify(metadata, null, '  ');
