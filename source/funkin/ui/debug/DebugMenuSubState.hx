@@ -4,11 +4,13 @@ import flixel.math.FlxPoint;
 import flixel.FlxObject;
 import flixel.FlxSprite;
 import flixel.util.FlxColor;
+import flixel.input.mouse.FlxMouseEvent;
 import funkin.ui.MusicBeatSubState;
 import funkin.ui.FullScreenScaleMode;
 import funkin.audio.FunkinSound;
 import funkin.ui.TextMenuList;
 import funkin.ui.debug.charting.ChartEditorState;
+import funkin.ui.debug.converter.ChartConverterEditor;
 #if FEATURE_MUSIC_EDITOR
 import funkin.ui.debug.music.MusicEditorState;
 #end
@@ -25,10 +27,32 @@ import funkin.util.SwipeUtil;
 import funkin.util.HapticUtil;
 #end
 
+/**
+ * The two top-level categories shown in the debug menu's tab bar.
+ */
+enum DebugMenuTab
+{
+  Editors;
+  Converter;
+}
+
 class DebugMenuSubState extends MusicBeatSubState
 {
+  static inline var TAB_LABEL_EDITORS:String = 'Editors';
+  static inline var TAB_LABEL_CONVERTER:String = 'Converter';
+
+  static inline var INTRO_EDITORS:String = 'Tools for building and editing the game\'s content.';
+  static inline var INTRO_CONVERTER:String = 'Convert charts and assets from other formats into this engine\'s format.';
+
   var items:TextMenuList;
   var camFocusPoint:FlxObject;
+
+  var currentTab:DebugMenuTab = Editors;
+  var tabTextEditors:FlxText;
+  var tabTextConverter:FlxText;
+  var tabUnderline:FlxSprite;
+  var introText:FlxText;
+
   #if mobile
   var touchableItems:Array<
     {item:TextMenuItem, callback:Void->Void}> = [];
@@ -55,37 +79,21 @@ class DebugMenuSubState extends MusicBeatSubState
     menuBG.scrollFactor.set(0, 0);
     add(menuBG);
 
+    buildTabBar();
+
+    introText = new FlxText(0, 60, FlxG.width, '', 18);
+    introText.alignment = CENTER;
+    introText.color = 0xFFCCCCCC;
+    introText.scrollFactor.set(0, 0);
+    add(introText);
+
     items = new TextMenuList();
     items.onChange.add(onMenuChange);
     add(items);
 
     FlxTransitionableState.skipNextTransIn = true;
 
-    #if FEATURE_CHART_EDITOR
-    createItem("CHART EDITOR", openChartEditor);
-    #end
-    #if FEATURE_ANIMATION_EDITOR
-    createItem("ANIMATION EDITOR", openAnimationEditor);
-    #end
-    #if FEATURE_STAGE_EDITOR
-    createItem("STAGE EDITOR", openStageEditor);
-    #end
-    #if FEATURE_MUSIC_EDITOR
-    createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
-    #end
-
-    #if FEATURE_MOD_MENU
-    createItem("MOD MENU (WIP)", openModMenu);
-    #end
-
-    #if FEATURE_RESULTS_DEBUG
-    createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
-    #end
-    #if sys
-    createItem("OPEN CRASH LOG FOLDER", openLogFolder);
-    #end
-    onMenuChange(items.members[0]);
-    FlxG.camera.focusOn(new FlxPoint(camFocusPoint.x, camFocusPoint.y + 500));
+    rebuildItems();
 
     #if FEATURE_HAXEUI
     haxe.ui.Toolkit.styleSheet.clear("user");
@@ -99,11 +107,139 @@ class DebugMenuSubState extends MusicBeatSubState
       FunkinSound.playOnce(Paths.sound('cancelMenu'));
     });
 
-    mobileHint = new FlxText(0, FlxG.height - 40, FlxG.width, 'Tap an option to select it - swipe down to go back', 16);
+    mobileHint = new FlxText(0, FlxG.height - 40, FlxG.width, 'Tap a tab to switch category - tap an option to select it - swipe down to go back', 16);
     mobileHint.alignment = CENTER;
     mobileHint.color = 0xFFAAAAAA;
     mobileHint.scrollFactor.set(0, 0);
     add(mobileHint);
+    #end
+  }
+
+  /**
+   * Builds the "Editors | Converter" tab bar at the top of the screen and wires up
+   * mouse clicks so desktop users can switch tabs without touching the keyboard.
+   */
+  function buildTabBar():Void
+  {
+    tabTextEditors = new FlxText(0, 12, 0, TAB_LABEL_EDITORS, 24);
+    tabTextEditors.scrollFactor.set(0, 0);
+    add(tabTextEditors);
+
+    tabTextConverter = new FlxText(0, 12, 0, TAB_LABEL_CONVERTER, 24);
+    tabTextConverter.scrollFactor.set(0, 0);
+    add(tabTextConverter);
+
+    var totalWidth:Float = tabTextEditors.width + 40 + tabTextConverter.width;
+    var startX:Float = (FlxG.width - totalWidth) / 2;
+    tabTextEditors.x = startX;
+    tabTextConverter.x = startX + tabTextEditors.width + 40;
+
+    tabUnderline = new FlxSprite().makeGraphic(10, 3, FlxColor.WHITE);
+    tabUnderline.scrollFactor.set(0, 0);
+    add(tabUnderline);
+
+    FlxMouseEvent.add(tabTextEditors, (_) -> switchTab(Editors));
+    FlxMouseEvent.add(tabTextConverter, (_) -> switchTab(Converter));
+
+    updateTabVisuals();
+  }
+
+  /**
+   * Recolors the tab labels and moves the underline sprite to match `currentTab`.
+   */
+  function updateTabVisuals():Void
+  {
+    var activeColor:FlxColor = FlxColor.WHITE;
+    var inactiveColor:FlxColor = 0xFF888888;
+
+    tabTextEditors.color = (currentTab == Editors) ? activeColor : inactiveColor;
+    tabTextConverter.color = (currentTab == Converter) ? activeColor : inactiveColor;
+
+    var activeTab:FlxText = (currentTab == Editors) ? tabTextEditors : tabTextConverter;
+    tabUnderline.setGraphicSize(Std.int(activeTab.width), 3);
+    tabUnderline.updateHitbox();
+    tabUnderline.x = activeTab.x;
+    tabUnderline.y = activeTab.y + activeTab.height + 4;
+
+    introText.text = (currentTab == Editors) ? INTRO_EDITORS : INTRO_CONVERTER;
+  }
+
+  /**
+   * Switches to the given tab (if it isn't already active), rebuilding the item list
+   * to show only the options that belong to that category.
+   */
+  function switchTab(newTab:DebugMenuTab):Void
+  {
+    if (currentTab == newTab) return;
+
+    currentTab = newTab;
+    FunkinSound.playOnce(Paths.sound('confirmMenu'));
+
+    updateTabVisuals();
+    rebuildItems();
+  }
+
+  /**
+   * Tears down the current `TextMenuList` and builds a fresh one populated with only
+   * the entries that belong to `currentTab`.
+   */
+  function rebuildItems():Void
+  {
+    remove(items);
+    items.destroy();
+
+    #if mobile
+    touchableItems = [];
+    #end
+
+    items = new TextMenuList();
+    items.onChange.add(onMenuChange);
+    add(items);
+
+    switch (currentTab)
+    {
+      case Editors:
+        buildEditorsTab();
+      case Converter:
+        buildConverterTab();
+    }
+
+    if (items.members.length > 0)
+    {
+      onMenuChange(items.members[0]);
+      FlxG.camera.focusOn(new FlxPoint(camFocusPoint.x, camFocusPoint.y + 500));
+    }
+  }
+
+  function buildEditorsTab():Void
+  {
+    #if FEATURE_CHART_EDITOR
+    createItem("CHART EDITOR", openChartEditor);
+    #end
+    #if FEATURE_ANIMATION_EDITOR
+    createItem("ANIMATION EDITOR", openAnimationEditor);
+    #end
+    #if FEATURE_STAGE_EDITOR
+    createItem("STAGE EDITOR", openStageEditor);
+    #end
+    #if FEATURE_MUSIC_EDITOR
+    createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
+    #end
+    #if FEATURE_MOD_MENU
+    createItem("MOD MENU (WIP)", openModMenu);
+    #end
+    #if FEATURE_RESULTS_DEBUG
+    createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
+    #end
+    #if sys
+    createItem("OPEN CRASH LOG FOLDER", openLogFolder);
+    #end
+  }
+
+  function buildConverterTab():Void
+  {
+    #if FEATURE_CHART_EDITOR
+    createItem("CHART CONVERTER", openChartConverter);
     #end
   }
 
@@ -139,6 +275,11 @@ class DebugMenuSubState extends MusicBeatSubState
     handleTouchInput();
     #end
 
+    if (controls.UI_LEFT_P || controls.UI_RIGHT_P)
+    {
+      switchTab(currentTab == Editors ? Converter : Editors);
+    }
+
     if (controls.BACK_P)
     {
       FunkinSound.playOnce(Paths.sound('cancelMenu'));
@@ -151,6 +292,18 @@ class DebugMenuSubState extends MusicBeatSubState
   {
     if (TouchUtil.justPressed && !ControlsHandler.usingExternalInputDevice)
     {
+      if (TouchUtil.overlaps(tabTextEditors, FlxG.camera))
+      {
+        switchTab(Editors);
+        return;
+      }
+
+      if (TouchUtil.overlaps(tabTextConverter, FlxG.camera))
+      {
+        switchTab(Converter);
+        return;
+      }
+
       for (entry in touchableItems)
       {
         if (TouchUtil.overlaps(entry.item, FlxG.camera))
@@ -222,6 +375,11 @@ class DebugMenuSubState extends MusicBeatSubState
   function openChartEditor():Void
   {
     switchToState(() -> new ChartEditorState());
+  }
+
+  function openChartConverter():Void
+  {
+    switchToState(() -> new ChartConverterEditor());
   }
   #end
 
