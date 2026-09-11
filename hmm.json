@@ -184,8 +184,10 @@
     },
     {
       "name": "hxp",
-      "type": "haxelib",
-      "version": "1.3.0"
+      "type": "git",
+      "dir": null,
+      "ref": "master",
+      "url": "https://github.com/openfl/hxp"
     },
     {
       "name": "hxvlc",
