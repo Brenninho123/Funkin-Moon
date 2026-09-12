@@ -129,10 +129,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK_PATH=$(find export/release/android -maxdepth 3 -name "*.apk" | head -n 1)
+          APK_PATH=$(find export/release/android -type f -name "*.apk" -print -quit)
 
           if [ -z "$APK_PATH" ]; then
             echo "Could not find built APK"
+            echo "Android build output:"
+            find export/release/android -maxdepth 8 -type f -print 2>/dev/null || true
             exit 1
           fi
 

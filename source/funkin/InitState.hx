@@ -40,6 +40,9 @@ import funkin.util.TrackerUtil;
 import funkin.util.WindowUtil;
 import openfl.display.BitmapData;
 import funkin.ui.debug.playtest.ChartPlaytestMenu;
+#if FEATURE_MOBILE_RPC
+import funkin.mobile.util.MobileRPC;
+#end
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -265,6 +268,14 @@ class InitState extends FlxState
       lime.app.Application.current.onExit.add(function(exitCode)
       {
         DiscordClient.instance.shutdown();
+      });
+      #end
+
+      #if FEATURE_MOBILE_RPC
+      MobileRPC.init();
+      lime.app.Application.current.onExit.add(function(exitCode)
+      {
+        MobileRPC.shutdown();
       });
       #end
 
