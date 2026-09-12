@@ -5,6 +5,30 @@ echo ===============================
 echo   Funkin Mobile Build
 echo ===============================
 echo.
+
+echo Installing HMM...
+haxelib install hmm --quiet
+
+echo.
+echo Installing project dependencies (this may take a while)...
+if exist .haxelib rmdir /s /q .haxelib
+haxelib run hmm install
+if errorlevel 1 goto ERROR
+
+echo.
+echo Building HXCPP tools...
+for /f "delims=" %%i in ('haxelib libpath hxcpp') do set HXCPP_PATH=%%i
+pushd "%HXCPP_PATH%tools\hxcpp"
+haxe compile.hxml
+popd
+if errorlevel 1 goto ERROR
+
+echo.
+echo Rebuilding Lime (cpp)...
+haxelib run lime rebuild cpp
+if errorlevel 1 goto ERROR
+
+echo.
 echo   1. Android
 echo   2. iOS
 echo.
