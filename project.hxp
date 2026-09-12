@@ -202,7 +202,6 @@ class Project extends HXProject
     var nativePackages:Array<String> = [
       'hxvlc',
       'hxdiscord_rpc',
-      'hxdiscord_social_sdk',
       'grig.audio.cpp',
       'extension',
       'funkin.api.discord',
@@ -405,7 +404,7 @@ class Project extends HXProject
   function configureFeatureFlags()
   {
     GITHUB_BUILD.apply(this, false);
-    EXCLUDE_ARMV7.apply(this, false);
+    EXCLUDE_ARMV7.apply(this, isAndroid());
     VERBOSE_ASSET_CACHE.apply(this, false);
 
     HARDCODED_CREDITS.apply(this, true);
@@ -878,11 +877,6 @@ class Project extends HXProject
     if (FEATURE_DISCORD_RPC.isEnabled(this))
     {
       addHaxelib('hxdiscord_rpc');
-    }
-
-    if (FEATURE_MOBILE_RPC.isEnabled(this))
-    {
-      addHaxelib('hxdiscord_social_sdk');
     }
 
     if (FEATURE_MULTITHREADING.isEnabled(this))
