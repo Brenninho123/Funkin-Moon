@@ -119,25 +119,11 @@ jobs:
         shell: bash
         run: haxelib run lime build android -release -DGITHUB_BUILD
 
-      - name: Rename Android artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK_PATH=$(find export/release/android -maxdepth 3 -name "*.apk" | head -n 1)
-
-          if [ -z "$APK_PATH" ]; then
-            echo "Could not find built APK"
-            exit 1
-          fi
-
-          mkdir -p release-artifacts
-          cp "$APK_PATH" "release-artifacts/Funkin-PlayTest-${{ env.RELEASE_TAG }}-android.apk"
-
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: release-artifacts/*.apk
+          path: export/release/android/**/*.apk
           if-no-files-found: error
           retention-days: 7
 
