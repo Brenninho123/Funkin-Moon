@@ -88,6 +88,8 @@ import funkin.util.logging.CrashHandler;
 import funkin.util.macro.ConsoleMacro;
 #if FEATURE_TOUCH_CONTROLS
 import funkin.mobile.ui.FunkinBackButton;
+import funkin.mobile.input.ControlsHandler;
+import flixel.input.touch.FlxTouch;
 #end
 import haxe.io.Bytes;
 import haxe.io.Path;
@@ -412,6 +414,11 @@ class CameraEditorState extends UIState implements ConsoleClass
 
   #if FEATURE_TOUCH_CONTROLS
   var mobileExitButton:FunkinBackButton;
+  var touchPanning:Bool = false;
+  var touchPanLastX:Float = 0;
+  var touchPanLastY:Float = 0;
+  var pinchActive:Bool = false;
+  var pinchStartDistance:Float = 0;
   #end
 
   public function new(?params:CameraEditorParams)
@@ -867,6 +874,10 @@ class CameraEditorState extends UIState implements ConsoleClass
       timeline.viewport.handleTrackpadScroll();
     }
     if (mainView != null) mainView.handleTrackpadScroll();
+
+    #if FEATURE_TOUCH_CONTROLS
+    if (ControlsHandler.lastInputTouch) handleTouchInput();
+    #end
 
     super.update(elapsed);
 
@@ -2331,6 +2342,131 @@ class CameraEditorState extends UIState implements ConsoleClass
     goToPoint.x -= e.panDeltaX / zoom;
     goToPoint.y -= e.panDeltaY / zoom;
   }
+
+  #if FEATURE_TOUCH_CONTROLS
+  function handleTouchCameraPan(dx:Float, dy:Float):Void
+  {
+    var zoom:Float = FlxG.camera.zoom;
+    if (zoom <= 0) zoom = 1;
+    goToPoint.x -= dx / zoom;
+    goToPoint.y -= dy / zoom;
+  }
+
+  function applyTouchZoom(rawScale:Float):Void
+  {
+    pivotZoomOnViewport(() ->
+    {
+      if (isCameraRelative)
+      {
+        relativeZoom *= rawScale;
+        if (relativeZoom < 0.1) relativeZoom = 0.1;
+        if (relativeZoom > 10.0) relativeZoom = 10.0;
+      }
+      else
+      {
+        FlxG.camera.zoom *= rawScale;
+        if (FlxG.camera.zoom < 0.1) FlxG.camera.zoom = 0.1;
+        if (FlxG.camera.zoom > 10.0) FlxG.camera.zoom = 10.0;
+      }
+    });
+  }
+
+  function handleTouchInput():Void
+  {
+    var activeTouches:Array<FlxTouch> = [];
+    for (touch in FlxG.touches.list)
+    {
+      if (touch.pressed) activeTouches.push(touch);
+    }
+
+    if (activeTouches.length >= 2)
+    {
+      handlePinchAndPan(activeTouches[0], activeTouches[1]);
+      return;
+    }
+
+    pinchActive = false;
+
+    if (activeTouches.length == 1)
+    {
+      handleSingleTouchPan(activeTouches[0]);
+    }
+    else
+    {
+      touchPanning = false;
+    }
+  }
+
+  function handlePinchAndPan(touchA:FlxTouch, touchB:FlxTouch):Void
+  {
+    var posA:FlxPoint = touchA.getViewPosition(camHUD);
+    var posB:FlxPoint = touchB.getViewPosition(camHUD);
+
+    if (Screen.instance.hasSolidComponentUnderPoint(posA.x, posA.y) || Screen.instance.hasSolidComponentUnderPoint(posB.x, posB.y))
+    {
+      pinchActive = false;
+      return;
+    }
+
+    var dx:Float = posB.x - posA.x;
+    var dy:Float = posB.y - posA.y;
+    var distance:Float = Math.sqrt(dx * dx + dy * dy);
+
+    var midX:Float = (posA.x + posB.x) / 2;
+    var midY:Float = (posA.y + posB.y) / 2;
+
+    if (!pinchActive)
+    {
+      pinchActive = true;
+      pinchStartDistance = distance;
+      touchPanLastX = midX;
+      touchPanLastY = midY;
+      return;
+    }
+
+    if (pinchStartDistance > 0)
+    {
+      applyTouchZoom(distance / pinchStartDistance);
+      pinchStartDistance = distance;
+    }
+
+    handleTouchCameraPan(midX - touchPanLastX, midY - touchPanLastY);
+
+    touchPanLastX = midX;
+    touchPanLastY = midY;
+  }
+
+  function handleSingleTouchPan(touch:FlxTouch):Void
+  {
+    var pos:FlxPoint = touch.getViewPosition(camHUD);
+
+    if (Screen.instance.hasSolidComponentUnderPoint(pos.x, pos.y))
+    {
+      touchPanning = false;
+      return;
+    }
+
+    if (touch.justPressed)
+    {
+      touchPanning = true;
+      touchPanLastX = pos.x;
+      touchPanLastY = pos.y;
+      return;
+    }
+
+    if (!touchPanning) return;
+
+    handleTouchCameraPan(pos.x - touchPanLastX, pos.y - touchPanLastY);
+
+    touchPanLastX = pos.x;
+    touchPanLastY = pos.y;
+
+    if (touch.justReleased)
+    {
+      touchPanning = false;
+    }
+  }
+  #end
 
   @:bind(menubarItemUserGuide, MouseEvent.CLICK)
   function onUserGuide(_)
