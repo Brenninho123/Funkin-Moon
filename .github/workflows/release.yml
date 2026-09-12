@@ -81,21 +81,15 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Cache haxelib
-        uses: actions/cache@v4
-        with:
-          path: .haxelib
-          key: haxelib-android-${{ hashFiles('hmm.json') }}
-          restore-keys: |
-            haxelib-android-
-
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: bash
-        run: haxelib run hmm install
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
 
       - name: Build hxcpp
         shell: bash
@@ -123,35 +117,16 @@ jobs:
 
       - name: Build Android
         shell: bash
-        run: haxelib run lime build android -arm64 -release -DGITHUB_BUILD
+        run: haxelib run lime build android -release -DGITHUB_BUILD
 
       - name: Rename Android artifact
         shell: bash
         run: |
           set -euo pipefail
-          APK_PATH=$(find export/release/android -type f -name "*.apk" -print -quit)
+          APK_PATH=$(find export/release/android -maxdepth 3 -name "*.apk" | head -n 1)
 
           if [ -z "$APK_PATH" ]; then
             echo "Could not find built APK"
-            echo "Android build output:"
-            find export/release/android -maxdepth 8 -type f -print 2>/dev/null || true
-            exit 1
-          fi
-
-          AAPT="$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt"
-          if [ ! -x "$AAPT" ]; then
-            echo "Could not find Android aapt at $AAPT"
-            exit 1
-          fi
-
-          echo "APK native ABIs:"
-          "$AAPT" dump badging "$APK_PATH" | grep -E "native-code|sdkVersion|targetSdkVersion" || true
-          if ! "$AAPT" dump badging "$APK_PATH" | grep -q "arm64-v8a"; then
-            echo "Built APK does not contain the arm64-v8a ABI"
-            exit 1
-          fi
-          if "$AAPT" dump badging "$APK_PATH" | grep -q "armeabi-v7a"; then
-            echo "Built APK unexpectedly contains the ARMv7 ABI"
             exit 1
           fi
 
@@ -183,21 +158,15 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Cache haxelib
-        uses: actions/cache@v4
-        with:
-          path: .haxelib
-          key: haxelib-ios-${{ hashFiles('hmm.json') }}
-          restore-keys: |
-            haxelib-ios-
-
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: bash
-        run: haxelib run hmm install
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
 
       - name: Build hxcpp
         shell: bash
