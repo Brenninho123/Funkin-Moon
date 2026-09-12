@@ -530,7 +530,7 @@ class StageEditorState extends UIState
     FlxG.sound.music.fadeIn(10, 0, 1);
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: () -> onMenuItemClick('exit'));
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, () -> onMenuItemClick('exit'));
     backButton.cameras = [camHUD];
     add(backButton);
     #end
