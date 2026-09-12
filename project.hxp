@@ -15,8 +15,8 @@ using tools.AnsiUtil;
 @:nullSafety
 class Project extends HXProject
 {
-  static final VERSION:String = "0.8.5";
-  static final BUILD_NUMBER:Int = 70;
+  static final VERSION:String = "0.8.5.1";
+  static final BUILD_NUMBER:Int = 67;
   static final TITLE:String = "Friday Night Funkin'";
   static final TITLE_MOBILE:String = "FNF: PlayTest";
   static final PACKAGE_NAME:String = "me.funkintest.fnf";
