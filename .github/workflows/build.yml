@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HAXE_VERSION: 4.3.7
+
 jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -39,6 +47,7 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.2.12479018"
+
       - name: Configure Android
         shell: bash
         run: |
@@ -47,6 +56,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
+
       - name: Install Linux dependencies
         shell: bash
         run: |
@@ -71,30 +81,39 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             pkg-config
+
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Cache haxelib
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-android-${{ hashFiles('hmm.json') }}
+          restore-keys: |
+            haxelib-android-
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
       - name: Install dependencies
         shell: bash
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
+        run: haxelib run hmm install
+
       - name: Build hxcpp
         shell: bash
         run: |
           HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Setup Lime Android
         shell: bash
         run: |
@@ -103,14 +122,15 @@ jobs:
           $ANDROID_NDK_ROOT
           $JAVA_HOME
           EOF
+
       - name: Rebuild Lime Android
         shell: bash
-        run: |
-          haxelib run lime rebuild android
+        run: haxelib run lime rebuild android
+
       - name: Build Android
         shell: bash
-        run: |
-          haxelib run lime build android -release -DGITHUB_BUILD
+        run: haxelib run lime build android -release -DGITHUB_BUILD
+
       - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
@@ -118,10 +138,12 @@ jobs:
           path: export/release/android/**/*.apk
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14
 
   ios:
     name: iOS
     runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -133,47 +155,72 @@ jobs:
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v2
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Cache haxelib
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-ios-${{ hashFiles('hmm.json') }}
+          restore-keys: |
+            haxelib-ios-
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
       - name: Install dependencies
         shell: bash
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
+        run: haxelib run hmm install
+
       - name: Build hxcpp
         shell: bash
         run: |
           HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Rebuild Lime iOS
         shell: bash
-        run: |
-          haxelib run lime rebuild ios
+        run: haxelib run lime rebuild ios
+
       - name: Build iOS
         shell: bash
-        run: |
-          haxelib run lime build ios -release -DGITHUB_BUILD CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+        run: haxelib run lime build ios -release -DGITHUB_BUILD
+
       - name: Package iOS app
         shell: bash
         run: |
-          cd export/release/ios/build/Release-iphoneos
-          mkdir -p Payload
+          set -euo pipefail
+          BUILD_DIR=$(find export/release/ios/build -maxdepth 1 -type d -name "Release-*" | head -n 1)
+
+          if [ -z "$BUILD_DIR" ]; then
+            echo "Could not find iOS build output directory"
+            exit 1
+          fi
+
+          cd "$BUILD_DIR"
           APP_PATH=$(find . -maxdepth 1 -name "*.app")
+
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not find .app bundle in $BUILD_DIR"
+            exit 1
+          fi
+
+          mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Funkin_PlayTest_iOS.ipa Payload
+          echo "IPA_PATH=$BUILD_DIR/Funkin_PlayTest_iOS.ipa" >> "$GITHUB_ENV"
+
       - name: Upload iOS
         uses: actions/upload-artifact@v4
         with:
           name: Funkin (PlayTest) (iOS)
-          path: export/release/ios/build/Release-iphoneos/Funkin_PlayTest_iOS.ipa
+          path: ${{ env.IPA_PATH }}
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14
