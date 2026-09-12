@@ -85,7 +85,6 @@ class Project extends HXProject
   static final FEATURE_DEBUG_MENU:FeatureFlag = "FEATURE_DEBUG_MENU";
   static final FEATURE_DEBUG_TRACY:FeatureFlag = "FEATURE_DEBUG_TRACY";
   static final FEATURE_DISCORD_RPC:FeatureFlag = "FEATURE_DISCORD_RPC";
-  static final FEATURE_MOBILE_RPC:FeatureFlag = "FEATURE_MOBILE_RPC";
   static final FEATURE_LOST_FOCUS_VOLUME:FeatureFlag = "FEATURE_LOST_FOCUS_VOLUME";
   static final FEATURE_FILE_DROP:FeatureFlag = "FEATURE_FILE_DROP";
   static final FEATURE_FUNKVIS:FeatureFlag = "FEATURE_FUNKVIS";
@@ -202,6 +201,7 @@ class Project extends HXProject
     var nativePackages:Array<String> = [
       'hxvlc',
       'hxdiscord_rpc',
+      'hxdiscord_social_sdk',
       'grig.audio.cpp',
       'extension',
       'funkin.api.discord',
@@ -404,7 +404,7 @@ class Project extends HXProject
   function configureFeatureFlags()
   {
     GITHUB_BUILD.apply(this, false);
-    EXCLUDE_ARMV7.apply(this, isAndroid());
+    EXCLUDE_ARMV7.apply(this, false);
     VERBOSE_ASSET_CACHE.apply(this, false);
 
     HARDCODED_CREDITS.apply(this, true);
@@ -438,7 +438,6 @@ class Project extends HXProject
     FEATURE_RESULTS_DEBUG.apply(this, isDebug() || GITHUB_BUILD.isEnabled(this));
 
     FEATURE_DISCORD_RPC.apply(this, isDesktop() && !FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
-    FEATURE_MOBILE_RPC.apply(this, isMobile());
     FEATURE_LOST_FOCUS_VOLUME.apply(this, isDesktop());
 
     FEATURE_NEWGROUNDS.apply(this, true);
@@ -451,7 +450,7 @@ class Project extends HXProject
     FEATURE_ANIMATION_EDITOR.apply(this, !(isWeb() || isMobile()));
     FEATURE_CHART_EDITOR.apply(this, !(isWeb() || isMobile()));
     FEATURE_STAGE_EDITOR.apply(this, !(isWeb() || isMobile()));
-    FEATURE_CAMERA_EDITOR.apply(this, !(isWeb() || isMobile()));
+    FEATURE_CAMERA_EDITOR.apply(this, !isWeb());
     FEATURE_HAXEUI.apply(
       this, FEATURE_ANIMATION_EDITOR.isEnabled(
         this
