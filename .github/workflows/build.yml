@@ -157,21 +157,15 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
-      - name: Cache haxelib
-        uses: actions/cache@v4
-        with:
-          path: .haxelib
-          key: haxelib-ios-${{ hashFiles('hmm.json') }}
-          restore-keys: |
-            haxelib-ios-
-
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
 
       - name: Install dependencies
         shell: bash
-        run: haxelib run hmm install
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
 
       - name: Build hxcpp
         shell: bash
@@ -190,7 +184,7 @@ jobs:
 
       - name: Generate Xcode project
         shell: bash
-        run: haxelib run lime update ios -release -DGITHUB_BUILD
+        run: haxelib run lime update ios -release -DGITHUB_BUILD -DNO_FEATURE_CPPIA
 
       - name: Build iOS (unsigned)
         shell: bash
