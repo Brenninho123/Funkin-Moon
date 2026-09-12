@@ -6,6 +6,8 @@ import funkin.ui.TextMenuList;
 import funkin.ui.TextMenuList.TextMenuItem;
 import flixel.math.FlxPoint;
 import flixel.text.FlxText;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
 import flixel.FlxSprite;
 import flixel.FlxObject;
 import flixel.FlxState;
@@ -97,13 +99,18 @@ class OptionsState extends MusicBeatState
     }
 
     versionText = new FlxText(0, 0, 300, 'Mobile Port v0.8.5 - By Brenninho', 16);
-    versionText.setFormat(null, 16, FlxColor.WHITE, RIGHT);
+    versionText.setFormat(null, 16, FlxColor.LIME, LEFT);
     versionText.scrollFactor.set(0, 0);
-    versionText.x = FlxG.width - versionText.width - 12;
+    versionText.x = 12;
     versionText.y = FlxG.height - versionText.height - 8;
     versionText.zIndex = 10000;
     versionText.alpha = 0.75;
     add(versionText);
+
+    FlxTween.tween(versionText, {alpha: 1}, 1.2, {
+      ease: FlxEase.quadInOut,
+      type: PINGPONG
+    });
 
     super.create();
     #if FEATURE_TOUCH_CONTROLS
