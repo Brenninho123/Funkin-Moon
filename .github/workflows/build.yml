@@ -129,7 +129,7 @@ jobs:
 
       - name: Build Android
         shell: bash
-        run: haxelib run lime build android -release -DGITHUB_BUILD
+        run: haxelib run lime build android -arm64 -release -DGITHUB_BUILD
 
       - name: Upload Android
         uses: actions/upload-artifact@v4
