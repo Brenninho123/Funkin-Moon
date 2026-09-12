@@ -197,7 +197,7 @@ jobs:
 
       - name: Generate Xcode project
         shell: bash
-        run: haxelib run lime update ios -release -DGITHUB_BUILD
+        run: haxelib run lime update ios -release -DGITHUB_BUILD -DNO_FEATURE_CPPIA
 
       - name: Build iOS (unsigned)
         shell: bash
