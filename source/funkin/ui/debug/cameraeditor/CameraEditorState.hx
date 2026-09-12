@@ -525,7 +525,7 @@ class CameraEditorState extends UIState implements ConsoleClass
     #end
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: () -> onMenubarExit(null));
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, () -> onMenubarExit(null));
     backButton.cameras = [camHUD];
     backButton.zIndex = 100000;
     add(backButton);
