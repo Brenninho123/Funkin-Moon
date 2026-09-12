@@ -90,6 +90,9 @@ import funkin.api.newgrounds.Leaderboards;
 import funkin.multiplayer.MultiplayerClient;
 import funkin.multiplayer.MultiplayerServer;
 #end
+#if FEATURE_MOON_SCRIPTS
+import funkin.ui.scripting.FunkinMoon;
+#end
 
 typedef PlayStateParams =
 {
@@ -193,6 +196,9 @@ class PlayState extends MusicBeatSubState
   var justUnpaused:Bool = false;
   var noteStyle:NoteStyle;
   var luaScripts:Array<funkin.lua.FunkinLua> = [];
+  #if FEATURE_MOON_SCRIPTS
+  var moonScripts:Array<FunkinMoon> = [];
+  #end
   var songEvents:Array<SongEventData> = [];
   var mayPauseGame:Bool = true;
   var healthLerp:Float = Constants.HEALTH_STARTING;
@@ -452,6 +458,9 @@ class PlayState extends MusicBeatSubState
     generateSong();
 
     initLuaScripts();
+    #if FEATURE_MOON_SCRIPTS
+    initMoonScripts();
+    #end
 
     resetCamera();
 
@@ -487,6 +496,9 @@ class PlayState extends MusicBeatSubState
     refresh();
 
     callLuaEvent('onCreatePost', []);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onCreatePost', []);
+    #end
   }
 
   #if FEATURE_ONLINE
@@ -713,6 +725,9 @@ class PlayState extends MusicBeatSubState
     if (camMovement != null) camMovement.update(elapsed);
 
     callLuaEvent('onUpdate', [elapsed]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onUpdate', [elapsed]);
+    #end
 
     updateHealthBar();
     updateScoreText();
@@ -1078,6 +1093,9 @@ class PlayState extends MusicBeatSubState
     openSubState(pauseSubState);
 
     callLuaEvent('onPause', []);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onPause', []);
+    #end
   }
 
   function moveToGameOver():Void
@@ -1105,6 +1123,9 @@ class PlayState extends MusicBeatSubState
     shouldSubstatePause = true;
 
     callLuaEvent('onGameOver', []);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onGameOver', []);
+    #end
 
     var gameOverSubState = new GameOverSubState({
       isChartingMode: isChartingMode,
@@ -1301,6 +1322,9 @@ class PlayState extends MusicBeatSubState
       Countdown.resumeCountdown();
 
       callLuaEvent('onResume', []);
+      #if FEATURE_MOON_SCRIPTS
+      callMoonEvent('onResume', []);
+      #end
 
       #if FEATURE_DISCORD_RPC
       if (Conductor.instance.songPosition > 0)
@@ -1450,6 +1474,9 @@ class PlayState extends MusicBeatSubState
     playerStrumline.noteVibrations.tryHoldNoteVibration();
 
     callLuaEvent('onStepHit', [Std.int(Conductor.instance.currentStep)]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onStepHit', [Std.int(Conductor.instance.currentStep)]);
+    #end
 
     return true;
   }
@@ -1503,6 +1530,9 @@ class PlayState extends MusicBeatSubState
     if (opponentStrumline != null) opponentStrumline.onBeatHit();
 
     callLuaEvent('onBeatHit', [Std.int(Conductor.instance.currentBeat)]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onBeatHit', [Std.int(Conductor.instance.currentBeat)]);
+    #end
 
     return true;
   }
@@ -2015,6 +2045,47 @@ class PlayState extends MusicBeatSubState
     #end
   }
 
+  #if FEATURE_MOON_SCRIPTS
+  function initMoonScripts():Void
+  {
+    destroyMoonScripts();
+
+    var scriptsPath:String = 'assets/songs/${currentSong.id}/scripts';
+
+    #if sys
+    if (sys.FileSystem.exists(scriptsPath) && sys.FileSystem.isDirectory(scriptsPath))
+    {
+      for (file in sys.FileSystem.readDirectory(scriptsPath))
+      {
+        if (!file.toLowerCase().endsWith('.moon')) continue;
+
+        moonScripts.push(new FunkinMoon('${scriptsPath}/${file}', this));
+      }
+    }
+    #end
+
+    callMoonEvent('onCreate', []);
+  }
+
+  function destroyMoonScripts():Void
+  {
+    for (script in moonScripts)
+    {
+      script.destroy();
+    }
+    moonScripts = [];
+  }
+
+  function callMoonEvent(funcName:String, args:Array<Dynamic>):Void
+  {
+    for (script in moonScripts)
+    {
+      if (script.closed) continue;
+      script.call(funcName, args);
+    }
+  }
+  #end
+
   function initPopups():Void
   {
     comboPopUps.zIndex = 900;
@@ -2315,6 +2386,9 @@ class PlayState extends MusicBeatSubState
     resyncVocals();
 
     callLuaEvent('onSongStart', []);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onSongStart', []);
+    #end
   }
 
   function resyncVocals():Void
@@ -2671,6 +2745,9 @@ class PlayState extends MusicBeatSubState
     if (camMovement != null) camMovement.onNoteHit(note.noteData.getDirection());
 
     callLuaEvent('onNoteHit', [event.judgement, event.comboCount]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onNoteHit', [event.judgement, event.comboCount]);
+    #end
 
     #if FEATURE_ONLINE
     if (multiplayerMatchActive)
@@ -2702,6 +2779,9 @@ class PlayState extends MusicBeatSubState
     applyScore(Scoring.getMissScore(), 'miss', healthChange, true);
 
     callLuaEvent('onNoteMiss', [healthChange]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onNoteMiss', [healthChange]);
+    #end
 
     if (playSound)
     {
@@ -2739,6 +2819,9 @@ class PlayState extends MusicBeatSubState
     songScore += event.scoreChange;
 
     callLuaEvent('onNoteGhostMiss', [event.dir, event.playAnim]);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onNoteGhostMiss', [event.dir, event.playAnim]);
+    #end
 
     if (!isPracticeMode)
     {
@@ -2945,6 +3028,9 @@ class PlayState extends MusicBeatSubState
     #end
 
     callLuaEvent('onSongEnd', []);
+    #if FEATURE_MOON_SCRIPTS
+    callMoonEvent('onSongEnd', []);
+    #end
 
     deathCounter = 0;
 
@@ -3280,6 +3366,9 @@ class PlayState extends MusicBeatSubState
     Countdown.reset();
 
     destroyLuaScripts();
+    #if FEATURE_MOON_SCRIPTS
+    destroyMoonScripts();
+    #end
 
     instance = null;
   }
