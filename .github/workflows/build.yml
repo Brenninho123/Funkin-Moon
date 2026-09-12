@@ -188,20 +188,32 @@ jobs:
         shell: bash
         run: haxelib run lime rebuild ios
 
-      - name: Build iOS
+      - name: Generate Xcode project
         shell: bash
-        run: haxelib run lime build ios -release -DGITHUB_BUILD
+        run: haxelib run lime update ios -release -DGITHUB_BUILD
+
+      - name: Build iOS (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd export/release/ios
+
+          xcodebuild build \
+            -project Funkin.xcodeproj \
+            -target Funkin \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR=build/Release-iphoneos
 
       - name: Package iOS app
         shell: bash
         run: |
           set -euo pipefail
-          BUILD_DIR=$(find export/release/ios/build -maxdepth 1 -type d -name "Release-*" | head -n 1)
-
-          if [ -z "$BUILD_DIR" ]; then
-            echo "Could not find iOS build output directory"
-            exit 1
-          fi
+          BUILD_DIR=export/release/ios/build/Release-iphoneos
 
           cd "$BUILD_DIR"
           APP_PATH=$(find . -maxdepth 1 -name "*.app")
