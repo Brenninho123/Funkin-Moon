@@ -11,15 +11,18 @@ import funkin.ui.debug.charting.ChartEditorState;
 import funkin.util.logging.CrashHandler;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.util.FileUtil;
+#if FEATURE_TOUCH_CONTROLS
+import funkin.mobile.ui.FunkinBackButton;
+#end
 
 class DebugMenuSubState extends MusicBeatSubState
 {
   var items:TextMenuList;
-
-  /**
-   * Camera focus point
-   */
   var camFocusPoint:FlxObject;
+
+  #if FEATURE_TOUCH_CONTROLS
+  var backButton:FunkinBackButton;
+  #end
 
   override function create():Void
   {
@@ -28,14 +31,11 @@ class DebugMenuSubState extends MusicBeatSubState
 
     bgColor = 0x00000000;
 
-    // Create an object for the camera to track.
     camFocusPoint = new FlxObject(0, 0);
     add(camFocusPoint);
 
-    // Follow the camera focus as we scroll.
     FlxG.camera.follow(camFocusPoint, null, 0.06);
 
-    // Create the green background.
     var menuBG = new FlxSprite().loadGraphic(Paths.image('ui/main-menu/menu-desat'));
     menuBG.color = 0xFF4CAF50;
     menuBG.setGraphicSize(Std.int(menuBG.width * 1.1 * FullScreenScaleMode.wideScale.x));
@@ -44,16 +44,12 @@ class DebugMenuSubState extends MusicBeatSubState
     menuBG.scrollFactor.set(0, 0);
     add(menuBG);
 
-    // Create the list for menu items.
     items = new TextMenuList();
-    // Move the camera when the menu is scrolled.
     items.onChange.add(onMenuChange);
     add(items);
 
     FlxTransitionableState.skipNextTransIn = true;
 
-    // Create each menu item.
-    // Call onMenuChange when the first item is created to move the camera .
     #if FEATURE_CHART_EDITOR
     createItem("CHART EDITOR", openChartEditor);
     #end
@@ -79,8 +75,12 @@ class DebugMenuSubState extends MusicBeatSubState
     FlxG.camera.focusOn(new FlxPoint(camFocusPoint.x, camFocusPoint.y + 500));
 
     #if FEATURE_HAXEUI
-    // Remove the "user" stylesheet to prevent components using incorrect style data when entering an editor.
     haxe.ui.Toolkit.styleSheet.clear("user");
+    #end
+
+    #if FEATURE_TOUCH_CONTROLS
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, exitDebugMenu, 1.0);
+    add(backButton);
     #end
   }
 
@@ -126,7 +126,6 @@ class DebugMenuSubState extends MusicBeatSubState
   function openAnimationEditor():Void
   {
     FlxG.switchState(() -> new funkin.ui.debug.anim.DebugBoundingState());
-    trace('Animation Editor');
   }
   #end
 
@@ -134,13 +133,11 @@ class DebugMenuSubState extends MusicBeatSubState
   {
     openSubState(new funkin.ui.transition.stickers.StickerSubState({
     }));
-    trace('opened stickers');
   }
 
   #if FEATURE_STAGE_EDITOR
   function openStageEditor():Void
   {
-    trace('Stage Editor');
     FlxG.switchState(() -> new funkin.ui.debug.stageeditor.StageEditorState());
   }
   #end
@@ -175,7 +172,6 @@ class DebugMenuSubState extends MusicBeatSubState
 
   function exitDebugMenu()
   {
-    // TODO: Add a transition?
     this.close();
   }
 }
