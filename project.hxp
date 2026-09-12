@@ -79,8 +79,6 @@ class Project extends HXProject
   static final TESTING_ADS:FeatureFlag = "TESTING_ADS";
   static final UNLOCK_EVERYTHING:FeatureFlag = "UNLOCK_EVERYTHING";
   static final VERBOSE_ASSET_CACHE:FeatureFlag = "VERBOSE_ASSET_CACHE";
-  static final IOS_UNSIGNED_BUILD:FeatureFlag = "IOS_UNSIGNED_BUILD";
-  static final IOS_SIMULATOR_BUILD:FeatureFlag = "IOS_SIMULATOR_BUILD";
 
   static final FEATURE_COMPRESSED_TEXTURES:FeatureFlag = "FEATURE_COMPRESSED_TEXTURES";
   static final FEATURE_DEBUG_FUNCTIONS:FeatureFlag = "FEATURE_DEBUG_FUNCTIONS";
@@ -129,8 +127,6 @@ class Project extends HXProject
   static final FEATURE_VIDEO_PLAYBACK:FeatureFlag = "FEATURE_VIDEO_PLAYBACK";
   static final FEATURE_VIDEO_SUBTITLES:FeatureFlag = "FEATURE_VIDEO_SUBTITLES";
   static final FEATURE_DEBUG_DISPLAY:FeatureFlag = "FEATURE_DEBUG_DISPLAY";
-  static final FEATURE_IOS_BACKGROUND_AUDIO:FeatureFlag = "FEATURE_IOS_BACKGROUND_AUDIO";
-  static final FEATURE_IOS_ICLOUD_SYNC:FeatureFlag = "FEATURE_IOS_ICLOUD_SYNC";
 
   public function new()
   {
@@ -402,7 +398,6 @@ class Project extends HXProject
     if (isIOS())
     {
       info('iOS Simulator Build: ' + isIOSSimulator());
-      info('iOS Unsigned Build: ' + IOS_UNSIGNED_BUILD.isEnabled(this));
     }
   }
 
@@ -487,12 +482,6 @@ class Project extends HXProject
     FEATURE_COMPRESSED_TEXTURES.apply(this, isMobile() && isRelease() && !isIOSSimulator());
 
     FEATURE_DEBUG_DISPLAY.apply(this, !isMobile() || FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
-
-    IOS_SIMULATOR_BUILD.apply(this, isIOS() && (this.targetFlags.exists("simulator") || this.targetFlags.exists("simulate")));
-    IOS_UNSIGNED_BUILD.apply(this, isIOS() && (GITHUB_BUILD.isEnabled(this) || IOS_SIMULATOR_BUILD.isEnabled(this)));
-
-    FEATURE_IOS_BACKGROUND_AUDIO.apply(this, isIOS() && (FEATURE_VIDEO_PLAYBACK.isEnabled(this) || FEATURE_FUNKVIS.isEnabled(this)));
-    FEATURE_IOS_ICLOUD_SYNC.apply(this, isIOS() && isRelease() && !IOS_UNSIGNED_BUILD.isEnabled(this));
 
     if (isRun() || isInstall() || isUninstall())
     {
@@ -607,21 +596,6 @@ class Project extends HXProject
     if (FEATURE_MULTITHREADING.isEnabled(this))
     {
       setHaxedef("lime_threads");
-    }
-
-    if (isIOS())
-    {
-      setHaxedef("HXCPP_ARM64");
-
-      if (IOS_UNSIGNED_BUILD.isEnabled(this))
-      {
-        setHaxedef("IOS_UNSIGNED_BUILD");
-      }
-
-      if (IOS_SIMULATOR_BUILD.isEnabled(this))
-      {
-        setHaxedef("IOS_SIMULATOR_BUILD");
-      }
     }
   }
 
@@ -831,24 +805,10 @@ class Project extends HXProject
   function configureIOS()
   {
     config.set("ios.deployment", IOS_DEPLOYMENT_TARGET);
-    config.set("ios.team-id", IOS_TEAM_ID);
     config.set("ios.non-exempt-encryption", "false");
-    config.set("ios.device", "universal");
-    config.set("ios.xcode-target", isRelease() ? "release" : "debug");
+    config.set("ios.team-id", IOS_TEAM_ID);
 
-    if (IOS_UNSIGNED_BUILD.isEnabled(this))
-    {
-      config.set("ios.codesign-allowed", "false");
-      config.set("ios.identity", "");
-      config.set("ios.provisioning-profile", "");
-      config.set("ios.team-id", "");
-      setenv("CODE_SIGNING_ALLOWED", "NO");
-      setenv("CODE_SIGNING_REQUIRED", "NO");
-      setenv("CODE_SIGN_IDENTITY", "");
-      setenv("EXPANDED_CODE_SIGN_IDENTITY", "-");
-      setenv("AD_HOC_CODE_SIGNING_ALLOWED", "YES");
-    }
-    else if (envConfig != null)
+    if (envConfig != null)
     {
       var teamId:Null<String> = Std.string(envConfig.get('IOS_TEAM_ID'));
       if (teamId != null && teamId != "null") config.set("ios.team-id", teamId);
@@ -858,53 +818,6 @@ class Project extends HXProject
 
       var profile:Null<String> = Std.string(envConfig.get('IOS_PROVISIONING_PROFILE'));
       if (profile != null && profile != "null") config.set("ios.provisioning-profile", profile);
-    }
-
-    if (IOS_SIMULATOR_BUILD.isEnabled(this))
-    {
-      config.set("ios.sdk", "iphonesimulator");
-    }
-    else
-    {
-      config.set("ios.sdk", "iphoneos");
-    }
-
-    final infoPlistAdditions:Map<String, String> = [
-      "UIRequiresFullScreen" => "true",
-      "UIStatusBarHidden" => "true",
-      "UIViewControllerBasedStatusBarAppearance" => "false",
-      "ITSAppUsesNonExemptEncryption" => "false",
-      "UIRequiresPersistentWiFi" => "false",
-      "LSApplicationCategoryType" => "public.app-category.games",
-      "UIFileSharingEnabled" => FEATURE_POLYMOD_MODS.isEnabled(this) ? "true" : "false",
-      "LSSupportsOpeningDocumentsInPlace" => FEATURE_POLYMOD_MODS.isEnabled(this) ? "true" : "false"
-    ];
-
-    for (key => value in infoPlistAdditions)
-    {
-      config.set('ios.plist.$key', value);
-    }
-
-    if (FEATURE_IOS_BACKGROUND_AUDIO.isEnabled(this))
-    {
-      config.set("ios.background-modes", "audio");
-    }
-
-    if (FEATURE_HAPTICS.isEnabled(this))
-    {
-      config.set("ios.entitlement.com.apple.developer.coremotion", "true");
-    }
-
-    if (FEATURE_IOS_ICLOUD_SYNC.isEnabled(this))
-    {
-      config.set("ios.entitlement.com.apple.developer.icloud-container-identifiers", '["iCloud.$PACKAGE_NAME"]');
-      config.set("ios.entitlement.com.apple.developer.icloud-services", '["CloudDocuments"]');
-      config.set("ios.entitlement.com.apple.developer.ubiquity-kvstore-identifier", '$IOS_TEAM_ID.$PACKAGE_NAME');
-    }
-
-    if (FEATURE_MOBILE_WEBVIEW.isEnabled(this))
-    {
-      config.set("ios.entitlement.com.apple.security.network.client", "true");
     }
   }
 
