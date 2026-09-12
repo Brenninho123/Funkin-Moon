@@ -429,7 +429,7 @@ class Project extends HXProject
     FEATURE_MULTITHREADING.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
 
-    FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this));
+    FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this) && !isIOS());
 
     FEATURE_VIDEO_PLAYBACK.apply(this, true);
     FEATURE_VIDEO_SUBTITLES.apply(this, FEATURE_VIDEO_PLAYBACK.isEnabled(this) && !isWeb());
@@ -556,8 +556,6 @@ class Project extends HXProject
     {
       setHaxedef("scriptable");
       setHaxedef("POLYMOD_CPPIA");
-
-      if (isIOS()) setenv("CPPIA_NO_JIT", "1");
 
       excludeFromScripting();
     }
