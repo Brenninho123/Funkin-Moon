@@ -3,6 +3,7 @@ package funkin.ui.debug;
 import flixel.math.FlxPoint;
 import flixel.FlxObject;
 import flixel.FlxSprite;
+import flixel.util.FlxColor;
 import funkin.ui.MusicBeatSubState;
 import funkin.ui.FullScreenScaleMode;
 import funkin.audio.FunkinSound;
@@ -79,7 +80,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #end
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: exitDebugMenu);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitDebugMenu);
     add(backButton);
     #end
   }
