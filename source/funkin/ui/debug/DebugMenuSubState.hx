@@ -79,7 +79,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #end
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, exitDebugMenu, 1.0);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: exitDebugMenu);
     add(backButton);
     #end
   }
