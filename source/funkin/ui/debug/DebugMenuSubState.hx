@@ -12,18 +12,11 @@ import funkin.ui.debug.charting.ChartEditorState;
 import funkin.util.logging.CrashHandler;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.util.FileUtil;
-#if FEATURE_TOUCH_CONTROLS
-import funkin.mobile.ui.FunkinBackButton;
-#end
 
 class DebugMenuSubState extends MusicBeatSubState
 {
   var items:TextMenuList;
   var camFocusPoint:FlxObject;
-
-  #if FEATURE_TOUCH_CONTROLS
-  var backButton:FunkinBackButton;
-  #end
 
   override function create():Void
   {
@@ -80,8 +73,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #end
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitDebugMenu);
-    add(backButton);
+    addBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitDebugMenu, 1.0);
     #end
   }
 
