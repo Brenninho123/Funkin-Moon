@@ -413,7 +413,7 @@ class CameraEditorState extends UIState implements ConsoleClass
   var params:Null<CameraEditorParams>;
 
   #if FEATURE_TOUCH_CONTROLS
-  var mobileExitButton:FunkinBackButton;
+  var backButton:FunkinBackButton;
   var touchPanning:Bool = false;
   var touchPanLastX:Float = 0;
   var touchPanLastY:Float = 0;
@@ -525,10 +525,10 @@ class CameraEditorState extends UIState implements ConsoleClass
     #end
 
     #if FEATURE_TOUCH_CONTROLS
-    mobileExitButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, () -> onMenubarExit(null), 1.0);
-    mobileExitButton.cameras = [camHUD];
-    mobileExitButton.zIndex = 100000;
-    add(mobileExitButton);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: () -> onMenubarExit(null));
+    backButton.cameras = [camHUD];
+    backButton.zIndex = 100000;
+    add(backButton);
     #end
 
     if (params != null && params.loadFromPath != null)
