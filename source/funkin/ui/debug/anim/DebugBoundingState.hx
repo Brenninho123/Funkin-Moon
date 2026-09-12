@@ -121,7 +121,7 @@ class DebugBoundingState extends FlxState
     Cursor.show();
 
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: exitEditor);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitEditor);
     backButton.cameras = [hudCam];
     add(backButton);
     #end
