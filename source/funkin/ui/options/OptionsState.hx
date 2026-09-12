@@ -300,7 +300,7 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     #if NO_FEATURE_TOUCH_CONTROLS
     createItem('EXIT', exit);
     #else
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, confirmCallback: exit);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exit);
     backButton.onConfirmStart.add(function()
     {
       items.busy = true;
