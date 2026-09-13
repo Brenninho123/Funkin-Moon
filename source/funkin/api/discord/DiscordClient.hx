@@ -1,6 +1,6 @@
 package funkin.api.discord;
 
-#if FEATURE_DISCORD_RPC
+#if (FEATURE_DISCORD_RPC && desktop)
 import hxdiscord_rpc.Discord;
 import hxdiscord_rpc.Types.DiscordButton;
 import hxdiscord_rpc.Types.DiscordEventHandlers;
@@ -8,9 +8,6 @@ import hxdiscord_rpc.Types.DiscordRichPresence;
 import hxdiscord_rpc.Types.DiscordUser;
 import sys.thread.Thread;
 
-/**
- * Handles integration with the Discord Rich Presence API.
- */
 @:build(funkin.util.macro.EnvironmentMacro.build())
 @:nullSafety
 class DiscordClient
@@ -18,9 +15,6 @@ class DiscordClient
   @:envField
   static final DISCORD_CLIENT_ID:Null<String>;
 
-  /**
-   * The current instance of the singleton Discord client.
-   */
   public static var instance(get, never):DiscordClient;
 
   static var _instance:Null<DiscordClient> = null;
@@ -32,51 +26,72 @@ class DiscordClient
     return DiscordClient._instance;
   }
 
-  var handlers:DiscordEventHandlers;
+  static inline var MIN_UPDATE_INTERVAL:Float = 4.0;
+  static inline var RECONNECT_INTERVAL:Float = 15.0;
+  static inline var DAEMON_SLEEP:Float = 2.0;
 
-  /**
-   * Latest passed parameters for the presence.
-   */
   public static var presenceParamsCache:Null<DiscordClientPresenceParams>;
+
+  public var isConnected(default, null):Bool = false;
+  public var isInitialized(default, null):Bool = false;
+
+  public var onJoinGame:Null<String->Void> = null;
+  public var onSpectateGame:Null<String->Void> = null;
+  public var onJoinRequest:Null<DiscordUser->Void> = null;
+
+  var handlers:DiscordEventHandlers;
+  var daemon:Null<Thread> = null;
+  var running:Bool = false;
+  var lastPresenceSentAt:Float = 0;
+  var lastPresenceSignature:String = '';
+  var lastReconnectAttemptAt:Float = 0;
+  var pendingPresence:Null<DiscordClientPresenceParams> = null;
 
   private function new()
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Initializing event handlers...');
+    FlxG.log.add('[Discord] Initializing event handlers...');
 
     handlers = new DiscordEventHandlers();
 
     handlers.ready = cpp.Function.fromStaticFunction(onReady);
     handlers.disconnected = cpp.Function.fromStaticFunction(onDisconnected);
     handlers.errored = cpp.Function.fromStaticFunction(onError);
+    handlers.joinGame = cpp.Function.fromStaticFunction(onJoinGameStatic);
+    handlers.spectateGame = cpp.Function.fromStaticFunction(onSpectateGameStatic);
+    handlers.joinRequest = cpp.Function.fromStaticFunction(onJoinRequestStatic);
   }
 
   public function init():Void
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Initializing connection...');
+    if (isInitialized)
+    {
+      FlxG.log.warn('[Discord] init() called but the client is already initialized.');
+      return;
+    }
+
+    FlxG.log.add('[Discord] Initializing connection...');
 
     if (!hasValidCredentials())
     {
-      FlxG.log.warn('Tried to initialize Discord connection, but credentials are invalid!');
+      FlxG.log.warn('[Discord] Tried to initialize Discord connection, but credentials are invalid!');
       return;
     }
 
     @:nullSafety(Off)
     {
-      Discord.Initialize(DISCORD_CLIENT_ID, cpp.RawPointer.addressOf(handlers), false, '');
+      Discord.Initialize(DISCORD_CLIENT_ID, cpp.RawPointer.addressOf(handlers), true, '');
     }
+
+    isInitialized = true;
+    running = true;
 
     createDaemon();
   }
 
-  /**
-   * @returns `false` if the client ID is invalid.
-   */
   static function hasValidCredentials():Bool
   {
     return !(DISCORD_CLIENT_ID == null || DISCORD_CLIENT_ID == '' || (DISCORD_CLIENT_ID != null && DISCORD_CLIENT_ID.contains(' ')));
   }
-
-  var daemon:Null<Thread> = null;
 
   function createDaemon():Void
   {
@@ -85,75 +100,175 @@ class DiscordClient
 
   function doDaemonWork():Void
   {
-    while (true)
+    while (running)
     {
       #if DISCORD_DISABLE_IO_THREAD
       Discord.updateConnection();
       #end
 
       Discord.RunCallbacks();
-      Sys.sleep(2);
+
+      if (isInitialized && !isConnected)
+      {
+        final now:Float = haxe.Timer.stamp();
+        if (now - lastReconnectAttemptAt >= RECONNECT_INTERVAL)
+        {
+          lastReconnectAttemptAt = now;
+          attemptReconnect();
+        }
+      }
+
+      if (pendingPresence != null)
+      {
+        final now:Float = haxe.Timer.stamp();
+        if (now - lastPresenceSentAt >= MIN_UPDATE_INTERVAL)
+        {
+          final toSend:DiscordClientPresenceParams = pendingPresence;
+          pendingPresence = null;
+          lastPresenceSentAt = now;
+          lastPresenceSignature = buildSignature(toSend);
+          sendPresence(toSend);
+        }
+      }
+
+      Sys.sleep(DAEMON_SLEEP);
+    }
+  }
+
+  function attemptReconnect():Void
+  {
+    if (!hasValidCredentials()) return;
+
+    FlxG.log.add('[Discord] Attempting to reconnect...');
+
+    @:nullSafety(Off)
+    {
+      Discord.Initialize(DISCORD_CLIENT_ID, cpp.RawPointer.addressOf(handlers), true, '');
     }
   }
 
   public function shutdown():Void
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Shutting down...');
+    if (!isInitialized) return;
+
+    FlxG.log.add('[Discord] Shutting down...');
+
+    running = false;
+    isInitialized = false;
+    isConnected = false;
+    pendingPresence = null;
 
     Discord.Shutdown();
+  }
+
+  public function clearPresence():Void
+  {
+    presenceParamsCache = null;
+    pendingPresence = null;
+    lastPresenceSignature = '';
+
+    if (!isInitialized) return;
+
+    Discord.ClearPresence();
   }
 
   public function setPresence(params:DiscordClientPresenceParams):Void
   {
     presenceParamsCache = params;
 
+    final signature:String = buildSignature(params);
+    final now:Float = haxe.Timer.stamp();
+
+    if (signature == lastPresenceSignature && (now - lastPresenceSentAt) < MIN_UPDATE_INTERVAL)
+    {
+      return;
+    }
+
+    if ((now - lastPresenceSentAt) < MIN_UPDATE_INTERVAL)
+    {
+      pendingPresence = params;
+      return;
+    }
+
+    pendingPresence = null;
+    lastPresenceSignature = signature;
+    lastPresenceSentAt = now;
+
+    sendPresence(params);
+  }
+
+  public function respondToJoinRequest(userId:String, accept:Bool):Void
+  {
+    Discord.Respond(userId, accept ? DiscordReply_Yes : DiscordReply_No);
+  }
+
+  function buildSignature(params:DiscordClientPresenceParams):String
+  {
+    return [
+      params.state ?? '',
+      params.details ?? '',
+      params.largeImageKey ?? '',
+      params.smallImageKey ?? '',
+      params.showElapsedTime == true ? '1' : '0',
+      Std.string(params.partySize ?? -1),
+      Std.string(params.partyMax ?? -1),
+      params.joinSecret ?? '',
+      params.spectateSecret ?? ''
+    ].join('|');
+  }
+
+  function sendPresence(params:DiscordClientPresenceParams):Void
+  {
     var presence:DiscordRichPresence = new DiscordRichPresence();
 
-    // Presence should always be playing the game.
     presence.type = DiscordActivityType_Playing;
 
-    // Text when hovering over the large image. We just leave this as the game name.
     presence.largeImageText = "Friday Night Funkin'";
 
-    // State should be generally what the person is doing, like "In the Menus" or "Pico (Pico Mix) [Freeplay Hard]"
     presence.state = cast(params.state, Null<String>) ?? '';
-    // Details should be what the person is specifically doing, including stuff like timestamps (maybe something like "03:24 elapsed").
     presence.details = cast(params.details, Null<String>) ?? '';
 
-    // The large image displaying what the user is doing.
-    // This should probably be album art.
-    // IMPORTANT NOTE: This can be an asset key uploaded to Discord's developer panel OR any URL you like.
     presence.largeImageKey = cast(params.largeImageKey, Null<String>) ?? 'album-volume1';
-
-    // TODO: Make this use the song's album art.
-    // presence.largeImageKey = "icon";
-
-    // The small inset image for what the user is doing.
-    // This can be the opponent's health icon?
-    // NOTE: Like largeImageKey, this can be a URL, or an asset key.
     presence.smallImageKey = cast(params.smallImageKey, Null<String>) ?? '';
 
-    // NOTE: In previous versions, this showed as "Elapsed", but now shows as playtime and doesn't look good
-    // presence.startTimestamp = time - 10;
+    if (params.showElapsedTime == true)
+    {
+      presence.startTimestamp = Std.int(Date.now().getTime() / 1000);
+    }
 
-    final button1:DiscordButton = new DiscordButton();
-    button1.label = 'Play on Web';
-    button1.url = Constants.URL_NEWGROUNDS;
-    presence.buttons[0] = button1;
+    if (params.partyId != null)
+    {
+      presence.partyId = params.partyId;
+      presence.partySize = params.partySize ?? 1;
+      presence.partyMax = params.partyMax ?? 1;
+    }
 
-    final button2:DiscordButton = new DiscordButton();
-    button2.label = 'Download';
-    button2.url = Constants.URL_ITCH;
-    presence.buttons[1] = button2;
+    if (params.joinSecret != null) presence.joinSecret = params.joinSecret;
+    if (params.spectateSecret != null) presence.spectateSecret = params.spectateSecret;
+
+    final buttonParams:Array<DiscordClientButtonParams> = params.buttons ?? [
+      {label: 'Play on Web', url: Constants.URL_NEWGROUNDS},
+      {label: 'Download', url: Constants.URL_ITCH}
+    ];
+
+    for (i in 0...buttonParams.length)
+    {
+      if (i >= 2) break;
+
+      final button:DiscordButton = new DiscordButton();
+      button.label = buttonParams[i].label;
+      button.url = buttonParams[i].url;
+      presence.buttons[i] = button;
+    }
 
     Discord.UpdatePresence(cpp.RawConstPointer.addressOf(presence));
   }
 
-  // TODO: WHAT THE FUCK get this pointer bullfuckery out of here
-
   private static function onReady(request:cpp.RawConstPointer<DiscordUser>):Void
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Client has connected!');
+    FlxG.log.add('[Discord] Client has connected!');
+
+    if (DiscordClient._instance != null) DiscordClient._instance.isConnected = true;
 
     final username:String = request[0].username;
     final globalName:String = request[0].username;
@@ -161,58 +276,85 @@ class DiscordClient
 
     if (discriminator != null && discriminator != 0)
     {
-      trace(' DISCORD '.bold().bg_blue() + ' User: ${username}#${discriminator} (${globalName})');
+      FlxG.log.add('[Discord] User: ${username}#${discriminator} (${globalName})');
     }
     else
     {
-      trace(' DISCORD '.bold().bg_blue() + ' User: @${username} (${globalName})');
+      FlxG.log.add('[Discord] User: @${username} (${globalName})');
+    }
+
+    if (DiscordClient.presenceParamsCache != null && DiscordClient._instance != null)
+    {
+      DiscordClient._instance.sendPresence(DiscordClient.presenceParamsCache);
     }
   }
 
   private static function onDisconnected(errorCode:Int, message:cpp.ConstCharStar):Void
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Client has disconnected! ($errorCode) "${cast (message, String)}"');
+    FlxG.log.warn('[Discord] Client has disconnected! ($errorCode) "${cast (message, String)}"');
+
+    if (DiscordClient._instance != null) DiscordClient._instance.isConnected = false;
   }
 
   private static function onError(errorCode:Int, message:cpp.ConstCharStar):Void
   {
-    trace(' DISCORD '.bold().bg_blue() + ' Client has received an error! ($errorCode) "${cast (message, String)}"');
+    FlxG.log.error('[Discord] Client has received an error! ($errorCode) "${cast (message, String)}"');
+
+    if (DiscordClient._instance != null) DiscordClient._instance.isConnected = false;
   }
 
-  // public var partyId(get, set)
-  // public var partySize(get, set)
-  // public var partyMax(get, set)
-  // public var partyPrivacy(get, set)
-  //
-  // public var buttons(get, set)
-  //
-  // public var matchSecret(get, set)
-  // public var joinSecret(get, set)
-  // public var spectateSecret(get, set)
+  private static function onJoinGameStatic(secret:cpp.ConstCharStar):Void
+  {
+    final secretStr:String = cast(secret, String);
+    FlxG.log.add('[Discord] Join game requested with secret "$secretStr".');
+
+    if (DiscordClient._instance != null && DiscordClient._instance.onJoinGame != null)
+    {
+      DiscordClient._instance.onJoinGame(secretStr);
+    }
+  }
+
+  private static function onSpectateGameStatic(secret:cpp.ConstCharStar):Void
+  {
+    final secretStr:String = cast(secret, String);
+    FlxG.log.add('[Discord] Spectate game requested with secret "$secretStr".');
+
+    if (DiscordClient._instance != null && DiscordClient._instance.onSpectateGame != null)
+    {
+      DiscordClient._instance.onSpectateGame(secretStr);
+    }
+  }
+
+  private static function onJoinRequestStatic(request:cpp.RawConstPointer<DiscordUser>):Void
+  {
+    FlxG.log.add('[Discord] Join request received from ${request[0].username}.');
+
+    if (DiscordClient._instance != null && DiscordClient._instance.onJoinRequest != null)
+    {
+      DiscordClient._instance.onJoinRequest(request[0]);
+    }
+  }
+}
+
+typedef DiscordClientButtonParams =
+{
+  var label:String;
+  var url:String;
 }
 
 typedef DiscordClientPresenceParams =
 {
-  /**
-   * The first row of text below the game title.
-   */
   var state:String;
-
-  /**
-   * The second row of text below the game title.
-   * Use `null` to display no text.
-   */
   var details:Null<String>;
-
-  /**
-   * A large, 4-row high image to the left of the content.
-   */
   var ?largeImageKey:String;
-
-  /**
-   * A small, inset image to the bottom right of `largeImageKey`.
-   */
   var ?smallImageKey:String;
+  var ?showElapsedTime:Bool;
+  var ?buttons:Array<DiscordClientButtonParams>;
+  var ?partyId:String;
+  var ?partySize:Int;
+  var ?partyMax:Int;
+  var ?joinSecret:String;
+  var ?spectateSecret:String;
 }
 
 class DiscordClientSandboxed
@@ -222,22 +364,109 @@ class DiscordClientSandboxed
     DiscordClient.instance.setPresence(params);
   }
 
+  public static function clearPresence():Void
+  {
+    DiscordClient.instance.clearPresence();
+  }
+
   public static function shutdown():Void
   {
     DiscordClient.instance.shutdown();
   }
 }
-#else
+
+#elseif FEATURE_DISCORD_RPC
+class DiscordClient
+{
+  public static var instance(get, never):DiscordClient;
+
+  static var _instance:Null<DiscordClient> = null;
+
+  static function get_instance():DiscordClient
+  {
+    if (_instance == null) _instance = new DiscordClient();
+    return _instance;
+  }
+
+  public static var presenceParamsCache:Null<DiscordClientPresenceParams>;
+
+  public var isConnected(default, null):Bool = false;
+  public var isInitialized(default, null):Bool = false;
+
+  public var onJoinGame:Null<String->Void> = null;
+  public var onSpectateGame:Null<String->Void> = null;
+
+  private function new() {}
+
+  public function init():Void
+  {
+    isInitialized = true;
+    FlxG.log.add('[Discord] Rich Presence is not available on this platform. Running in no-op mode.');
+  }
+
+  public function setPresence(params:DiscordClientPresenceParams):Void
+  {
+    presenceParamsCache = params;
+  }
+
+  public function clearPresence():Void
+  {
+    presenceParamsCache = null;
+  }
+
+  public function shutdown():Void
+  {
+    isInitialized = false;
+    isConnected = false;
+  }
+}
+
+typedef DiscordClientButtonParams =
+{
+  var label:String;
+  var url:String;
+}
+
+typedef DiscordClientPresenceParams =
+{
+  var state:String;
+  var details:Null<String>;
+  var ?largeImageKey:String;
+  var ?smallImageKey:String;
+  var ?showElapsedTime:Bool;
+  var ?buttons:Array<DiscordClientButtonParams>;
+  var ?partyId:String;
+  var ?partySize:Int;
+  var ?partyMax:Int;
+  var ?joinSecret:String;
+  var ?spectateSecret:String;
+}
+
 class DiscordClientSandboxed
 {
-  public static function setPresence(params:Dynamic):Void
+  public static function setPresence(params:DiscordClientPresenceParams):Void
   {
-    // Do nothing.
+    DiscordClient.instance.setPresence(params);
+  }
+
+  public static function clearPresence():Void
+  {
+    DiscordClient.instance.clearPresence();
   }
 
   public static function shutdown():Void
   {
-    // Do nothing.
+    DiscordClient.instance.shutdown();
   }
+}
+
+#else
+class DiscordClientSandboxed
+{
+  public static function setPresence(params:Dynamic):Void {}
+
+  public static function clearPresence():Void {}
+
+  public static function shutdown():Void {}
 }
 #end
