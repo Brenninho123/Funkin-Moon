@@ -143,6 +143,8 @@ class Project extends HXProject
 
   static final FEATURE_NEWGROUNDS_TESTING_MEDALS:FeatureFlag = "FEATURE_NEWGROUNDS_TESTING_MEDALS";
 
+  static final FEATURE_GOOGLE_LOGIN:FeatureFlag = "FEATURE_GOOGLE_LOGIN";
+
   static final FEATURE_OPEN_URL:FeatureFlag = "FEATURE_OPEN_URL";
 
   static final FEATURE_PARTIAL_SOUNDS:FeatureFlag = "FEATURE_PARTIAL_SOUNDS";
@@ -150,6 +152,8 @@ class Project extends HXProject
   static final FEATURE_POLYMOD_MODS:FeatureFlag = "FEATURE_POLYMOD_MODS";
 
   static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
+
+  static final FEATURE_MOON_SCRIPTS:FeatureFlag = "FEATURE_MOON_SCRIPTS";
 
   static final FEATURE_MOD_MENU:FeatureFlag = "FEATURE_MOD_MENU";
 
@@ -229,6 +233,11 @@ class Project extends HXProject
     if (FEATURE_MOBILE_ADVERTISEMENTS.isEnabled(this))
     {
       configureAdMobKeys();
+    }
+
+    if (FEATURE_GOOGLE_LOGIN.isEnabled(this))
+    {
+      configureGoogleKeys();
     }
 
     if (isAndroid())
@@ -455,6 +464,7 @@ class Project extends HXProject
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
     FEATURE_LUA_SCRIPTS.apply(this, true);
+    FEATURE_MOON_SCRIPTS.apply(this, true);
     FEATURE_MOD_MENU.apply(this, false);
     FEATURE_MOD_LOADING.apply(this, false);
 
@@ -476,6 +486,8 @@ class Project extends HXProject
     FEATURE_NEWGROUNDS_TESTING_MEDALS.apply(this, FEATURE_NEWGROUNDS.isEnabled(this) && FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
     FEATURE_NEWGROUNDS_AUTOLOGIN.apply(this, FEATURE_NEWGROUNDS.isEnabled(this) && isWeb());
     FEATURE_NEWGROUNDS_EVENTS.apply(this, FEATURE_NEWGROUNDS.isEnabled(this));
+
+    FEATURE_GOOGLE_LOGIN.apply(this, isDesktop() || isAndroid());
 
     FEATURE_DEBUG_MENU.apply(this, !isWeb());
     FEATURE_ANIMATION_EDITOR.apply(this, !isWeb());
@@ -530,31 +542,52 @@ class Project extends HXProject
     renderFlagsTable();
   }
 
-  function renderFlagsTable():Void
+  function collectFeatureFlags():{enabled:Array<String>, disabled:Array<String>}
   {
-    var enabledWidth:Int = 0;
-    var disabledWidth:Int = 0;
-    var enabledFlags:Array<String> = [];
-    var disabledFlags:Array<String> = [];
-    var unicodeCheck:String = "✓ ";
-    var unicodeCross:String = "× ";
+    var enabled:Array<String> = [];
+    var disabled:Array<String> = [];
 
     for (flagStr in this.haxedefs.keys())
     {
       if (!flagStr.startsWith(FeatureFlag.INVERSE_PREFIX))
       {
-        enabledWidth = Std.int(Math.max(flagStr.length + 3, enabledWidth));
-        enabledFlags.push(unicodeCheck + flagStr);
+        enabled.push(flagStr);
       }
       else
       {
-        disabledWidth = Std.int(Math.max(flagStr.length, disabledWidth));
-        disabledFlags.push(unicodeCross + flagStr.substring(FeatureFlag.INVERSE_PREFIX.length));
+        disabled.push(flagStr.substring(FeatureFlag.INVERSE_PREFIX.length));
       }
     }
 
-    enabledFlags.sort(function(a, b) return a > b ? 1 : -1);
-    disabledFlags.sort(function(a, b) return a > b ? 1 : -1);
+    enabled.sort(function(a, b) return a > b ? 1 : -1);
+    disabled.sort(function(a, b) return a > b ? 1 : -1);
+
+    return {enabled: enabled, disabled: disabled};
+  }
+
+  function renderFlagsTable():Void
+  {
+    var flags = collectFeatureFlags();
+
+    var enabledWidth:Int = 0;
+    var disabledWidth:Int = 0;
+    var unicodeCheck:String = "✓ ";
+    var unicodeCross:String = "× ";
+
+    var enabledFlags:Array<String> = [];
+    var disabledFlags:Array<String> = [];
+
+    for (flagStr in flags.enabled)
+    {
+      enabledWidth = Std.int(Math.max(flagStr.length + 3, enabledWidth));
+      enabledFlags.push(unicodeCheck + flagStr);
+    }
+
+    for (flagStr in flags.disabled)
+    {
+      disabledWidth = Std.int(Math.max(flagStr.length, disabledWidth));
+      disabledFlags.push(unicodeCross + flagStr);
+    }
 
     var horizontalDivider:String = "".rpad("-", enabledWidth + disabledWidth);
 
@@ -767,6 +800,12 @@ class Project extends HXProject
       {
         config.get('android.activity').xmlChildren = [Printer.print(intentFilter, true)];
       }
+    }
+
+    if (FEATURE_GOOGLE_LOGIN.isEnabled(this))
+    {
+      config.push("android.permission", "android.permission.INTERNET");
+      config.push("android.permission", "android.permission.GET_ACCOUNTS");
     }
 
     final extensions:Null<Array<String>> = config.getArrayString('android.extension');
@@ -1104,12 +1143,18 @@ class Project extends HXProject
   {
     info('Embedding build info...');
 
+    var flags = collectFeatureFlags();
+
     var buildInfo = {
       commit: getGitShortHash(),
       branch: getGitBranch(),
       buildType: isDebug() ? 'debug' : 'release',
       platform: targetPlatformName(),
-      builtAt: Date.now().toString()
+      builtAt: Date.now().toString(),
+      engineVersion: VERSION,
+      moonVersion: MOON_VERSION,
+      buildNumber: BUILD_NUMBER,
+      enabledFeatures: flags.enabled
     };
 
     var outputDir:String = 'assets/preload/data';
@@ -1119,7 +1164,7 @@ class Project extends HXProject
     {
       if (!sys.FileSystem.exists(outputDir)) sys.FileSystem.createDirectory(outputDir);
       sys.io.File.saveContent(outputPath, haxe.Json.stringify(buildInfo, null, '  '));
-      info('  Build info written to $outputPath (commit ${buildInfo.commit}, ${buildInfo.buildType}, ${buildInfo.platform})');
+      info('  Build info written to $outputPath (commit ${buildInfo.commit}, ${buildInfo.buildType}, ${buildInfo.platform}, moon ${buildInfo.moonVersion})');
     }
     catch (e:Dynamic)
     {
@@ -1220,6 +1265,33 @@ class Project extends HXProject
       {
         error("ADMOB_APP_ID is not defined in the environment. Populate the .env file in your project root or build with -DNO_FEATURE_MOBILE_ADVERTISEMENTS");
       }
+    }
+  }
+
+  function configureGoogleKeys()
+  {
+    if (envConfig == null)
+    {
+      warn("FEATURE_GOOGLE_LOGIN is enabled but no .env file was found. Google Sign-In will run without a configured client ID until GOOGLE_CLIENT_ID is set.");
+      return;
+    }
+
+    var clientId:Null<String> = Std.string(envConfig.get('GOOGLE_CLIENT_ID'));
+
+    if (clientId != null && clientId != "null")
+    {
+      setenv("GOOGLE_CLIENT_ID", clientId);
+    }
+    else
+    {
+      warn("GOOGLE_CLIENT_ID is not defined in the environment. Populate the .env file in your project root or build with -DNO_FEATURE_GOOGLE_LOGIN");
+    }
+
+    var clientSecret:Null<String> = Std.string(envConfig.get('GOOGLE_CLIENT_SECRET'));
+
+    if (clientSecret != null && clientSecret != "null")
+    {
+      setenv("GOOGLE_CLIENT_SECRET", clientSecret);
     }
   }
 
