@@ -115,7 +115,7 @@ Issues and pull requests are welcome, an overhaul on issue creation is coming so
 
 * **Brenninho123** — Owner/Programmer
 * **StefanDX** - Artist/PlayTester
-* **Sunndy** — Artist/PlayTester
+* **Sunndy** — 2nd Owner/Main Artist
 * **Bruno** — PlayTester
 * **Cosmic** — Musician/PlayTester
 * **Cookie** — Programmer
