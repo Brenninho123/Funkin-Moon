@@ -20,7 +20,7 @@ jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -37,6 +37,15 @@ jobs:
 
       - name: Setup Android
         uses: android-actions/setup-android@v3
+
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_SDK_ROOT }}/ndk
+            ${{ env.ANDROID_SDK_ROOT }}/platforms
+            ${{ env.ANDROID_SDK_ROOT }}/build-tools
+          key: android-sdk-ndk27.2.12479018-platform35-buildtools35.0.0
 
       - name: Install Android SDK
         shell: bash
@@ -88,6 +97,7 @@ jobs:
           haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Cache haxelib
+        id: cache-haxelib
         uses: actions/cache@v4
         with:
           path: .haxelib
@@ -104,6 +114,7 @@ jobs:
         run: haxelib run hmm install
 
       - name: Build hxcpp
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
         run: |
           HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
@@ -111,6 +122,7 @@ jobs:
           haxe compile.hxml
 
       - name: Rebuild Lime
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
         run: haxelib run lime rebuild cpp
 
@@ -124,18 +136,19 @@ jobs:
           EOF
 
       - name: Rebuild Lime Android
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
         run: haxelib run lime rebuild android
 
       - name: Build Android
         shell: bash
-        run: haxelib run lime build android -arm64 -release -DGITHUB_BUILD
+        run: haxelib run lime build android -arm64 -debug -DGITHUB_BUILD
 
       - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
           name: Funkin (PlayTest) (Android)
-          path: export/release/android/**/*.apk
+          path: export/debug/android/**/*.apk
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
@@ -143,7 +156,7 @@ jobs:
   ios:
     name: iOS
     runs-on: macos-latest
-    timeout-minutes: 240
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -184,30 +197,39 @@ jobs:
 
       - name: Generate Xcode project
         shell: bash
-        run: haxelib run lime update ios -release -DGITHUB_BUILD -DNO_FEATURE_CPPIA
+        run: haxelib run lime update ios -debug -DGITHUB_BUILD -DNO_FEATURE_CPPIA
+
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: xcode-derived-data-ios-${{ hashFiles('hmm.json') }}
+          restore-keys: |
+            xcode-derived-data-ios-
 
       - name: Build iOS (unsigned)
         shell: bash
         run: |
           set -euo pipefail
 
-          cd export/release/ios
+          cd export/debug/ios
 
           xcodebuild build \
             -project Funkin.xcodeproj \
             -target Funkin \
-            -configuration Release \
+            -configuration Debug \
             -sdk iphoneos \
+            -derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            CONFIGURATION_BUILD_DIR=build/Release-iphoneos
+            CONFIGURATION_BUILD_DIR=build/Debug-iphoneos
 
       - name: Package iOS app
         shell: bash
         run: |
           set -euo pipefail
-          BUILD_DIR=export/release/ios/build/Release-iphoneos
+          BUILD_DIR=export/debug/ios/build/Debug-iphoneos
 
           cd "$BUILD_DIR"
           APP_PATH=$(find . -maxdepth 1 -name "*.app")
