@@ -396,13 +396,6 @@ class MoonEnvironment
     }
     throw new MoonRuntimeError('Undefined variable "$name".');
   }
-
-  public function exists(name:String):Bool
-  {
-    if (values.exists(name)) return true;
-    if (enclosing != null) return enclosing.exists(name);
-    return false;
-  }
 }
 
 class MoonFunction
@@ -1420,9 +1413,9 @@ class MoonScript
 
     registerNative('length', function(args:Array<Dynamic>):Dynamic
     {
-      var value = args[0];
-      if (Std.isOfType(value, String)) return (value : String).length;
-      if (Std.isOfType(value, Array)) return (value : Array<Dynamic>).length;
+      var value:Dynamic = args[0];
+      if (Std.isOfType(value, String)) return (cast(value, String)).length;
+      if (Std.isOfType(value, Array)) return (cast(value, Array<Dynamic>)).length;
       return 0;
     });
 
