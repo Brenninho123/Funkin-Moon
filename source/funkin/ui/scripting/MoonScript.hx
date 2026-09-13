@@ -57,6 +57,7 @@ enum MoonTokenType
   Private;
   Static;
   Import;
+  In;
   Eof;
 }
 
@@ -84,7 +85,7 @@ class MoonLexer
     'for' => For, 'return' => Return, 'break' => Break, 'continue' => Continue,
     'true' => True, 'false' => False, 'null' => Null, 'this' => This,
     'new' => New, 'public' => Public, 'private' => Private, 'static' => Static,
-    'import' => Import
+    'import' => Import, 'in' => In
   ];
 
   var source:String;
@@ -123,12 +124,12 @@ class MoonLexer
 
   function peek():String
   {
-    return isAtEnd() ? '\0' : source.charAt(current);
+    return isAtEnd() ? '' : source.charAt(current);
   }
 
   function peekNext():String
   {
-    return current + 1 >= source.length ? '\0' : source.charAt(current + 1);
+    return current + 1 >= source.length ? '' : source.charAt(current + 1);
   }
 
   function match(expected:String):Bool
@@ -200,9 +201,11 @@ class MoonLexer
       case '>':
         addToken(match('=') ? GreaterEqual : Greater);
       case '&':
-        if (match('&')) addToken(AndAnd);
+        if (match('&')) addToken(AndAnd)
+        else throw new MoonRuntimeError('[line $line] Unexpected character "&" (did you mean "&&"?).');
       case '|':
-        if (match('|')) addToken(OrOr);
+        if (match('|')) addToken(OrOr)
+        else throw new MoonRuntimeError('[line $line] Unexpected character "|" (did you mean "||"?).');
       case ' ', '\r', '\t':
       case '\n':
         line++;
@@ -314,6 +317,7 @@ enum MoonStmt
   IfStmt(cond:MoonExpr, thenBranch:MoonStmt, elseBranch:Null<MoonStmt>);
   WhileStmt(cond:MoonExpr, body:MoonStmt);
   ForStmt(init:Null<MoonStmt>, cond:Null<MoonExpr>, increment:Null<MoonExpr>, body:MoonStmt);
+  ForEachStmt(varName:String, iterable:MoonExpr, body:MoonStmt);
   ReturnStmt(value:Null<MoonExpr>);
   BreakStmt;
   ContinueStmt;
@@ -371,6 +375,13 @@ class MoonEnvironment
     throw new MoonRuntimeError('Undefined variable "$name".');
   }
 
+  public function exists(name:String):Bool
+  {
+    if (values.exists(name)) return true;
+    if (enclosing != null) return enclosing.exists(name);
+    return false;
+  }
+
   public function assign(name:String, value:Dynamic):Void
   {
     if (values.exists(name))
@@ -384,6 +395,13 @@ class MoonEnvironment
       return;
     }
     throw new MoonRuntimeError('Undefined variable "$name".');
+  }
+
+  public function exists(name:String):Bool
+  {
+    if (values.exists(name)) return true;
+    if (enclosing != null) return enclosing.exists(name);
+    return false;
   }
 }
 
@@ -696,6 +714,21 @@ class MoonParser
   {
     consume(LeftParen, 'Expect "(" after for.');
 
+    var isForEach:Bool = (check(Identifier) && checkNext(In))
+      || ((check(Var) || check(Let)) && current + 2 < tokens.length && tokens[current + 1].type == Identifier && tokens[current + 2].type == In);
+
+    if (isForEach)
+    {
+      match([Var]);
+      match([Let]);
+      var name = consume(Identifier, 'Expect loop variable name.').lexeme;
+      consume(In, 'Expect "in" after loop variable.');
+      var iterable = expression();
+      consume(RightParen, 'Expect ")" after for-in clause.');
+      var body = statement();
+      return ForEachStmt(name, iterable, body);
+    }
+
     var init:MoonStmt = null;
     if (match([Semicolon])) {}
     else if (match([Var]) || match([Let])) init = varDeclaration();
@@ -974,6 +1007,12 @@ class MoonParser
     return peek().type == type;
   }
 
+  function checkNext(type:MoonTokenType):Bool
+  {
+    if (current + 1 >= tokens.length) return false;
+    return tokens[current + 1].type == type;
+  }
+
   function advance():MoonToken
   {
     if (!isAtEnd()) current++;
@@ -1119,6 +1158,33 @@ class MoonInterpreter
         finally
         {
           environment = previousEnv;
+        }
+
+      case ForEachStmt(varName, iterableExpr, body):
+        var iterableValue = evaluate(iterableExpr);
+        if (!Std.isOfType(iterableValue, Array)) throw new MoonRuntimeError('for-in can only iterate over arrays.');
+        var items:Array<Dynamic> = cast iterableValue;
+        var previousLoopEnv = environment;
+        try
+        {
+          for (item in items)
+          {
+            environment = new MoonEnvironment(previousLoopEnv);
+            environment.define(varName, item);
+            try
+            {
+              execute(body);
+            }
+            catch (b:MoonBreakSignal)
+            {
+              break;
+            }
+            catch (c:MoonContinueSignal) {}
+          }
+        }
+        finally
+        {
+          environment = previousLoopEnv;
         }
 
       case ReturnStmt(value):
@@ -1314,6 +1380,7 @@ class MoonScript
 
   public var onPrint:String->Void;
   public var onError:String->Void;
+  public var closed:Bool = false;
 
   public function new(?source:String)
   {
@@ -1406,9 +1473,19 @@ class MoonScript
     return globals.get(name);
   }
 
+  public function hasGlobal(name:String):Bool
+  {
+    return globals.exists(name);
+  }
+
   public function call(name:String, ?args:Array<Dynamic>):Dynamic
   {
     var callee = globals.get(name);
     return interpreter.callValue(callee, args == null ? [] : args);
+  }
+
+  public function destroy():Void
+  {
+    closed = true;
   }
 }
