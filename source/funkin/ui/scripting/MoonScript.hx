@@ -1155,10 +1155,12 @@ class MoonInterpreter
             if (increment != null) evaluate(increment);
           }
         }
-        finally
+        catch (e:Dynamic)
         {
           environment = previousEnv;
+          throw e;
         }
+        environment = previousEnv;
 
       case ForEachStmt(varName, iterableExpr, body):
         var iterableValue = evaluate(iterableExpr);
@@ -1182,10 +1184,12 @@ class MoonInterpreter
             catch (c:MoonContinueSignal) {}
           }
         }
-        finally
+        catch (e:Dynamic)
         {
           environment = previousLoopEnv;
+          throw e;
         }
+        environment = previousLoopEnv;
 
       case ReturnStmt(value):
         throw new MoonReturnSignal(value != null ? evaluate(value) : null);
@@ -1209,10 +1213,12 @@ class MoonInterpreter
     {
       for (s in statements) execute(s);
     }
-    finally
+    catch (e:Dynamic)
     {
       environment = previousEnv;
+      throw e;
     }
+    environment = previousEnv;
   }
 
   public function evaluate(expr:MoonExpr):Dynamic
