@@ -48,6 +48,9 @@ import funkin.mobile.input.ControlsHandler;
 import funkin.util.MathUtil;
 import funkin.util.TouchUtil;
 #end
+#if FEATURE_MOBILE_MODMENU_HAPTICS
+import funkin.mobile.util.HapticUtil;
+#end
 
 class ModMenuState extends MusicBeatState
 {
@@ -1669,6 +1672,10 @@ class ModMenuState extends MusicBeatState
   {
     if (item.getModId() == BASE_GAME_MOD_ID) return;
 
+    #if FEATURE_MOBILE_MODMENU_HAPTICS
+    HapticUtil.tap();
+    #end
+
     if (list == disabledModItems)
     {
       enableMod(item);
@@ -1722,6 +1729,10 @@ class ModMenuState extends MusicBeatState
         tapList = null;
 
         FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+
+        #if FEATURE_MOBILE_MODMENU_HAPTICS
+        HapticUtil.select();
+        #end
 
         itemList.selectModItem(promotedItem, false);
 
@@ -1802,6 +1813,13 @@ class ModMenuState extends MusicBeatState
       default:
     }
 
+    if (listChanged)
+    {
+      #if FEATURE_MOBILE_MODMENU_HAPTICS
+      HapticUtil.success();
+      #end
+    }
+
     if (!listChanged)
     {
       targetList = originalItemList;
@@ -1842,6 +1860,10 @@ class ModMenuState extends MusicBeatState
     {
       FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
 
+      #if FEATURE_MOBILE_MODMENU_HAPTICS
+      HapticUtil.tap();
+      #end
+
       openFolderAnimator.playAnimation('accept');
       openFolderAnimator.onFinish = () ->
       {
@@ -1854,11 +1876,19 @@ class ModMenuState extends MusicBeatState
     {
       FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
 
+      #if FEATURE_MOBILE_MODMENU_HAPTICS
+      HapticUtil.select();
+      #end
+
       playElectrocutionSequence();
     }
 
     if (TouchUtil.overlapsComplex(buttonBackToMenu) && TouchUtil.justPressed)
     {
+      #if FEATURE_MOBILE_MODMENU_HAPTICS
+      HapticUtil.tap();
+      #end
+
       playBackButtonAnimation('press', true);
     }
 
@@ -2455,6 +2485,11 @@ class ModMenuState extends MusicBeatState
   function blockedIncompatible(item:ModMenuItem):Void
   {
     FunkinSound.playOnce(Paths.sound('ui/quick-panel/sounds/menu-deny'), 0.7);
+
+    #if FEATURE_MOBILE_MODMENU_HAPTICS
+    HapticUtil.warning();
+    #end
+
     item.flashBackground();
   }
 
@@ -2524,6 +2559,10 @@ class ModMenuState extends MusicBeatState
 
     if (blocked)
     {
+      #if FEATURE_MOBILE_MODMENU_HAPTICS
+      HapticUtil.warning();
+      #end
+
       nudgeBlocked(modItem, moveUp);
       return;
     }
