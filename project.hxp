@@ -129,6 +129,14 @@ class Project extends HXProject
   static final FEATURE_VIDEO_SUBTITLES:FeatureFlag = "FEATURE_VIDEO_SUBTITLES";
   static final FEATURE_DEBUG_DISPLAY:FeatureFlag = "FEATURE_DEBUG_DISPLAY";
 
+  static final FEATURE_MOBILE_BATTERY_SAVER:FeatureFlag = "FEATURE_MOBILE_BATTERY_SAVER";
+  static final FEATURE_MOBILE_SAFE_AREA:FeatureFlag = "FEATURE_MOBILE_SAFE_AREA";
+  static final FEATURE_MOBILE_SUSPEND_ON_BACKGROUND:FeatureFlag = "FEATURE_MOBILE_SUSPEND_ON_BACKGROUND";
+  static final FEATURE_MOBILE_PERFORMANCE_OVERLAY:FeatureFlag = "FEATURE_MOBILE_PERFORMANCE_OVERLAY";
+  static final FEATURE_MOBILE_ADAPTIVE_RESOLUTION:FeatureFlag = "FEATURE_MOBILE_ADAPTIVE_RESOLUTION";
+  static final FEATURE_MOBILE_GESTURE_NAV_PADDING:FeatureFlag = "FEATURE_MOBILE_GESTURE_NAV_PADDING";
+  static final FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK:FeatureFlag = "FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK";
+
   public function new()
   {
     super();
@@ -448,7 +456,7 @@ class Project extends HXProject
     FEATURE_NEWGROUNDS_AUTOLOGIN.apply(this, FEATURE_NEWGROUNDS.isEnabled(this) && isWeb());
     FEATURE_NEWGROUNDS_EVENTS.apply(this, FEATURE_NEWGROUNDS.isEnabled(this));
 
-    FEATURE_DEBUG_MENU.apply(this, !(isWeb() || isMobile()));
+    FEATURE_DEBUG_MENU.apply(this, !isWeb());
 
     var editorsEnabled:Bool = !isWeb();
     FEATURE_ANIMATION_EDITOR.apply(this, editorsEnabled);
@@ -475,6 +483,14 @@ class Project extends HXProject
     FEATURE_MOBILE_IAR.apply(this, isMobile() && isRelease());
     FEATURE_MOBILE_WEBVIEW.apply(this, isMobile() && FEATURE_NEWGROUNDS.isEnabled(this));
     FEATURE_MOBILE_AGESIGNALS.apply(this, isMobile() && isRelease());
+
+    FEATURE_MOBILE_BATTERY_SAVER.apply(this, isMobile() && isRelease());
+    FEATURE_MOBILE_SAFE_AREA.apply(this, isMobile());
+    FEATURE_MOBILE_SUSPEND_ON_BACKGROUND.apply(this, isMobile() && !FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
+    FEATURE_MOBILE_PERFORMANCE_OVERLAY.apply(this, isMobile() && FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
+    FEATURE_MOBILE_ADAPTIVE_RESOLUTION.apply(this, isMobile() && isRelease());
+    FEATURE_MOBILE_GESTURE_NAV_PADDING.apply(this, isAndroid());
+    FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK.apply(this, isAndroid() && FEATURE_POLYMOD_MODS.isEnabled(this));
 
     FEATURE_HIGH_DPI.apply(this, !isMac());
     FEATURE_MACOS_GESTURES.apply(this, isMac());
