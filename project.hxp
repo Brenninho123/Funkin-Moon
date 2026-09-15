@@ -136,6 +136,7 @@ class Project extends HXProject
   static final FEATURE_MOBILE_ADAPTIVE_RESOLUTION:FeatureFlag = "FEATURE_MOBILE_ADAPTIVE_RESOLUTION";
   static final FEATURE_MOBILE_GESTURE_NAV_PADDING:FeatureFlag = "FEATURE_MOBILE_GESTURE_NAV_PADDING";
   static final FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK:FeatureFlag = "FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK";
+  static final FEATURE_MOBILE_MODMENU_HAPTICS:FeatureFlag = "FEATURE_MOBILE_MODMENU_HAPTICS";
 
   public function new()
   {
@@ -491,6 +492,7 @@ class Project extends HXProject
     FEATURE_MOBILE_ADAPTIVE_RESOLUTION.apply(this, isMobile() && isRelease());
     FEATURE_MOBILE_GESTURE_NAV_PADDING.apply(this, isAndroid());
     FEATURE_MOBILE_STORAGE_ACCESS_FRAMEWORK.apply(this, isAndroid() && FEATURE_POLYMOD_MODS.isEnabled(this));
+    FEATURE_MOBILE_MODMENU_HAPTICS.apply(this, isMobile() && FEATURE_HAPTICS.isEnabled(this));
 
     FEATURE_HIGH_DPI.apply(this, !isMac());
     FEATURE_MACOS_GESTURES.apply(this, isMac());
