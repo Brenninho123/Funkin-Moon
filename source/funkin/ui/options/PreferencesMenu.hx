@@ -16,6 +16,7 @@ import funkin.ui.TextMenuList.TextMenuItem;
 import funkin.ui.options.items.CheckboxPreferenceItem;
 import funkin.ui.options.items.NumberPreferenceItem;
 import funkin.ui.options.items.EnumPreferenceItem;
+import funkin.ui.debug.FunkinDebugDisplay;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 #if mobile
 import funkin.mobile.ui.FunkinBackButton;
@@ -285,6 +286,33 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     );
     #end
 
+    createPrefItemCheckbox(
+      'Boost Framerate',
+      'When enabled, the game automatically lowers quality and frees memory if the framerate drops too low, to help keep things smooth.',
+      function(value:Bool):Void
+      {
+        Preferences.boostFramerate = value;
+        FunkinDebugDisplay.setAutoBoostEnabled(value);
+      },
+      Preferences.boostFramerate
+    );
+    createPrefItemEnum('Boost Sensitivity', 'How aggressively Boost Framerate reacts to framerate drops.', [
+      "Light" => "light",
+      "Normal" => "normal",
+      "Aggressive" => "aggressive",
+    ], function(key:String, value:String):Void
+    {
+      Preferences.boostSensitivity = value;
+    }, switch (Preferences.boostSensitivity)
+      {
+        case "light":
+          "Light";
+        case "aggressive":
+          "Aggressive";
+        default:
+          "Normal";
+      }, Preferences.boostFramerate);
+
     #if FEATURE_SCREENSHOTS
     createPrefItemCheckbox('Hide Mouse', 'When enabled, the mouse is hidden while taking a screenshot.', function(value:Bool):Void
     {
@@ -332,10 +360,10 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
           thyOffset = 0;
         case TClass(EnumPreferenceItem):
           thyTextWidth = cast(daItem, EnumPreferenceItem<Dynamic>).lefthandText.getWidth();
-          thyOffset = 0 + thyTextWidth - 75;
+          thyOffset = thyTextWidth - 75;
         case TClass(NumberPreferenceItem):
           thyTextWidth = cast(daItem, NumberPreferenceItem).lefthandText.getWidth();
-          thyOffset = 0 + thyTextWidth - 75;
+          thyOffset = thyTextWidth - 75;
         default:
       }
 
@@ -419,9 +447,11 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     preferenceDesc.push(prefDesc);
   }
 
-  function createPrefItemEnum<T>(prefName:String, prefDesc:String, values:Map<String, T>, onChange:String->T->Void, defaultKey:String):Void
+  function createPrefItemEnum<T>(prefName:String, prefDesc:String, values:Map<String, T>, onChange:String->T->Void, defaultKey:String,
+      available:Bool = true):Void
   {
-    var item = new EnumPreferenceItem<T>(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, values, defaultKey, onChange);
+    var item = new EnumPreferenceItem<T>(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, values, defaultKey, onChange,
+      available);
     items.addItem(prefName, item);
     preferenceItems.add(item.lefthandText);
     preferenceDesc.push(prefDesc);
