@@ -23,6 +23,7 @@ env:
   ANDROID_PLATFORM: platforms;android-35
   ANDROID_BUILD_TOOLS: build-tools;35.0.0
   ANDROID_NDK_VERSION: 27.2.12479018
+  ANDROID_CMDLINE_TOOLS_URL: https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
   CACHE_BUST: ${{ inputs.force_clean_cache == true && github.run_id || 'stable' }}
 
 jobs:
@@ -54,37 +55,51 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android
-        uses: android-actions/setup-android@v3
-
+      - name: Configure Android SDK root
+        shell: bash
+        run: |
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
       - name: Cache Android SDK
         id: android-sdk-cache
         uses: actions/cache@v4
         with:
           path: |
+            ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools
+            ${{ env.ANDROID_SDK_ROOT }}/platform-tools
             ${{ env.ANDROID_SDK_ROOT }}/platforms
             ${{ env.ANDROID_SDK_ROOT }}/build-tools
             ${{ env.ANDROID_SDK_ROOT }}/ndk
           key: android-sdk-${{ env.ANDROID_PLATFORM }}-${{ env.ANDROID_BUILD_TOOLS }}-${{ env.ANDROID_NDK_VERSION }}-${{ env.CACHE_BUST }}
 
-      - name: Install Android SDK
+      - name: Install Android cmdline-tools
         if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install \
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip "$ANDROID_CMDLINE_TOOLS_URL"
+          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          rm -f cmdline-tools.zip
+      - name: Add Android tools to PATH
+        shell: bash
+        run: |
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+      - name: Install Android SDK packages
+        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null 2>&1 || true
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install \
             "platform-tools" \
             "$ANDROID_PLATFORM" \
             "$ANDROID_BUILD_TOOLS" \
             "ndk;$ANDROID_NDK_VERSION"
-      - name: Configure Android
-        shell: bash
-        run: |
-          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
       - name: Install Linux dependencies
         shell: bash
         run: |
@@ -200,10 +215,17 @@ jobs:
           xcode-version: latest-stable
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
-        with:
-          haxe-version: ${{ env.HAXE_VERSION }}
-
+        shell: bash
+        run: |
+          curl -fsSL -o haxe.tar.gz "https://github.com/HaxeFoundation/haxe/releases/download/${HAXE_VERSION}/haxe-${HAXE_VERSION}-osx.tar.gz"
+          tar -xzf haxe.tar.gz
+          sudo mkdir -p /usr/local/lib/haxe
+          sudo cp -R haxe-${HAXE_VERSION}-osx/* /usr/local/lib/haxe/
+          sudo ln -sf /usr/local/lib/haxe/haxe /usr/local/bin/haxe
+          sudo ln -sf /usr/local/lib/haxe/haxelib /usr/local/bin/haxelib
+          mkdir -p "$HOME/haxelib"
+          haxelib setup "$HOME/haxelib"
+          rm -f haxe.tar.gz
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
