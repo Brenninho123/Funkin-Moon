@@ -35,10 +35,8 @@
     },
     {
       "name": "extension-androidtools",
-      "type": "git",
-      "dir": null,
-      "ref": "main",
-      "url": "https://github.com/The-Moon-Crew/extension-androidtools.git"
+      "type": "haxelib",
+      "version": "2.2.2"
     },
     {
       "name": "foxlite",
