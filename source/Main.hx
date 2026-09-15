@@ -26,6 +26,8 @@ import hxvlc.util.Handle;
 import openfl.display.Sprite;
 import openfl.events.Event;
 import openfl.events.UncaughtErrorEvent;
+import openfl.events.KeyboardEvent;
+import openfl.ui.Keyboard;
 import openfl.Lib;
 import openfl.utils.Assets;
 import funkin.Paths;
@@ -45,6 +47,14 @@ typedef BuildInfo =
   @:optional var onlineEnabled:Bool;
 }
 
+enum abstract DeviceMemoryClass(Int) from Int to Int
+{
+  var Unknown = 0;
+  var Low = 1;
+  var Mid = 2;
+  var High = 3;
+}
+
 class Main extends Sprite
 {
   public static inline var GAME_WIDTH:Int = 1280;
@@ -53,6 +63,9 @@ class Main extends Sprite
   public static var debugDisplay:FunkinDebugDisplay;
   public static var buildInfo(default, null):Null<BuildInfo> = null;
   public static var safeMode(default, null):Bool = false;
+  public static var deviceMemoryClass(default, null):DeviceMemoryClass = Unknown;
+  public static var lowMemoryEventCount(default, null):Int = 0;
+  public static var isAppInForeground(default, null):Bool = true;
 
   private var initialState:Class<FlxState> = funkin.InitState;
   private var zoom:Float = -1;
@@ -68,6 +81,14 @@ class Main extends Sprite
   private var freezeWatchdogArmed:Bool = false;
   private var watchdogWarningIssued:Bool = false;
   private var qualityTierChangeCount:Int = 0;
+  private var lastMemoryPollBytes:Float = 0.0;
+  private var memoryPollTimer:haxe.Timer;
+  private var backButtonLastPressTime:Float = 0.0;
+  private var pendingBackgroundSave:Bool = false;
+  private var backgroundSaveDebounceTimer:haxe.Timer;
+  private var lastOrientationWidth:Int = 0;
+  private var lastOrientationHeight:Int = 0;
+  private var suspendedForBackground:Bool = false;
 
   private static final MAX_UNCAUGHT_ERRORS_BEFORE_EXIT:Int = 25;
   private static final SAFE_MODE_ERROR_THRESHOLD:Int = 5;
@@ -77,6 +98,12 @@ class Main extends Sprite
   private static final CRITICAL_INTEGRITY_PATHS:Array<String> = ["data/credits.json", "images/logoBumpin.png"];
   private static final FREEZE_WATCHDOG_THRESHOLD_SECONDS:Float = 5.0;
   private static final COSMIC_WATCHER_TICK_MS:Float = 1000.0;
+  private static final MEMORY_POLL_INTERVAL_MS:Int = 4000;
+  private static final MEMORY_PRESSURE_JUMP_MB:Float = 96.0;
+  private static final BACK_BUTTON_EXIT_WINDOW_SECONDS:Float = 2.0;
+  private static final BACKGROUND_SAVE_DEBOUNCE_MS:Int = 600;
+  private static final LOW_MEMORY_DEVICE_THRESHOLD_MB:Int = 1536;
+  private static final MID_MEMORY_DEVICE_THRESHOLD_MB:Int = 3072;
 
   public static function main():Void
   {
@@ -104,6 +131,7 @@ class Main extends Sprite
     instance = this;
 
     initializeLogging();
+    detectDeviceMemoryClass();
     initializeMods();
 
     if (stage != null)
@@ -128,6 +156,45 @@ class Main extends Sprite
   private function initializeLogging():Void
   {
     openfl.utils._internal.Log.level = openfl.utils._internal.Log.LogLevel.INFO;
+  }
+
+  private function detectDeviceMemoryClass():Void
+  {
+    #if mobile
+    try
+    {
+      var totalMemoryMb:Float = 0;
+
+      #if android
+      totalMemoryMb = extension.androidtools.app.ActivityManager.getMemoryInfo().totalMem / (1024 * 1024);
+      #elseif ios
+      totalMemoryMb = System.totalMemory / (1024 * 1024);
+      #end
+
+      if (totalMemoryMb <= 0)
+      {
+        deviceMemoryClass = Unknown;
+        return;
+      }
+
+      if (totalMemoryMb <= LOW_MEMORY_DEVICE_THRESHOLD_MB)
+      {
+        deviceMemoryClass = Low;
+      }
+      else if (totalMemoryMb <= MID_MEMORY_DEVICE_THRESHOLD_MB)
+      {
+        deviceMemoryClass = Mid;
+      }
+      else
+      {
+        deviceMemoryClass = High;
+      }
+    }
+    catch (e:Dynamic)
+    {
+      deviceMemoryClass = Unknown;
+    }
+    #end
   }
 
   private function initializeMods():Void
@@ -166,6 +233,10 @@ class Main extends Sprite
     initializeShutdownHandler();
     initializeUncaughtErrorHandler();
     initializeLifecycleHandlers();
+
+    #if mobile
+    initializeMobileLifecycle();
+    #end
 
     attemptGraphicsValidation();
   }
@@ -277,18 +348,158 @@ class Main extends Sprite
 
     stage.addEventListener(Event.DEACTIVATE, onStageDeactivate);
     stage.addEventListener(Event.ACTIVATE, onStageActivate);
+    stage.addEventListener(Event.RESIZE, onStageResize);
   }
 
-  private function onStageDeactivate(event:Event):Void
+  #if mobile
+  private function initializeMobileLifecycle():Void
   {
+    if (stage != null)
+    {
+      stage.addEventListener(KeyboardEvent.KEY_DOWN, onMobileKeyDown);
+      lastOrientationWidth = Std.int(stage.stageWidth);
+      lastOrientationHeight = Std.int(stage.stageHeight);
+    }
+
+    startMemoryPolling();
+  }
+
+  private function onMobileKeyDown(event:KeyboardEvent):Void
+  {
+    #if android
+    if (event.keyCode != Keyboard.BACK) return;
+
+    event.preventDefault();
+    handleAndroidBackButton();
+    #end
+  }
+
+  private function handleAndroidBackButton():Void
+  {
+    var now:Float = haxe.Timer.stamp();
+
     try
     {
-      Save.system.flush();
+      if (FlxG.state != null && Std.isOfType(FlxG.state, funkin.ui.mainmenu.MainMenuState))
+      {
+        if ((now - backButtonLastPressTime) <= BACK_BUTTON_EXIT_WINDOW_SECONDS)
+        {
+          shutdown();
+          return;
+        }
+
+        backButtonLastPressTime = now;
+        FlxG.log.add('Press back again to exit.');
+        return;
+      }
+
+      var pauseSubState:Dynamic = Type.resolveClass('funkin.ui.PauseSubState');
+
+      if (FlxG.state != null && FlxG.state.subState == null && pauseSubState != null)
+      {
+        FlxG.state.openSubState(Type.createInstance(pauseSubState, []));
+        return;
+      }
+
+      if (FlxG.state != null && FlxG.state.subState != null)
+      {
+        FlxG.state.closeSubState();
+      }
     }
     catch (e:Dynamic)
     {
-      FlxG.log.error('Failed to flush save data on deactivate: $e');
+      FlxG.log.warn('Failed to handle back button gracefully: $e');
     }
+  }
+
+  private function startMemoryPolling():Void
+  {
+    memoryPollTimer = new haxe.Timer(MEMORY_POLL_INTERVAL_MS);
+    memoryPollTimer.run = pollMemoryUsage;
+  }
+
+  private function pollMemoryUsage():Void
+  {
+    if (!isAppInForeground) return;
+
+    try
+    {
+      var currentBytes:Float = openfl.system.System.totalMemory;
+      var currentMb:Float = currentBytes / (1024 * 1024);
+
+      if (lastMemoryPollBytes > 0)
+      {
+        var deltaMb:Float = currentMb - (lastMemoryPollBytes / (1024 * 1024));
+
+        if (deltaMb >= MEMORY_PRESSURE_JUMP_MB)
+        {
+          onMemoryPressureDetected(currentMb, deltaMb);
+        }
+      }
+
+      lastMemoryPollBytes = currentBytes;
+    }
+    catch (e:Dynamic) {}
+  }
+
+  private function onMemoryPressureDetected(currentMb:Float, deltaMb:Float):Void
+  {
+    lowMemoryEventCount++;
+
+    FlxG.log.warn('Memory pressure detected: +${Math.round(deltaMb)}MB in ${MEMORY_POLL_INTERVAL_MS}ms, now ~${Math.round(currentMb)}MB (#$lowMemoryEventCount).');
+
+    try
+    {
+      FunkinMemory.purgeCache();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to purge memory under pressure: $e');
+    }
+
+    if (deviceMemoryClass == Low && (funkin.lowend.FunkinLow.FunkinQualityTier : Int) != 0)
+    {
+      try
+      {
+        FunkinLow.forceTier(funkin.lowend.FunkinLow.FunkinQualityTier.Potato);
+      }
+      catch (e:Dynamic) {}
+    }
+  }
+
+  private function onStageResize(event:Event):Void
+  {
+    if (stage == null) return;
+
+    var width:Int = Std.int(stage.stageWidth);
+    var height:Int = Std.int(stage.stageHeight);
+
+    if (width == lastOrientationWidth && height == lastOrientationHeight) return;
+
+    lastOrientationWidth = width;
+    lastOrientationHeight = height;
+
+    FlxG.log.add('Stage resized to ${width}x${height}, reapplying scale mode.');
+
+    try
+    {
+      if (FlxG.scaleMode != null)
+      {
+        FlxG.scaleMode.onMeasure(width, height);
+      }
+    }
+    catch (e:Dynamic) {}
+
+    repositionCounters(false);
+  }
+  #end
+
+  private function onStageDeactivate(event:Event):Void
+  {
+    isAppInForeground = false;
+    suspendedForBackground = true;
+
+    scheduleBackgroundSave();
 
     #if mobile
     try
@@ -299,13 +510,61 @@ class Main extends Sprite
     {
       FlxG.log.error('Failed to purge memory cache on deactivate: $e');
     }
+
+    try
+    {
+      FunkinSound.pauseAll();
+    }
+    catch (e:Dynamic) {}
     #end
+  }
+
+  private function scheduleBackgroundSave():Void
+  {
+    pendingBackgroundSave = true;
+
+    if (backgroundSaveDebounceTimer != null)
+    {
+      backgroundSaveDebounceTimer.stop();
+    }
+
+    backgroundSaveDebounceTimer = haxe.Timer.delay(flushBackgroundSave, BACKGROUND_SAVE_DEBOUNCE_MS);
+  }
+
+  private function flushBackgroundSave():Void
+  {
+    if (!pendingBackgroundSave) return;
+
+    pendingBackgroundSave = false;
+
+    try
+    {
+      Save.system.flush();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to flush save data on background: $e');
+    }
   }
 
   private function onStageActivate(event:Event):Void
   {
+    isAppInForeground = true;
     lastFrameStamp = haxe.Timer.stamp();
     watchdogWarningIssued = false;
+
+    if (suspendedForBackground)
+    {
+      suspendedForBackground = false;
+
+      #if mobile
+      try
+      {
+        FunkinSound.resumeAll();
+      }
+      catch (e:Dynamic) {}
+      #end
+    }
   }
 
   private function shutdown():Void
@@ -313,6 +572,8 @@ class Main extends Sprite
     if (shuttingDown) return;
 
     shuttingDown = true;
+
+    flushBackgroundSave();
 
     try
     {
@@ -340,6 +601,10 @@ class Main extends Sprite
     {
       FlxG.log.error('Failed to clear asset cache: $e');
     }
+
+    #if mobile
+    if (memoryPollTimer != null) memoryPollTimer.stop();
+    #end
 
     #if !html5
     Sys.exit(0);
@@ -517,7 +782,9 @@ class Main extends Sprite
     FunkinLow.onQualityChanged.add(onQualityTierChanged);
     FunkinLow.onStutterDetected.add(onStutterDetected);
 
-    FunkinLow.init(false, true);
+    var startInLowMode:Bool = #if mobile (deviceMemoryClass == Low) #else false #end;
+
+    FunkinLow.init(startInLowMode, true);
   }
 
   private function onQualityTierChanged(newTier:funkin.lowend.FunkinLow.FunkinQualityTier):Void
@@ -568,6 +835,10 @@ class Main extends Sprite
 
     FlxG.log.add('Startup complete in ${Math.round(totalMs)}ms across ${Lambda.count(stageTimings)} stage(s).');
 
+    #if mobile
+    FlxG.log.add('Device memory class: $deviceMemoryClass.');
+    #end
+
     if (safeMode)
     {
       FlxG.log.warn('Running in safe mode.');
@@ -589,6 +860,9 @@ class Main extends Sprite
         assetIntegrityOk: assetIntegrityOk,
         qualityTier: FunkinLow.getTierName(),
         stutterCount: FunkinLow.getStutterCount(),
+        deviceMemoryClass: (deviceMemoryClass : Int),
+        lowMemoryEventCount: lowMemoryEventCount,
+        isAppInForeground: isAppInForeground,
         lastError: lastError,
         buildInfo: buildInfo,
         generatedAt: Date.now().toString()
@@ -641,6 +915,7 @@ class Main extends Sprite
   private function handleFreezeWatchdog():Void
   {
     if (!freezeWatchdogArmed) return;
+    if (suspendedForBackground) return;
 
     var now:Float = haxe.Timer.stamp();
     var delta:Float = now - lastFrameStamp;
