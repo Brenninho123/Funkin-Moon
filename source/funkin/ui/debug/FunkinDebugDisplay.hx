@@ -47,6 +47,20 @@ class FunkinDebugDisplay extends Sprite
   static var resolvedEmbedFonts:Bool = false;
   static var fontResolved:Bool = false;
 
+  public static var instance(default, null):FunkinDebugDisplay;
+
+  public static function setAutoBoostEnabled(value:Bool):Void
+  {
+    if (instance == null) return;
+
+    instance.autoBoostEnabled = value;
+
+    if (!value)
+    {
+      instance.lowFpsSustainedMs = 0.0;
+    }
+  }
+
   public var isAdvanced(default, set):Bool = false;
   public var backgroundOpacity(default, set):Float = 0.5;
   public var targetOpacity:Float = 0.5;
@@ -119,7 +133,11 @@ class FunkinDebugDisplay extends Sprite
   {
     super();
 
+    instance = this;
+
     resolveFont();
+
+    this.autoBoostEnabled = Preferences.boostFramerate;
 
     this.x = Preferences.debugDisplayOffsetX;
     this.y = y;
@@ -511,6 +529,26 @@ class FunkinDebugDisplay extends Sprite
     return '-';
   }
 
+  function getBoostTriggerFps():Int
+  {
+    return switch (Preferences.boostSensitivity)
+    {
+      case 'aggressive': 34;
+      case 'light': 20;
+      default: BOOST_TRIGGER_FPS;
+    }
+  }
+
+  function getBoostSustainMs():Float
+  {
+    return switch (Preferences.boostSensitivity)
+    {
+      case 'aggressive': 1200;
+      case 'light': 3200;
+      default: BOOST_TRIGGER_SUSTAIN_MS;
+    }
+  }
+
   function checkAutoBoostCondition(deltaTime:Float):Void
   {
     if (boostCooldownRemainingMs > 0)
@@ -524,11 +562,14 @@ class FunkinDebugDisplay extends Sprite
       return;
     }
 
-    if (fps > 0 && fps < BOOST_TRIGGER_FPS)
+    var triggerFps:Int = getBoostTriggerFps();
+    var sustainMs:Float = getBoostSustainMs();
+
+    if (fps > 0 && fps < triggerFps)
     {
       lowFpsSustainedMs += deltaTime;
 
-      if (lowFpsSustainedMs >= BOOST_TRIGGER_SUSTAIN_MS)
+      if (lowFpsSustainedMs >= sustainMs)
       {
         performAutoBoost();
         lowFpsSustainedMs = 0.0;
