@@ -1,6 +1,8 @@
 package funkin.ui.debug;
 
 import flixel.util.FlxStringUtil;
+import funkin.FunkinMemory;
+import funkin.Paths;
 import funkin.lowend.FunkinLow;
 import funkin.ui.debug.stats.FunkinStatsGraph;
 import funkin.util.MemoryUtil;
@@ -8,13 +10,16 @@ import openfl.display.GradientType;
 import openfl.display.Shape;
 import openfl.display.Sprite;
 import openfl.geom.Matrix;
+import openfl.text.Font;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
 import openfl.text.TextFormatAlign;
+import openfl.utils.Assets;
 
 class FunkinDebugDisplay extends Sprite
 {
   static final UPDATE_DELAY:Int = 100;
+  static final UPDATE_DELAY_IDLE:Int = 220;
   static final INNER_RECT_DIFF:Int = 3;
   static final OUTER_RECT_DIMENSIONS:Array<Int> = [234, 245];
   static final OTHERS_OFFSET:Int = 8;
@@ -24,13 +29,33 @@ class FunkinDebugDisplay extends Sprite
   static final PANEL_CORNER_RADIUS:Float = 10;
   static final ACCENT_BAR_WIDTH:Float = 4;
   static final FADE_SPEED:Float = 6.0;
+  static final IDLE_STABILITY_SECONDS:Float = 4.0;
+  static final MEMORY_TREND_SAMPLE_COUNT:Int = 6;
+
+  static final BOOST_TRIGGER_FPS:Int = 26;
+  static final BOOST_TRIGGER_SUSTAIN_MS:Float = 2200;
+  static final BOOST_COOLDOWN_MS:Float = 12000;
+  static final BOOST_FLASH_DURATION_MS:Float = 1400;
+  static final BOOST_MAX_TIER:Int = 3;
+
+  static final FONT_CANDIDATES:Array<String> = ['montserrat.ttf', 'montserrat.otf', 'vcr.ttf'];
+  static final FALLBACK_FONT_ANDROID:String = 'Roboto';
+  static final FALLBACK_FONT_IOS:String = 'Helvetica Neue';
+  static final FALLBACK_FONT_DEFAULT:String = '_sans';
+
+  static var resolvedFontName:String;
+  static var resolvedEmbedFonts:Bool = false;
+  static var fontResolved:Bool = false;
 
   public var isAdvanced(default, set):Bool = false;
   public var backgroundOpacity(default, set):Float = 0.5;
   public var targetOpacity:Float = 0.5;
   public var fadeEnabled:Bool = false;
+  public var autoBoostEnabled:Bool = true;
 
   var deltaTimeout:Float;
+  var currentUpdateDelay:Float = UPDATE_DELAY;
+  var idleStableSeconds:Float = 0.0;
   var fpsAccumTime:Float;
   var frameCounter:Int;
   var color:Int;
@@ -47,6 +72,7 @@ class FunkinDebugDisplay extends Sprite
   var background:Shape;
   var accentBar:Shape;
   var statusIndicator:Shape;
+  var boostIndicator:Shape;
   var fpsGraph:FunkinStatsGraph;
   var gcMemGraph:FunkinStatsGraph;
   var taskMemGraph:FunkinStatsGraph;
@@ -59,6 +85,7 @@ class FunkinDebugDisplay extends Sprite
   var frameTimeHistory:Array<Float> = [];
   var cachedAverageFps:Int = 0;
   var cachedLowFps:Int = 0;
+  var cachedHighFrameTimeMs:Float = 0.0;
   var panelWidth:Float = 0;
   var panelHeight:Float = 0;
   var lastRenderedFps:Int = -1;
@@ -70,15 +97,29 @@ class FunkinDebugDisplay extends Sprite
   var lastRenderedTaskMemRounded:Int = -1;
   var lastRenderedTier:Int = -1;
 
+  var gcMemSamples:Array<Float> = [];
+  var taskMemSamples:Array<Float> = [];
+  var gcMemTrend:Int = 0;
+  var taskMemTrend:Int = 0;
+
+  var lowFpsSustainedMs:Float = 0.0;
+  var boostCooldownRemainingMs:Float = 0.0;
+  var boostFlashRemainingMs:Float = 0.0;
+  var boostActive:Bool = false;
+  var boostTriggerCount:Int = 0;
+
   static final FPS_GOOD_THRESHOLD:Int = 50;
   static final FPS_OK_THRESHOLD:Int = 30;
   static final FPS_COLOR_GOOD:Int = 0x39FF7A;
   static final FPS_COLOR_OK:Int = 0xFFD400;
   static final FPS_COLOR_BAD:Int = 0xFF4C4C;
+  static final FPS_COLOR_BOOST:Int = 0x3AC3FF;
 
   public function new(x:Float = 10, y:Float = 10, color:Int = 0x000000):Void
   {
     super();
+
+    resolveFont();
 
     this.x = Preferences.debugDisplayOffsetX;
     this.y = y;
@@ -104,6 +145,51 @@ class FunkinDebugDisplay extends Sprite
     this.backgroundOpacity = 0;
     this.targetOpacity = 0.5;
     this.isAdvanced = false;
+  }
+
+  static function resolveFont():Void
+  {
+    if (fontResolved) return;
+
+    fontResolved = true;
+
+    for (candidate in FONT_CANDIDATES)
+    {
+      try
+      {
+        var fontPath:String = Paths.font(candidate);
+
+        if (!Assets.exists(fontPath, FONT)) continue;
+
+        var fontRef:Font = Assets.getFont(fontPath);
+
+        if (fontRef == null || fontRef.fontName == null || fontRef.fontName == '') continue;
+
+        resolvedFontName = fontRef.fontName;
+        resolvedEmbedFonts = true;
+        return;
+      }
+      catch (e:Dynamic) {}
+    }
+
+    resolvedEmbedFonts = false;
+
+    #if android
+    resolvedFontName = FALLBACK_FONT_ANDROID;
+    #elseif ios
+    resolvedFontName = FALLBACK_FONT_IOS;
+    #else
+    resolvedFontName = FALLBACK_FONT_DEFAULT;
+    #end
+  }
+
+  function applyFont(field:TextField):Void
+  {
+    if (field == null) return;
+
+    field.embedFonts = resolvedEmbedFonts;
+    field.antiAliasType = resolvedEmbedFonts ? ADVANCED : NORMAL;
+    field.sharpness = resolvedEmbedFonts ? 200 : 0;
   }
 
   function computeOSInfo():String
@@ -182,6 +268,12 @@ class FunkinDebugDisplay extends Sprite
     statusIndicator.y = 10;
     addChild(statusIndicator);
 
+    boostIndicator = new Shape();
+    boostIndicator.x = panelWidth - 28;
+    boostIndicator.y = 10;
+    boostIndicator.visible = false;
+    addChild(boostIndicator);
+
     if (advanced)
     {
       createAdvancedElements();
@@ -227,6 +319,24 @@ class FunkinDebugDisplay extends Sprite
     g.endFill();
   }
 
+  function redrawBoostIndicator():Void
+  {
+    if (boostIndicator == null) return;
+
+    var g = boostIndicator.graphics;
+    g.clear();
+
+    g.beginFill(FPS_COLOR_BOOST, 0.85);
+    g.moveTo(4, 0);
+    g.lineTo(0, 6);
+    g.lineTo(3, 6);
+    g.lineTo(-1, 12);
+    g.lineTo(6, 4);
+    g.lineTo(3, 4);
+    g.lineTo(6, 0);
+    g.endFill();
+  }
+
   function createAdvancedElements():Void
   {
     var graphsWidth:Int = OUTER_RECT_DIMENSIONS[0] + (INNER_RECT_DIFF * 2) - (OTHERS_OFFSET * 3);
@@ -235,11 +345,13 @@ class FunkinDebugDisplay extends Sprite
     fpsGraph = new FunkinStatsGraph(OTHERS_OFFSET, OTHERS_OFFSET + 49, graphsWidth, graphsHeight, color);
     fpsGraph.textDisplay.y = -49;
     fpsGraph.minValue = 0;
+    applyFont(fpsGraph.textDisplay);
     addChild(fpsGraph);
 
     frameTimeGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22), graphsWidth, graphsHeight,
       color);
     frameTimeGraph.minValue = 0;
+    applyFont(frameTimeGraph.textDisplay);
     addChild(frameTimeGraph);
 
     if (MemoryUtil.supportsGCMem())
@@ -247,6 +359,7 @@ class FunkinDebugDisplay extends Sprite
       gcMemGraph = new FunkinStatsGraph(OTHERS_OFFSET, Math.floor(OTHERS_OFFSET + (frameTimeGraph.y + frameTimeGraph.axisHeight) + 22), graphsWidth,
         graphsHeight, color);
       gcMemGraph.minValue = 0;
+      applyFont(gcMemGraph.textDisplay);
       addChild(gcMemGraph);
     }
 
@@ -262,6 +375,7 @@ class FunkinDebugDisplay extends Sprite
         color
       );
       taskMemGraph.minValue = 0;
+      applyFont(taskMemGraph.textDisplay);
       addChild(taskMemGraph);
     }
   }
@@ -274,8 +388,8 @@ class FunkinDebugDisplay extends Sprite
     infoDisplay.width = 500;
     infoDisplay.selectable = false;
     infoDisplay.mouseEnabled = false;
-    infoDisplay.defaultTextFormat = new TextFormat('Montserrat', 12, color, false, false, false, null, null, TextFormatAlign.LEFT);
-    infoDisplay.antiAliasType = NORMAL;
+    infoDisplay.defaultTextFormat = new TextFormat(resolvedFontName, 12, color, false, false, false, null, null, TextFormatAlign.LEFT);
+    applyFont(infoDisplay);
     infoDisplay.multiline = true;
     addChild(infoDisplay);
   }
@@ -283,6 +397,7 @@ class FunkinDebugDisplay extends Sprite
   override function __enterFrame(deltaTime:Float):Void
   {
     updateFade(deltaTime);
+    updateBoostState(deltaTime);
 
     if (backgroundOpacity <= 0) return;
 
@@ -307,9 +422,12 @@ class FunkinDebugDisplay extends Sprite
       if (fps > fpsPeak) fpsPeak = fps;
 
       pushFpsHistory(fps);
+      updateIdleStability();
     }
 
-    if (deltaTimeout < UPDATE_DELAY)
+    checkAutoBoostCondition(deltaTime);
+
+    if (deltaTimeout < currentUpdateDelay)
     {
       deltaTimeout += deltaTime;
       return;
@@ -320,6 +438,9 @@ class FunkinDebugDisplay extends Sprite
       gcMem = MemoryUtil.getGCMemory();
 
       if (gcMem > gcMemPeak) gcMemPeak = gcMem;
+
+      pushMemorySample(gcMemSamples, gcMem);
+      gcMemTrend = computeTrend(gcMemSamples);
     }
 
     if (MemoryUtil.supportsTaskMem())
@@ -327,6 +448,9 @@ class FunkinDebugDisplay extends Sprite
       taskMem = MemoryUtil.getTaskMemory();
 
       if (taskMem > taskMemPeak) taskMemPeak = taskMem;
+
+      pushMemorySample(taskMemSamples, taskMem);
+      taskMemTrend = computeTrend(taskMemSamples);
     }
 
     if (isAdvanced)
@@ -339,6 +463,140 @@ class FunkinDebugDisplay extends Sprite
     }
 
     deltaTimeout = 0.0;
+  }
+
+  function updateIdleStability():Void
+  {
+    var stable:Bool = fps >= FPS_GOOD_THRESHOLD && stutterCount == 0;
+
+    if (stable)
+    {
+      idleStableSeconds += 1.0;
+    }
+    else
+    {
+      idleStableSeconds = 0.0;
+    }
+
+    currentUpdateDelay = idleStableSeconds >= IDLE_STABILITY_SECONDS ? UPDATE_DELAY_IDLE : UPDATE_DELAY;
+  }
+
+  function pushMemorySample(samples:Array<Float>, value:Float):Void
+  {
+    samples.push(value);
+
+    if (samples.length > MEMORY_TREND_SAMPLE_COUNT)
+    {
+      samples.shift();
+    }
+  }
+
+  function computeTrend(samples:Array<Float>):Int
+  {
+    if (samples.length < 2) return 0;
+
+    var first:Float = samples[0];
+    var last:Float = samples[samples.length - 1];
+    var diff:Float = last - first;
+
+    if (Math.abs(diff) < 1.0) return 0;
+
+    return diff > 0 ? 1 : -1;
+  }
+
+  function trendArrow(trend:Int):String
+  {
+    if (trend > 0) return '^';
+    if (trend < 0) return 'v';
+    return '-';
+  }
+
+  function checkAutoBoostCondition(deltaTime:Float):Void
+  {
+    if (boostCooldownRemainingMs > 0)
+    {
+      boostCooldownRemainingMs -= deltaTime;
+    }
+
+    if (!autoBoostEnabled || boostCooldownRemainingMs > 0)
+    {
+      lowFpsSustainedMs = 0.0;
+      return;
+    }
+
+    if (fps > 0 && fps < BOOST_TRIGGER_FPS)
+    {
+      lowFpsSustainedMs += deltaTime;
+
+      if (lowFpsSustainedMs >= BOOST_TRIGGER_SUSTAIN_MS)
+      {
+        performAutoBoost();
+        lowFpsSustainedMs = 0.0;
+      }
+    }
+    else
+    {
+      lowFpsSustainedMs = 0.0;
+    }
+  }
+
+  function performAutoBoost():Void
+  {
+    boostTriggerCount++;
+    boostActive = true;
+    boostFlashRemainingMs = BOOST_FLASH_DURATION_MS;
+    boostCooldownRemainingMs = BOOST_COOLDOWN_MS;
+
+    FlxG.log.warn('Auto-boost triggered (#$boostTriggerCount): sustained low FPS detected, lowering quality and freeing memory.');
+
+    try
+    {
+      var currentTier:Int = FunkinLow.tier;
+      var nextTier:Int = currentTier + 1;
+
+      if (nextTier <= BOOST_MAX_TIER)
+      {
+        FunkinLow.forceTier(cast nextTier);
+      }
+    }
+    catch (e:Dynamic) {}
+
+    try
+    {
+      FunkinMemory.purgeCache();
+    }
+    catch (e:Dynamic) {}
+
+    resetStats();
+  }
+
+  public function triggerManualBoost():Void
+  {
+    boostCooldownRemainingMs = 0;
+    performAutoBoost();
+  }
+
+  function updateBoostState(deltaTime:Float):Void
+  {
+    if (boostFlashRemainingMs <= 0)
+    {
+      if (boostActive)
+      {
+        boostActive = false;
+
+        if (boostIndicator != null) boostIndicator.visible = false;
+      }
+
+      return;
+    }
+
+    boostFlashRemainingMs -= deltaTime;
+
+    if (boostIndicator != null)
+    {
+      redrawBoostIndicator();
+      boostIndicator.visible = (Math.floor(boostFlashRemainingMs / 180) % 2) == 0;
+    }
   }
 
   function updateFade(deltaTime:Float):Void
@@ -380,6 +638,24 @@ class FunkinDebugDisplay extends Sprite
     {
       frameTimeHistory.shift();
     }
+
+    cachedHighFrameTimeMs = computeHighFrameTime();
+  }
+
+  function computeHighFrameTime():Float
+  {
+    var length:Int = frameTimeHistory.length;
+
+    if (length == 0) return 0.0;
+
+    var sortedCopy:Array<Float> = frameTimeHistory.copy();
+    sortedCopy.sort((a, b) -> a > b ? 1 : (a < b ? -1 : 0));
+
+    var index:Int = Std.int(Math.floor(length * 0.99));
+
+    if (index >= length) index = length - 1;
+
+    return sortedCopy[index];
   }
 
   function computeLowFps():Int
@@ -450,16 +726,24 @@ class FunkinDebugDisplay extends Sprite
     if (!hasDisplayedStatsChanged()) return;
 
     var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
-    var info:Array<String> = [];
-    info.push(fpsLine);
-    info.push('AVG FPS: ${getAverageFps()}');
-    info.push('1% LOW FPS: ${getLowFps()}');
-    info.push('FRAME MIN/MAX: ${Math.round(frameTimeMinMs * 10) / 10}/${Math.round(frameTimeMaxMs * 10) / 10}ms');
-    info.push('STUTTERS: $stutterCount');
-    info.push('QUALITY: ${FunkinLow.getTierName()}');
-    info.push('OS: $osInfo');
-    var newFpsText:String = info.join('\n');
-    fpsGraph.textDisplay.text = newFpsText;
+
+    var buffer:StringBuf = new StringBuf();
+    buffer.add(fpsLine);
+    buffer.add('\nAVG FPS: ${getAverageFps()}');
+    buffer.add('\n1% LOW FPS: ${getLowFps()}');
+    buffer.add('\nFRAME MIN/MAX: ${Math.round(frameTimeMinMs * 10) / 10}/${Math.round(frameTimeMaxMs * 10) / 10}ms');
+    buffer.add('\n1% HIGH FRAME: ${Math.round(cachedHighFrameTimeMs * 10) / 10}ms');
+    buffer.add('\nSTUTTERS: $stutterCount');
+    buffer.add('\nQUALITY: ${FunkinLow.getTierName()}');
+
+    if (boostTriggerCount > 0)
+    {
+      buffer.add('\nBOOSTS: $boostTriggerCount');
+    }
+
+    buffer.add('\nOS: $osInfo');
+
+    fpsGraph.textDisplay.text = buffer.toString();
 
     var currentTier:Int = fpsColorTier(fps);
     var tierColor:Int = getFpsColor(fps);
@@ -479,12 +763,14 @@ class FunkinDebugDisplay extends Sprite
 
     if (gcMemGraph != null)
     {
-      gcMemGraph.textDisplay.text = 'GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}';
+      gcMemGraph.textDisplay.text =
+        'GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()} ${trendArrow(gcMemTrend)}';
     }
 
     if (taskMemGraph != null)
     {
-      taskMemGraph.textDisplay.text = 'TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}';
+      taskMemGraph.textDisplay.text =
+        'TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()} ${trendArrow(taskMemTrend)}';
     }
   }
 
@@ -493,26 +779,26 @@ class FunkinDebugDisplay extends Sprite
     if (infoDisplay == null) return;
     if (!hasDisplayedStatsChanged()) return;
 
-    var info:Array<String> = [];
-
     var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
-    info.push(fpsLine);
-    info.push('AVG: ${getAverageFps()}  LOW: ${getLowFps()}');
-    info.push('QUALITY: ${FunkinLow.getTierName()}');
+
+    var buffer:StringBuf = new StringBuf();
+    buffer.add(fpsLine);
+    buffer.add('\nAVG: ${getAverageFps()}  LOW: ${getLowFps()}');
+    buffer.add('\nQUALITY: ${FunkinLow.getTierName()}');
 
     if (MemoryUtil.supportsGCMem())
     {
-      info.push('GC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()}');
+      buffer.add('\nGC MEM: ${FlxStringUtil.formatBytes(gcMem).toLowerCase()} / ${FlxStringUtil.formatBytes(gcMemPeak).toLowerCase()} ${trendArrow(gcMemTrend)}');
     }
 
     if (MemoryUtil.supportsTaskMem())
     {
-      info.push('TASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()}');
+      buffer.add('\nTASK MEM: ${FlxStringUtil.formatBytes(taskMem).toLowerCase()} / ${FlxStringUtil.formatBytes(taskMemPeak).toLowerCase()} ${trendArrow(taskMemTrend)}');
     }
 
-    info.push('OS: $osInfo');
+    buffer.add('\nOS: $osInfo');
 
-    infoDisplay.text = info.join('\n');
+    infoDisplay.text = buffer.toString();
 
     var currentTier:Int = fpsColorTier(fps);
     var tierColor:Int = getFpsColor(fps);
@@ -613,12 +899,16 @@ class FunkinDebugDisplay extends Sprite
     frameTimeMaxMs = 0.0;
     cachedAverageFps = fps;
     cachedLowFps = fps;
+    cachedHighFrameTimeMs = 0.0;
     gcMemPeak = gcMem;
     taskMemPeak = taskMem;
+    idleStableSeconds = 0.0;
+    currentUpdateDelay = UPDATE_DELAY;
   }
 
   function getFpsColor(value:Int):Int
   {
+    if (boostActive) return FPS_COLOR_BOOST;
     if (value >= FPS_GOOD_THRESHOLD) return FPS_COLOR_GOOD;
     if (value >= FPS_OK_THRESHOLD) return FPS_COLOR_OK;
     return FPS_COLOR_BAD;
@@ -626,6 +916,7 @@ class FunkinDebugDisplay extends Sprite
 
   function fpsColorTier(value:Int):Int
   {
+    if (boostActive) return 3;
     if (value >= FPS_GOOD_THRESHOLD) return 2;
     if (value >= FPS_OK_THRESHOLD) return 1;
     return 0;
