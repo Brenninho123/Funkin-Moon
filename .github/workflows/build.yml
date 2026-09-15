@@ -37,8 +37,11 @@ jobs:
 
       - name: Setup Android
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Cache Android SDK packages
+        id: cache-android-sdk
         uses: actions/cache@v4
         with:
           path: |
@@ -48,6 +51,7 @@ jobs:
           key: android-sdk-ndk27.2.12479018-platform35-buildtools35.0.0
 
       - name: Install Android SDK
+        if: steps.cache-android-sdk.outputs.cache-hit != 'true'
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
