@@ -5,9 +5,6 @@ import funkin.ui.transition.LoadingState;
 import funkin.ui.TextMenuList;
 import funkin.ui.TextMenuList.TextMenuItem;
 import flixel.math.FlxPoint;
-import flixel.text.FlxText;
-import flixel.tweens.FlxTween;
-import flixel.tweens.FlxEase;
 import flixel.FlxSprite;
 import flixel.FlxObject;
 import flixel.FlxState;
@@ -43,8 +40,6 @@ class OptionsState extends MusicBeatState
 
   public static var rememberedSelectedIndex:Int = 0;
   public static var backState:Null<String> = null;
-
-  var versionText:FlxText;
 
   override function create():Void
   {
@@ -98,20 +93,6 @@ class OptionsState extends MusicBeatState
       #end
     }
 
-    versionText = new FlxText(0, 0, 300, 'Mobile Port v0.8.5 - By Brenninho', 16);
-    versionText.setFormat(null, 16, FlxColor.LIME, LEFT);
-    versionText.scrollFactor.set(0, 0);
-    versionText.x = 12;
-    versionText.y = FlxG.height - versionText.height - 8;
-    versionText.zIndex = 10000;
-    versionText.alpha = 0.75;
-    add(versionText);
-
-    FlxTween.tween(versionText, {alpha: 1}, 1.2, {
-      ease: FlxEase.quadInOut,
-      type: PINGPONG
-    });
-
     super.create();
     #if FEATURE_TOUCH_CONTROLS
     addHitbox();
@@ -149,15 +130,12 @@ class OptionsState extends MusicBeatState
   function exitToMainMenu():Void
   {
     optionsCodex.currentPage.enabled = false;
-    if (backState != null)
+
+    var state:MusicBeatState = (backState != null) ? MusicBeatState.scriptInit(backState) : null;
+
+    if (state != null)
     {
-      var state:MusicBeatState = MusicBeatState.scriptInit(backState);
-      if (state != null) FlxG.switchState(state);
-      else
-      {
-        FlxG.keys.enabled = false;
-        FlxG.switchState(() -> new MainMenuState());
-      }
+      FlxG.switchState(state);
     }
     else
     {
@@ -346,32 +324,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
   public function hasMultipleOptions():Bool
   {
     return items.length > 2;
-  }
-
-  var prompt:Prompt;
-
-  function promptClearSaveData():Void
-  {
-    if (prompt != null) return;
-    prompt = new Prompt('This will delete
-      /nALL your save data.
-      /nAre you sure?
-    ', Custom('Delete', 'Cancel'));
-    prompt.create();
-    prompt.createBgFromMargin(100, 0xFFFAFD6D);
-    prompt.back.scrollFactor.set(0, 0);
-    add(prompt);
-    prompt.onYes = function()
-    {
-      funkin.save.Save.clearData();
-      FlxG.switchState(() -> new funkin.InitState());
-    };
-    prompt.onNo = function()
-    {
-      prompt.close();
-      prompt.destroy();
-      prompt = null;
-    };
   }
 }
 
