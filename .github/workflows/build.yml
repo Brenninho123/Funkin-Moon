@@ -5,14 +5,31 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      force_clean_cache:
+        description: Force clean caches (ignore existing haxelib/SDK cache)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HAXE_VERSION: 4.3.7
+  ANDROID_PLATFORM: platforms;android-35
+  ANDROID_BUILD_TOOLS: build-tools;35.0.0
+  ANDROID_NDK_VERSION: 27.2.12479018
+  CACHE_BUST: ${{ inputs.force_clean_cache == true && github.run_id || 'stable' }}
 
 jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -21,6 +38,16 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Resolve short SHA
+        shell: bash
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
+          sudo rm -rf /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -30,22 +57,33 @@ jobs:
       - name: Setup Android
         uses: android-actions/setup-android@v3
 
+      - name: Cache Android SDK
+        id: android-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_SDK_ROOT }}/platforms
+            ${{ env.ANDROID_SDK_ROOT }}/build-tools
+            ${{ env.ANDROID_SDK_ROOT }}/ndk
+          key: android-sdk-${{ env.ANDROID_PLATFORM }}-${{ env.ANDROID_BUILD_TOOLS }}-${{ env.ANDROID_NDK_VERSION }}-${{ env.CACHE_BUST }}
+
       - name: Install Android SDK
+        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager --install \
             "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.2.12479018"
+            "$ANDROID_PLATFORM" \
+            "$ANDROID_BUILD_TOOLS" \
+            "ndk;$ANDROID_NDK_VERSION"
       - name: Configure Android
         shell: bash
         run: |
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
           echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
       - name: Install Linux dependencies
         shell: bash
@@ -74,27 +112,39 @@ jobs:
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
+      - name: Cache haxelib
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-android-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
+          restore-keys: |
+            haxelib-android-
       - name: Install dependencies
         shell: bash
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
+        run: haxelib run hmm install
+
+      - name: Resolve hxcpp path
+        shell: bash
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+
       - name: Build hxcpp
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
       - name: Rebuild Lime
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Setup Lime Android
         shell: bash
         run: |
@@ -104,17 +154,26 @@ jobs:
           $JAVA_HOME
           EOF
       - name: Rebuild Lime Android
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild android
+        run: haxelib run lime rebuild android
+
       - name: Build Android
         shell: bash
+        run: haxelib run lime build android -release -DGITHUB_BUILD
+
+      - name: Build summary
+        shell: bash
         run: |
-          haxelib run lime build android -release -DGITHUB_BUILD
+          {
+            echo "### Android build"
+            echo "Commit: $SHORT_SHA"
+            du -h export/release/android/**/*.apk 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-android
+          name: funkin-moon-android-${{ env.SHORT_SHA }}
           path: export/release/android/**/*.apk
           if-no-files-found: error
           compression-level: 0
@@ -122,6 +181,7 @@ jobs:
   ios:
     name: iOS
     runs-on: macos-latest
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -129,6 +189,10 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+
+      - name: Resolve short SHA
+        shell: bash
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -138,39 +202,60 @@ jobs:
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
+      - name: Cache haxelib
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-ios-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
+          restore-keys: |
+            haxelib-ios-
       - name: Install dependencies
         shell: bash
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
+        run: haxelib run hmm install
+
+      - name: Resolve hxcpp path
+        shell: bash
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+
       - name: Build hxcpp
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
       - name: Rebuild Lime
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Rebuild Lime iOS
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild ios
+        run: haxelib run lime rebuild ios
+
       - name: Build iOS
         shell: bash
         run: |
           haxelib run lime build ios -release -DGITHUB_BUILD -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "### iOS build"
+            echo "Commit: $SHORT_SHA"
+            du -sh export/release/ios/**/*.app 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload iOS
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-ios
+          name: funkin-moon-ios-${{ env.SHORT_SHA }}
           path: export/release/ios/**/*.app
           if-no-files-found: error
           compression-level: 6
@@ -178,6 +263,7 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -186,40 +272,162 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Resolve short SHA
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse --short HEAD).Trim()
+          "SHORT_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
         shell: pwsh
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
+      - name: Cache haxelib
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-windows-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
+          restore-keys: |
+            haxelib-windows-
       - name: Install dependencies
         shell: pwsh
-        run: |
-          if (Test-Path ".haxelib") {
-            Remove-Item ".haxelib" -Recurse -Force
-          }
-          haxelib run hmm install
-      - name: Build hxcpp
+        run: haxelib run hmm install
+
+      - name: Resolve hxcpp path
         shell: pwsh
         run: |
-          $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
-          Set-Location "$HXCPP_PATH\tools\hxcpp"
+          $hxcppPath = (haxelib libpath hxcpp).Trim()
+          "HXCPP_PATH=$hxcppPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build hxcpp
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Set-Location "$env:HXCPP_PATH\tools\hxcpp"
           haxe compile.hxml
       - name: Rebuild Lime Windows
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: pwsh
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Build Windows
         shell: pwsh
+        run: haxelib run lime build windows -release -64 -DGITHUB_BUILD
+
+      - name: Build summary
+        shell: pwsh
         run: |
-          haxelib run lime build windows -release -64 -DGITHUB_BUILD
+          "### Windows build`nCommit: $env:SHORT_SHA" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-windows
+          name: funkin-moon-windows-${{ env.SHORT_SHA }}
           path: export/release/windows/bin
+          if-no-files-found: error
+          compression-level: 6
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Resolve short SHA
+        shell: bash
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android
+          sudo rm -rf /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+      - name: Install Linux dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libasound2-dev \
+            libudev-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxss-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            pkg-config
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
+
+      - name: Cache haxelib
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-linux-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
+          restore-keys: |
+            haxelib-linux-
+      - name: Install dependencies
+        shell: bash
+        run: haxelib run hmm install
+
+      - name: Resolve hxcpp path
+        shell: bash
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+
+      - name: Build hxcpp
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+      - name: Rebuild Lime Linux
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: haxelib run lime rebuild cpp
+
+      - name: Build Linux
+        shell: bash
+        run: haxelib run lime build linux -release -64 -DGITHUB_BUILD
+
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "### Linux build"
+            echo "Commit: $SHORT_SHA"
+            du -sh export/release/linux/bin 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: funkin-moon-linux-${{ env.SHORT_SHA }}
+          path: export/release/linux/bin
           if-no-files-found: error
           compression-level: 6
