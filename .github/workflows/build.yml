@@ -49,6 +49,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
           sudo rm -rf /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -64,6 +65,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
           echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
+
       - name: Cache Android SDK
         id: android-sdk-cache
         uses: actions/cache@v4
@@ -85,11 +87,13 @@ jobs:
           unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           rm -f cmdline-tools.zip
+
       - name: Add Android tools to PATH
         shell: bash
         run: |
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
       - name: Install Android SDK packages
         if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -100,6 +104,7 @@ jobs:
             "$ANDROID_PLATFORM" \
             "$ANDROID_BUILD_TOOLS" \
             "ndk;$ANDROID_NDK_VERSION"
+
       - name: Install Linux dependencies
         shell: bash
         run: |
@@ -124,6 +129,7 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             pkg-config
+
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
@@ -141,13 +147,14 @@ jobs:
           key: haxelib-android-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
           restore-keys: |
             haxelib-android-
+
       - name: Install dependencies
         shell: bash
         run: haxelib run hmm install
 
       - name: Resolve hxcpp path
         shell: bash
-        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | head -n 1 | tr -d '\n')" >> "$GITHUB_ENV"
 
       - name: Build hxcpp
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
@@ -155,6 +162,7 @@ jobs:
         run: |
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -168,6 +176,7 @@ jobs:
           $ANDROID_NDK_ROOT
           $JAVA_HOME
           EOF
+
       - name: Rebuild Lime Android
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -180,11 +189,13 @@ jobs:
       - name: Build summary
         shell: bash
         run: |
+          shopt -s globstar
           {
             echo "### Android build"
             echo "Commit: $SHORT_SHA"
             du -h export/release/android/**/*.apk 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
@@ -215,17 +226,10 @@ jobs:
           xcode-version: latest-stable
 
       - name: Setup Haxe
-        shell: bash
-        run: |
-          curl -fsSL -o haxe.tar.gz "https://github.com/HaxeFoundation/haxe/releases/download/${HAXE_VERSION}/haxe-${HAXE_VERSION}-osx.tar.gz"
-          tar -xzf haxe.tar.gz
-          sudo mkdir -p /usr/local/lib/haxe
-          sudo cp -R haxe-${HAXE_VERSION}-osx/* /usr/local/lib/haxe/
-          sudo ln -sf /usr/local/lib/haxe/haxe /usr/local/bin/haxe
-          sudo ln -sf /usr/local/lib/haxe/haxelib /usr/local/bin/haxelib
-          mkdir -p "$HOME/haxelib"
-          haxelib setup "$HOME/haxelib"
-          rm -f haxe.tar.gz
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
@@ -238,13 +242,14 @@ jobs:
           key: haxelib-ios-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
           restore-keys: |
             haxelib-ios-
+
       - name: Install dependencies
         shell: bash
         run: haxelib run hmm install
 
       - name: Resolve hxcpp path
         shell: bash
-        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | head -n 1 | tr -d '\n')" >> "$GITHUB_ENV"
 
       - name: Build hxcpp
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
@@ -252,6 +257,7 @@ jobs:
         run: |
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -266,14 +272,17 @@ jobs:
         shell: bash
         run: |
           haxelib run lime build ios -release -DGITHUB_BUILD -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
       - name: Build summary
         shell: bash
         run: |
+          shopt -s globstar
           {
             echo "### iOS build"
             echo "Commit: $SHORT_SHA"
             du -sh export/release/ios/**/*.app 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload iOS
         uses: actions/upload-artifact@v4
         with:
@@ -299,6 +308,7 @@ jobs:
         run: |
           $sha = (git rev-parse --short HEAD).Trim()
           "SHORT_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
@@ -316,6 +326,7 @@ jobs:
           key: haxelib-windows-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
           restore-keys: |
             haxelib-windows-
+
       - name: Install dependencies
         shell: pwsh
         run: haxelib run hmm install
@@ -323,14 +334,16 @@ jobs:
       - name: Resolve hxcpp path
         shell: pwsh
         run: |
-          $hxcppPath = (haxelib libpath hxcpp).Trim()
+          $hxcppPath = ((haxelib libpath hxcpp) | Select-Object -First 1).Trim()
           "HXCPP_PATH=$hxcppPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Build hxcpp
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           Set-Location "$env:HXCPP_PATH\tools\hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime Windows
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -344,6 +357,7 @@ jobs:
         shell: pwsh
         run: |
           "### Windows build`nCommit: $env:SHORT_SHA" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
@@ -374,6 +388,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android
           sudo rm -rf /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
       - name: Install Linux dependencies
         shell: bash
         run: |
@@ -398,6 +413,7 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             pkg-config
+
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
@@ -415,13 +431,14 @@ jobs:
           key: haxelib-linux-${{ hashFiles('hmm.json') }}-${{ env.CACHE_BUST }}
           restore-keys: |
             haxelib-linux-
+
       - name: Install dependencies
         shell: bash
         run: haxelib run hmm install
 
       - name: Resolve hxcpp path
         shell: bash
-        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')" >> "$GITHUB_ENV"
+        run: echo "HXCPP_PATH=$(haxelib libpath hxcpp | head -n 1 | tr -d '\n')" >> "$GITHUB_ENV"
 
       - name: Build hxcpp
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
@@ -429,6 +446,7 @@ jobs:
         run: |
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime Linux
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -446,6 +464,7 @@ jobs:
             echo "Commit: $SHORT_SHA"
             du -sh export/release/linux/bin 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
