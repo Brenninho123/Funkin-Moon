@@ -30,10 +30,7 @@ class ApplicationMain
     #end
 
     #if (windows && cpp)
-    // Disable the Windows "ghosting" effect that dims unresponsive windows.
     funkin.external.windows.WinAPI.disableWindowsGhosting();
-
-    // Disable Windows error reporting (avoids sending bug reports to Microsoft).
     funkin.external.windows.WinAPI.disableErrorReporting();
     #end
 
@@ -44,7 +41,7 @@ class ApplicationMain
     #end
   }
 
-  public static function create(config):Void
+  public static function create(config:Dynamic):Void
   {
     #if (linux && cpp)
     hxgamemode.GamemodeClient.request_start();
@@ -54,14 +51,14 @@ class ApplicationMain
     lime.system.System.setHint("ORIENTATIONS", ::if (WIN_ORIENTATION == "portrait")::"Portrait PortraitUpsideDown"::else::"LandscapeLeft LandscapeRight"::end::);
     ::end::
 
-    final appMeta:Map<String, String> = [];
-
-    appMeta.set("build", "::meta.buildNumber::");
-    appMeta.set("company", "::meta.company::");
-    appMeta.set("file", "::APP_FILE::");
-    appMeta.set("name", "::meta.title::");
-    appMeta.set("packageName", "::meta.packageName::");
-    appMeta.set("version", "::meta.version::");
+    final appMeta:Map<String, String> = [
+      "build" => "::meta.buildNumber::",
+      "company" => "::meta.company::",
+      "file" => "::APP_FILE::",
+      "name" => "::meta.title::",
+      "packageName" => "::meta.packageName::",
+      "version" => "::meta.version::"
+    ];
 
     var app = new openfl.display.Application(appMeta);
 
@@ -73,68 +70,59 @@ class ApplicationMain
     #end
 
     ::foreach windows::
-    var attributes:lime.ui.WindowAttributes = {
-      allowHighDPI: ::allowHighDPI::,
-      alwaysOnTop: ::alwaysOnTop::,
-      transparent: ::transparent::,
-      borderless: ::borderless::,
-      element: null,
-      frameRate: ::fps::,
-      #if !web
-      fullscreen: ::fullscreen::,
-      #end
-      height: ::height::,
-      hidden: ::hidden::,
-      maximized: ::maximized::,
-      minimized: ::minimized::,
-      parameters: ::parameters::,
-      resizable: ::resizable::,
-      title: "::title::",
-      width: ::width::,
-      x: ::x::,
-      y: ::y::,
-    };
-
-    attributes.context = {
-      antialiasing: ::antialiasing::,
-      background: ::background::,
-      colorDepth: ::colorDepth::,
-      depth: ::depthBuffer::,
-      hardware: ::hardware::,
-      #if (html5 && FEATURE_SCREENSHOTS)
-      preserveDrawingBuffer: true,
-      #end
-      stencil: ::stencilBuffer::,
-      type: null,
-      vsync: ::vsync::
-    };
-
-    if (app.window == null)
     {
-      if (config != null)
-      {
-        for (field in Reflect.fields(config))
-        {
-          if (Reflect.hasField(attributes, field))
-          {
-            Reflect.setField(attributes, field, Reflect.field(config, field));
-          }
-          else if (Reflect.hasField(attributes.context, field))
-          {
-            Reflect.setField(attributes.context, field, Reflect.field(config, field));
-          }
-        }
-      }
-    }
+      var attributes:lime.ui.WindowAttributes = {
+        allowHighDPI: ::allowHighDPI::,
+        alwaysOnTop: ::alwaysOnTop::,
+        transparent: ::transparent::,
+        borderless: ::borderless::,
+        element: null,
+        frameRate: ::fps::,
+        #if !web
+        fullscreen: ::fullscreen::,
+        #end
+        height: ::height::,
+        hidden: ::hidden::,
+        maximized: ::maximized::,
+        minimized: ::minimized::,
+        parameters: ::parameters::,
+        resizable: ::resizable::,
+        title: "::title::",
+        width: ::width::,
+        x: ::x::,
+        y: ::y::,
+      };
 
-    app.createWindow(attributes);
+      attributes.context = {
+        antialiasing: ::antialiasing::,
+        background: ::background::,
+        colorDepth: ::colorDepth::,
+        depth: ::depthBuffer::,
+        hardware: ::hardware::,
+        #if (html5 && FEATURE_SCREENSHOTS)
+        preserveDrawingBuffer: true,
+        #end
+        stencil: ::stencilBuffer::,
+        type: null,
+        vsync: ::vsync::
+      };
+
+      if (app.window == null)
+      {
+        applyConfig(attributes, config);
+      }
+
+      app.createWindow(attributes);
+    }
     ::end::
 
     var preloader = getPreloader();
-    app.preloader.onProgress.add (function(loaded, total)
+
+    app.preloader.onProgress.add(function(loaded, total)
     {
       @:privateAccess preloader.update(loaded, total);
     });
+
     app.preloader.onComplete.add(function()
     {
       @:privateAccess preloader.start();
@@ -158,15 +146,7 @@ class ApplicationMain
 
     app.preloader.load();
 
-    var result = app.exec();
-
-    #if (sys && !ios && !nodejs)
-    lime.system.System.exit(result);
-    #end
-
-    #if (linux && cpp)
-    hxgamemode.GamemodeClient.request_end();
-    #end
+    shutdown(app.exec());
   }
 
   public static function start(stage:openfl.display.Stage):Void
@@ -175,14 +155,7 @@ class ApplicationMain
     {
       try
       {
-        ApplicationMain.getEntryPoint();
-
-        stage.dispatchEvent(new openfl.events.Event(openfl.events.Event.RESIZE, false, false));
-
-        if (stage.window.fullscreen)
-        {
-          stage.dispatchEvent(new openfl.events.FullScreenEvent(openfl.events.FullScreenEvent.FULL_SCREEN, false, false, true, true));
-        }
+        launch(stage);
       }
       catch (e:Dynamic)
       {
@@ -193,45 +166,90 @@ class ApplicationMain
     }
     else
     {
-      ApplicationMain.getEntryPoint();
+      launch(stage);
+    }
+  }
 
-      stage.dispatchEvent(new openfl.events.Event(openfl.events.Event.RESIZE, false, false));
+  static function launch(stage:openfl.display.Stage):Void
+  {
+    ApplicationMain.getEntryPoint();
 
-      if (stage.window.fullscreen)
+    stage.dispatchEvent(new openfl.events.Event(openfl.events.Event.RESIZE, false, false));
+
+    if (stage.window.fullscreen)
+    {
+      stage.dispatchEvent(new openfl.events.FullScreenEvent(openfl.events.FullScreenEvent.FULL_SCREEN, false, false, true, true));
+    }
+  }
+
+  static function applyConfig(attributes:lime.ui.WindowAttributes, config:Dynamic):Void
+  {
+    if (config == null) return;
+
+    for (field in Reflect.fields(config))
+    {
+      if (Reflect.hasField(attributes, field))
       {
-        stage.dispatchEvent(new openfl.events.FullScreenEvent(openfl.events.FullScreenEvent.FULL_SCREEN, false, false, true, true));
+        Reflect.setField(attributes, field, Reflect.field(config, field));
+      }
+      else if (Reflect.hasField(attributes.context, field))
+      {
+        Reflect.setField(attributes.context, field, Reflect.field(config, field));
       }
     }
+  }
+
+  static function shutdown(result:Int):Void
+  {
+    #if (linux && cpp)
+    hxgamemode.GamemodeClient.request_end();
+    #end
+
+    #if (sys && !ios && !nodejs)
+    lime.system.System.exit(result);
+    #end
+  }
+  #end
+
+  #if macro
+  static function extendsOpenFLPreloader(classType:haxe.macro.Type.ClassType):Bool
+  {
+    var current:Null<haxe.macro.Type.ClassType> = classType;
+
+    while (current != null)
+    {
+      if (current.pack.length == 2 && current.pack[0] == "openfl" && current.pack[1] == "display" && current.name == "Preloader")
+      {
+        return true;
+      }
+
+      current = current.superClass != null ? current.superClass.t.get() : null;
+    }
+
+    return false;
   }
   #end
 
   macro public static function getEntryPoint()
   {
-    var hasMain = false;
-
     switch (Context.follow(Context.getType("::APP_MAIN::")))
     {
-      case TInst(t, params):
-
+      case TInst(t, _):
         var type = t.get();
+
         for (method in type.statics.get())
         {
           if (method.name == "main")
           {
-            hasMain = true;
-            break;
+            return Context.parse("@:privateAccess ::APP_MAIN::.main()", Context.currentPos());
           }
         }
 
-        if (hasMain)
-        {
-          return Context.parse("@:privateAccess ::APP_MAIN::.main()", Context.currentPos());
-        }
-        else if (type.constructor != null)
+        if (type.constructor != null)
         {
           return macro
           {
-            var current = stage.getChildAt (0);
+            var current = stage.getChildAt(0);
 
             if (current == null || !(current is openfl.display.DisplayObjectContainer))
             {
@@ -242,13 +260,10 @@ class ApplicationMain
             new DocumentClass(cast current);
           };
         }
-        else
-        {
-          Context.fatalError("Main class \"::APP_MAIN::\" has neither a static main nor a constructor.", Context.currentPos());
-        }
+
+        Context.fatalError("Main class \"::APP_MAIN::\" has neither a static main nor a constructor.", Context.currentPos());
 
       default:
-
         Context.fatalError("Main class \"::APP_MAIN::\" isn't a class.", Context.currentPos());
     }
 
@@ -258,46 +273,17 @@ class ApplicationMain
   macro public static function getPreloader()
   {
     ::if (PRELOADER_NAME != "")::
-    var type = Context.getType("::PRELOADER_NAME::");
-
-    switch (type)
+    switch (Context.getType("::PRELOADER_NAME::"))
     {
-      case TInst(classType, _):
-
-        var searchTypes = classType.get();
-
-        while (searchTypes != null)
-        {
-          if (searchTypes.pack.length == 2 && searchTypes.pack[0] == "openfl" && searchTypes.pack[1] == "display" && searchTypes.name == "Preloader")
-          {
-            return macro
-            {
-              new ::PRELOADER_NAME::();
-            };
-          }
-
-          if (searchTypes.superClass != null)
-          {
-            searchTypes = searchTypes.superClass.t.get();
-          }
-          else
-          {
-            searchTypes = null;
-          }
-        }
+      case TInst(classType, _) if (extendsOpenFLPreloader(classType.get())):
+        return macro new ::PRELOADER_NAME::();
 
       default:
     }
 
-    return macro
-    {
-      new openfl.display.Preloader(new ::PRELOADER_NAME::());
-    }
+    return macro new openfl.display.Preloader(new ::PRELOADER_NAME::());
     ::else::
-    return macro
-    {
-      new openfl.display.Preloader(new openfl.display.Preloader.DefaultPreloader());
-    };
+    return macro new openfl.display.Preloader(new openfl.display.Preloader.DefaultPreloader());
     ::end::
   }
 
