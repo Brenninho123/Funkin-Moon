@@ -336,6 +336,20 @@ class FunkinCollab
     return written;
   }
 
+  public function exportProjectTo(directory:String):String
+  {
+    var problems:Array<String> = validate();
+
+    if (problems.length > 0) throw problems.join('\n');
+
+    ensureDirectory(directory);
+
+    var projectPath:String = Path.join([directory, PROJECT_FILE_NAME]);
+    File.saveContent(projectPath, toProjectJson());
+
+    return projectPath;
+  }
+
   static function ensureDirectory(path:String):Void
   {
     var normalized:String = Path.normalize(path);
