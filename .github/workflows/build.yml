@@ -206,7 +206,7 @@ jobs:
 
   ios:
     name: iOS
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 75
 
     steps:
@@ -475,7 +475,7 @@ jobs:
 
   macos:
     name: macOS
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 75
 
     steps:
@@ -530,11 +530,11 @@ jobs:
       - name: Rebuild Lime
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: haxelib run lime rebuild mac -arm64
+        run: haxelib run lime rebuild mac -64
 
       - name: Build macOS
         shell: bash
-        run: haxelib run lime build mac -release -arm64 -DGITHUB_BUILD
+        run: haxelib run lime build mac -release -64 -DGITHUB_BUILD
 
       - name: Package macOS app
         shell: bash
