@@ -1655,7 +1655,7 @@ class Project extends HXProject
     {
       var process = new sys.io.Process('git', args);
       var output:String = process.stdout.readAll().toString().trim();
-      var code:Int = process.exitCode();
+      var code:Null<Int> = process.exitCode();
 
       process.close();
 
@@ -1672,7 +1672,7 @@ class Project extends HXProject
     try
     {
       var process = new sys.io.Process('git', ['diff', '--quiet']);
-      var code:Int = process.exitCode();
+      var code:Null<Int> = process.exitCode();
 
       process.close();
 
@@ -1959,7 +1959,7 @@ class Project extends HXProject
       Sys.setCwd(toolsPath);
 
       var compileProcess = new sys.io.Process('haxe', ['compile.hxml']);
-      var exitCode:Int = compileProcess.exitCode();
+      var exitCode:Null<Int> = compileProcess.exitCode();
 
       compileProcess.close();
 
