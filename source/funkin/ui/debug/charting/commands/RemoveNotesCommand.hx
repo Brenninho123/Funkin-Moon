@@ -5,8 +5,7 @@ import funkin.data.song.SongData.SongNoteData;
 import funkin.data.song.SongDataUtils;
 
 /**
- * Deletes the given notes from the current chart in the chart editor.
- * Use only when ONLY notes are being deleted.
+ * Represents a reversible action to remove a list of notes from a chart.
  */
 @:nullSafety @:access(funkin.ui.debug.charting.ChartEditorState)
 class RemoveNotesCommand implements ChartEditorCommand
@@ -18,6 +17,11 @@ class RemoveNotesCommand implements ChartEditorCommand
     this.notes = notes;
   }
 
+  /**
+   * Perform the action, removing the notes from the chart.
+   *
+   * @param state The ChartEditorState to perform the command on.
+   */
   public function execute(state:ChartEditorState):Void
   {
     if (notes.length == 0) return;
@@ -26,7 +30,7 @@ class RemoveNotesCommand implements ChartEditorCommand
     state.currentNoteSelection = [];
     state.currentEventSelection = [];
 
-    state.playSound(Paths.sound('chartingSounds/noteErase'));
+    state.playSound(Paths.sound('ui/editors/chart-editor/charting-sounds/note-erase'));
 
     state.saveDataDirty = true;
     state.noteDisplayDirty = true;
@@ -36,6 +40,11 @@ class RemoveNotesCommand implements ChartEditorCommand
     state.sortChartData();
   }
 
+  /**
+   * Reverse the action, restoring the notes to the chart.
+   *
+   * @param state The ChartEditorState to perform the command on.
+   */
   public function undo(state:ChartEditorState):Void
   {
     if (notes.length == 0) return;
@@ -46,7 +55,7 @@ class RemoveNotesCommand implements ChartEditorCommand
     }
     state.currentNoteSelection = notes;
     state.currentEventSelection = [];
-    state.playSound(Paths.sound('chartingSounds/undo'));
+    state.playSound(Paths.sound('ui/editors/chart-editor/charting-sounds/undo'));
 
     state.saveDataDirty = true;
     state.noteDisplayDirty = true;
@@ -56,12 +65,23 @@ class RemoveNotesCommand implements ChartEditorCommand
     state.sortChartData();
   }
 
+  /**
+   * Whether the command should display in the undo/redo menu.
+   * This should be `false` if no real actions were actually performed.
+   *
+   * @param state The ChartEditorState to perform the command on.
+   * @return Whether the command should be added to the history.
+   */
   public function shouldAddToHistory(state:ChartEditorState):Bool
   {
     // This command is undoable. Add to the history if we actually performed an action.
     return (notes.length > 0);
   }
 
+  /**
+   * Convert the action to a string. Used to display the action in the undo/redo history.
+   * @return This command, as a readable string.
+   */
   public function toString():String
   {
     if (notes.length == 1 && notes[0] != null)

@@ -58,7 +58,8 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
   // Helper variable
   var _isMainMenuState:Bool = false;
 
-  public function new(navControls:NavControls = Vertical, ?wrapMode:WrapMode)
+  public function new(navControls:NavControls = Vertical,
+    ?wrapMode:WrapMode)
   {
     this.navControls = navControls;
 
@@ -146,15 +147,13 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
       touchBuddy.setPosition(TouchUtil.touch.x, TouchUtil.touch.y);
     }
 
-    if (funkin.mobile.input.ControlsHandler.usingExternalInputDevice)
+    if (newIndex != selectedIndex)
     {
-      if (newIndex != selectedIndex)
-      {
-        FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
-        selectItem(newIndex);
-      }
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+      selectItem(newIndex);
     }
-    else if (TouchUtil.pressed)
+
+    if (TouchUtil.pressed)
     {
       for (i in 0...members.length)
       {
@@ -177,7 +176,7 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
           }
           else
           {
-            FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
+            FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
             selectItem(i);
           }
 
@@ -187,7 +186,12 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
             {
               FlxTween.cancelTweensOf(item);
               item.scale.set(1.1, 1.1);
-              FlxTween.tween(item.scale, {x: 1, y: 1}, 0.3, {ease: FlxEase.backOut});
+              FlxTween.tween(item.scale, {
+                x: 1,
+                y: 1
+              }, 0.3, {
+                ease: FlxEase.backOut
+              });
 
               HapticUtil.vibrate(0, 0.05, 1);
               accept();
@@ -196,7 +200,12 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
             {
               FlxTween.cancelTweensOf(item);
               item.scale.set(0.94, 0.94);
-              FlxTween.tween(item.scale, {x: 1, y: 1}, 0.3, {ease: FlxEase.backOut});
+              FlxTween.tween(item.scale, {
+                x: 1,
+                y: 1
+              }, 0.3, {
+                ease: FlxEase.backOut
+              });
 
               HapticUtil.vibrate(0, 0.01, 0.5);
             }
@@ -213,13 +222,13 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
 
     if (newIndex != selectedIndex && !_isMainMenuState)
     {
-      FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
       selectItem(newIndex);
     }
     #else
     if (newIndex != selectedIndex)
     {
-      FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
       selectItem(newIndex);
     }
     #end
@@ -295,7 +304,7 @@ class MenuTypedList<T:MenuListItem> extends FlxTypedGroup<T>
     else
     {
       busy = true;
-      FunkinSound.playOnce(Paths.sound('confirmMenu'));
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu'));
       FlxFlicker.flicker(menuItem, 1, 0.06, true, false, function(_)
       {
         busy = false;

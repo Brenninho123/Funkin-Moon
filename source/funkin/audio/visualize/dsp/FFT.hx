@@ -145,10 +145,7 @@ class FFT
     // else for (k => s in fs_fft) haxe.Log.trace('${k * Fs / N};${s.scale(1 / Fs).magnitude}', null);
 
     // find spectral peaks to detect signal frequencies
-    final freqis = fs_fft.array.map(z -> z.magnitude)
-      .findPeaks()
-      .map(k -> (k - (halfN - 1)) * Fs / N)
-      .filter(f -> f >= 0);
+    final freqis = fs_fft.array.map(z -> z.magnitude).findPeaks().map(k -> (k - (halfN - 1)) * Fs / N).filter(f -> f >= 0);
     if (freqis.length != freqs.length)
     {
       trace('Found frequencies: ${freqis}');

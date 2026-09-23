@@ -32,6 +32,6 @@ class RuntimeCustomBlendShader extends RuntimePostEffectShader
 
   public function new()
   {
-    super(Assets.getText('assets/shaders/customBlend.frag'));
+    super(Assets.getText('assets/ui/shaders/custom-blend.frag'));
   }
 }

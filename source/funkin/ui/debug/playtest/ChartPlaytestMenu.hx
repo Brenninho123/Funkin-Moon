@@ -57,8 +57,13 @@ class ChartPlaytestMenu extends MusicBeatState
 
     this.filePath = filePath;
 
-    songName = new FlxText(0, FlxG.height * 0.1, 0, 'Loaded Song: ${targetSong.songName}',
-      30).setFormat(Paths.font('vcr.ttf'), 50, FlxColor.WHITE, FlxTextAlign.CENTER);
+    songName = new FlxText(
+      0,
+      FlxG.height * 0.1,
+      0,
+      'Loaded Song: ${targetSong.songName}',
+      30
+    ).setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 50, FlxColor.WHITE, FlxTextAlign.CENTER);
     songName.screenCenter(X);
     add(songName);
 
@@ -70,12 +75,17 @@ class ChartPlaytestMenu extends MusicBeatState
     variationButton.screenCenter(X);
     add(variationButton);
 
-    difficultyButton = new ChartPlaytestMenuButtonListToggle(0, FlxG.height * 0.45, "Difficulty",
-      targetSong.listDifficulties(null, targetSong.variations, true, true), function(value:String)
-    {
-      currentDifficulty = value;
-      difficultyButton.screenCenter(X);
-    });
+    difficultyButton = new ChartPlaytestMenuButtonListToggle(
+      0,
+      FlxG.height * 0.45,
+      "Difficulty",
+      targetSong.listDifficulties(null, targetSong.variations, true, true),
+      function(value:String)
+      {
+        currentDifficulty = value;
+        difficultyButton.screenCenter(X);
+      }
+    );
     difficultyButton.screenCenter(X);
     add(difficultyButton);
 
@@ -87,13 +97,15 @@ class ChartPlaytestMenu extends MusicBeatState
       }
       catch (e)
       {
-        lime.app.Application.current.window.alert('$e', 'Could Not Playtest Chart');
+        funkin.util.WindowUtil.showError('Could Not Playtest Chart', '$e');
       }
     });
     playtestButton.screenCenter(X);
     add(playtestButton);
 
-    FlxTween.tween(playtestCam, {alpha: 1}, 0.5);
+    FlxTween.tween(playtestCam, {
+      alpha: 1
+    }, 0.5);
 
     #if NO_FEATURE_TOUCH_CONTROLS
     Cursor.show();

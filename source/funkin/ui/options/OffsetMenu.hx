@@ -4,7 +4,7 @@ import funkin.ui.MenuList.MenuTypedList;
 import funkin.ui.TextMenuList.TextMenuItem;
 import funkin.util.GRhythmUtil;
 import funkin.mobile.ui.FunkinBackButton;
-#if mobile
+#if FEATURE_TOUCH_CONTROLS
 import funkin.mobile.ui.FunkinHitbox;
 import funkin.mobile.ui.FunkinHitbox.FunkinHitboxControlSchemes;
 import funkin.mobile.input.ControlsHandler;
@@ -106,7 +106,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
   public function createArrow(beat:Float):Void
   {
     var arrow = new FunkinSprite(0, 0);
-    arrow.loadGraphic(Paths.image('latencyArrow'));
+    arrow.loadGraphic(Paths.image('ui/input-offsets/arrow'));
     arrow.origin.set(0.5, 0.5);
     arrow.setPosition(FlxG.width / 2, FlxG.height + arrow.height); // Below the screen
     arrow.updateHitbox();
@@ -178,7 +178,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
     add(blackRect);
 
     receptor = new FunkinSprite(0, 0);
-    receptor.loadGraphic(Paths.image('latencyReceptor'));
+    receptor.loadGraphic(Paths.image('ui/input-offsets/receptor'));
     receptor.origin.set(0.5, 0.5);
     add(receptor);
 
@@ -207,7 +207,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
     receptor.updateHitbox();
 
     jumpInText = new FlxText(0, 0);
-    jumpInText.setFormat(Paths.font('vcr.ttf'), 32, FlxColor.WHITE, FlxTextAlign.CENTER);
+    jumpInText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 32, FlxColor.WHITE, FlxTextAlign.CENTER);
     jumpInText.setBorderStyle(FlxTextBorderStyle.OUTLINE, FlxColor.BLACK, 4);
     add(jumpInText);
 
@@ -217,7 +217,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
     // below receptor
 
     countText = new FlxText(0, 0);
-    countText.setFormat(Paths.font('vcr.ttf'), 32, FlxColor.WHITE, FlxTextAlign.CENTER);
+    countText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 32, FlxColor.WHITE, FlxTextAlign.CENTER);
     countText.setBorderStyle(FlxTextBorderStyle.OUTLINE, FlxColor.BLACK, 4);
     add(countText);
 
@@ -257,7 +257,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
       if (OptionsState.instance.optionsCodex.currentPage != this) return;
 
       jumpInText.text = 'Press any key to the beat!';
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       jumpInText.text = 'Tap to the beat!';
       #end
 
@@ -316,7 +316,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
       trace('Testing strumline at beat: ' + arrowBeat + ' diff: ' + diffBeats);
 
       jumpInText.text = 'Hit the notes as they come in!';
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       if (OptionsState.instance.hitbox != null) OptionsState.instance.hitbox.visible = true;
       if (!ControlsHandler.hasExternalInputDevice)
       {
@@ -357,7 +357,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
 
       jumpInText.y = 350;
 
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       if (ControlsHandler.hasExternalInputDevice)
       {
       #end
@@ -365,7 +365,7 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
         testStrumline.y = Preferences.downscroll ? FlxG.height - (height + 45) - Constants.STRUMLINE_Y_OFFSET : (height / 2) - Constants.STRUMLINE_Y_OFFSET;
         if (Preferences.downscroll) jumpInText.y = FlxG.height - 425;
         testStrumline.isDownscroll = Preferences.downscroll;
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       }
       else
       {
@@ -387,6 +387,9 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
      */
   function onKeyPress(event:PreciseInputEvent):Void
   {
+    // Set the current position for further calculation.
+    event.position = localConductor.songPosition;
+
     // Do the minimal possible work here.
     inputPressQueue.push(event);
   }
@@ -396,6 +399,9 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
      */
   function onKeyRelease(event:PreciseInputEvent):Void
   {
+    // Set the current position for further calculation.
+    event.position = localConductor.songPosition;
+
     // Do the minimal possible work here.
     inputReleaseQueue.push(event);
   }
@@ -406,20 +412,20 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
   {
     backButton.enabled = false;
     shouldOffset = -1;
-    #if mobile
+    #if FEATURE_TOUCH_CONTROLS
     if (OptionsState.instance.hitbox != null) OptionsState.instance.hitbox.visible = false;
     #end
     tempOffset = 0;
     if (cancel)
     {
       if (calibrating) Preferences.globalOffset = savedOffset;
-      #if !mobile
+      #if !FEATURE_TOUCH_CONTROLS
       // mobile would play this twice
-      FunkinSound.playOnce(Paths.sound('cancelMenu'));
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
       #end
     }
     else
-      FunkinSound.playOnce(Paths.sound('confirmMenu'));
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu'));
     offsetItem.currentValue = Preferences.globalOffset;
     OptionsState.instance.drumsBG.fadeOut(1, 0);
   }
@@ -538,17 +544,20 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
     // Resync logic
     var diff:Float = Math.abs((FlxG.sound.music.time + localConductor.combinedOffset) - localConductor.songPosition);
     var diffBg:Float = Math.abs(FlxG.sound.music.time - OptionsState.instance.drumsBG.time);
-    if (diff > 50 || diffBg > 50)
+    if (FlxG.sound.music.playing)
     {
-      trace('Resyncing conductor: ' + (diff > diffBg ? diff : diffBg) + 'ms difference');
+      if (diff > 50 || diffBg > 50)
+      {
+        trace('Resyncing conductor: ' + (diff > diffBg ? diff : diffBg) + 'ms difference');
 
-      // If the difference is greater than 50ms, we resync the conductor.
-      localConductor.update(FlxG.sound.music.time, true);
-      OptionsState.instance.drumsBG.pause();
-      OptionsState.instance.drumsBG.time = FlxG.sound.music.time;
-      OptionsState.instance.drumsBG.resume();
-      b = localConductor.currentBeatTime;
-      _lastBeat = b;
+        // If the difference is greater than 50ms, we resync the conductor.
+        localConductor.update(FlxG.sound.music.time, true);
+        OptionsState.instance.drumsBG.pause();
+        OptionsState.instance.drumsBG.time = FlxG.sound.music.time;
+        OptionsState.instance.drumsBG.resume();
+        b = localConductor.currentBeatTime;
+        _lastBeat = b;
+      }
     }
 
     _lastTime = FlxG.sound.music.time;
@@ -813,11 +822,11 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
 
   function hitNote(note:NoteSprite, input:PreciseInputEvent):Void
   {
+    var inputPosition:Float = input.position ?? 0.0;
     var inputLatencyNs:Int64 = PreciseInputManager.getCurrentTimestamp() - input.timestamp;
     var inputLatencyMs:Float = inputLatencyNs.toFloat() / Constants.NS_PER_MS;
 
-    var noteDiff:Int = Std.int(note.noteData.time - localConductor.songPosition - inputLatencyMs);
-
+    var noteDiff:Int = Std.int(note.noteData.time - inputPosition - inputLatencyMs);
     addDifference(noteDiff);
 
     if (noteDiff == 0)
@@ -903,11 +912,30 @@ class OffsetMenu extends Page<OptionsState.OptionsMenuPageName>
 
   // Creates a preference item with a number input.
 
-  function createPrefItemNumber(prefName:String, prefDesc:String, onChange:Float->Void, ?valueFormatter:Float->String, defaultValue:Int, min:Int, max:Int,
-      step:Float = 0.1, precision:Int, dragStepMultiplier:Float = 1):NumberPreferenceItem
+  function createPrefItemNumber(prefName:String,
+    prefDesc:String,
+    onChange:Float->Void,
+    ?valueFormatter:Float->String,
+    defaultValue:Int,
+    min:Int,
+    max:Int,
+    step:Float = 0.1,
+    precision:Int,
+    dragStepMultiplier:Float = 1):NumberPreferenceItem
   {
-    var item = new NumberPreferenceItem(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, defaultValue, min, max, step,
-      precision, onChange, valueFormatter, dragStepMultiplier);
+    var item = new NumberPreferenceItem(
+      funkin.ui.FullScreenScaleMode.gameNotchSize.x,
+      (120 * items.length) + 30,
+      prefName,
+      defaultValue,
+      min,
+      max,
+      step,
+      precision,
+      onChange,
+      valueFormatter,
+      dragStepMultiplier
+    );
     items.addItem(prefName, item);
     preferenceItems.add(item.lefthandText);
     return item;

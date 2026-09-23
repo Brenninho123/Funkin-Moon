@@ -5,63 +5,66 @@ import funkin.modding.IScriptedClass.IStateChangingScriptedClass;
 import funkin.modding.IScriptedClass.IFreeplayScriptedClass;
 import funkin.modding.IScriptedClass.ICharacterSelectScriptedClass;
 import funkin.modding.events.ScriptEvent;
-import flixel.util.FlxTimer;
-import funkin.graphics.FunkinCamera;
-import funkin.play.notes.Strumline;
-import funkin.play.PlayState;
 
+/**
+ * Parameters used to initialize a module.
+ */
 typedef ModuleParams =
 {
+  /**
+   * The state this module is associated with.
+   * If set, this module will only receive events when the game is in this state.
+   */
   ?state:Class<Dynamic>
 }
 
+/**
+ * A module is a scripted class which receives all events without requiring a specific context.
+ * You may have the module active at all times, or only when another script enables it.
+ */
 @:nullSafety
-class Module implements IPlayStateScriptedClass implements IStateChangingScriptedClass implements IFreeplayScriptedClass
-    implements ICharacterSelectScriptedClass
+class Module implements IPlayStateScriptedClass implements IStateChangingScriptedClass implements IFreeplayScriptedClass implements ICharacterSelectScriptedClass
 {
+  /**
+   * Whether the module is currently active.
+   */
   public var active(default, set):Bool = true;
 
   function set_active(value:Bool):Bool
   {
-    if (this.active == value) return value;
-
-    this.active = value;
-
-    if (value)
-    {
-      onEnabled();
-    }
-    else
-    {
-      cancelTimers();
-      onDisabled();
-    }
-
-    return value;
+    return this.active = value;
   }
 
   public var moduleId(default, null):String = 'UNKNOWN';
 
+  /**
+   * Determines the order in which modules receive events.
+   * You can modify this to change the order in which a given module receives events.
+   *
+   * Priority 1 is processed before Priority 1000, etc.
+   */
   public var priority(default, set):Int = 1000;
 
   function set_priority(value:Int):Int
   {
-    if (this.priority == value) return value;
-
     this.priority = value;
     @:privateAccess
     ModuleHandler.reorderModuleCache();
     return value;
   }
 
+  /**
+   * The state this module is associated with.
+   * If set, this module will only receive events when the game is in this state.
+   */
   public var state:Null<Class<Dynamic>> = null;
 
-  var data:Map<String, Dynamic> = new Map();
-
-  var activeTimers:Array<FlxTimer> = [];
-
-  final createdAt:Float = haxe.Timer.stamp();
-
+  /**
+   * Called when the module is initialized.
+   * It may not be safe to reference other modules here since they may not be loaded yet.
+   *
+   * NOTE: To make the module start inactive, call `this.active = false` in the constructor.
+   */
   public function new(moduleId:String, priority:Int = 1000, ?params:ModuleParams):Void
   {
     this.moduleId = moduleId;
@@ -73,292 +76,98 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
     }
   }
 
-  public static function fromLuaScript(scriptPath:String, moduleId:String, priority:Int = 1000, ?params:ModuleParams):Module
-  {
-    return new funkin.lua.module.LuaModule(scriptPath, moduleId, priority, params);
-  }
-
   public function toString():String
   {
     return 'Module(' + this.moduleId + ')';
   }
 
-  public function log(message:String):Void
-  {
-    FlxG.log.add('[$moduleId] $message');
-  }
+  // TODO: Half of these aren't actually being called!!!!!!!
 
-  public function enable():Void
-  {
-    this.active = true;
-  }
-
-  public function disable():Void
-  {
-    this.active = false;
-  }
-
-  public function toggle():Void
-  {
-    this.active = !this.active;
-  }
-
-  public function appliesToState(currentState:Class<Dynamic>):Bool
-  {
-    return this.state == null || this.state == currentState;
-  }
-
-  public function isCurrentlyActive():Bool
-  {
-    if (!active) return false;
-    if (state == null) return true;
-
-    return appliesToState(Type.getClass(FlxG.state));
-  }
-
-  public function setData(key:String, value:Dynamic):Void
-  {
-    data.set(key, value);
-  }
-
-  public function getData(key:String, ?defaultValue:Dynamic):Dynamic
-  {
-    return data.exists(key) ? data.get(key) : defaultValue;
-  }
-
-  public function hasData(key:String):Bool
-  {
-    return data.exists(key);
-  }
-
-  public function clearData():Void
-  {
-    data.clear();
-  }
-
-  public function runLater(seconds:Float, callback:Void->Void):FlxTimer
-  {
-    var timer:FlxTimer = new FlxTimer();
-    activeTimers.push(timer);
-
-    timer.start(seconds, (_) ->
-    {
-      activeTimers.remove(timer);
-      if (active) callback();
-    });
-
-    return timer;
-  }
-
-  public function cancelTimers():Void
-  {
-    for (timer in activeTimers) timer.cancel();
-    activeTimers.resize(0);
-  }
-
-  public function bringToFront():Void
-  {
-    this.priority = 1;
-  }
-
-  public function sendToBack():Void
-  {
-    this.priority = 10000;
-  }
-
-  public function getSourceDescription():String
-  {
-    return 'Native (Haxe)';
-  }
-
-  public function isLuaBacked():Bool
-  {
-    return false;
-  }
-
-  public function getUptime():Float
-  {
-    return haxe.Timer.stamp() - createdAt;
-  }
-
-  public function toDebugString():String
-  {
-    var dataKeys:Array<String> = [for (key in data.keys()) key];
-
-    return '$moduleId [priority=$priority, active=$active, source=${getSourceDescription()}, uptime=${Math.round(getUptime())}s, data=${dataKeys.length} key(s)]';
-  }
-
-  var _moduleElapsedTime:Float = 0;
-
-  public function getElapsedTime():Float
-  {
-    return _moduleElapsedTime;
-  }
-
-  public function resetElapsedTime():Void
-  {
-    _moduleElapsedTime = 0;
-  }
-
-  function sineWave(frequency:Float, phaseOffset:Float = 0):Float
-  {
-    return Math.sin((_moduleElapsedTime * frequency * Math.PI * 2) + phaseOffset);
-  }
-
-  public function getPlayState():Null<PlayState>
-  {
-    return PlayState.instance;
-  }
-
-  public function isInPlayState():Bool
-  {
-    return PlayState.instance != null;
-  }
-
-  public function getGameCamera():Null<FunkinCamera>
-  {
-    return PlayState.instance?.camGame;
-  }
-
-  public function getHudCamera():Null<FunkinCamera>
-  {
-    return PlayState.instance?.camHUD;
-  }
-
-  public function getPlayerStrumline():Null<Strumline>
-  {
-    return PlayState.instance?.playerStrumline;
-  }
-
-  public function getOpponentStrumline():Null<Strumline>
-  {
-    return PlayState.instance?.opponentStrumline;
-  }
-
-  public function swayCameraAngle(amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
-  {
-    var cam:Null<FunkinCamera> = getGameCamera();
-    if (cam == null) return;
-
-    cam.angle = sineWave(frequency, phaseOffset) * amplitude;
-  }
-
-  public function swayCameraZoom(baseZoom:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
-  {
-    var cam:Null<FunkinCamera> = getGameCamera();
-    if (cam == null) return;
-
-    cam.zoom = baseZoom + (sineWave(frequency, phaseOffset) * amplitude);
-  }
-
-  public function resetCameraTransform(baseZoom:Float = 1.0):Void
-  {
-    var cam:Null<FunkinCamera> = getGameCamera();
-    if (cam == null) return;
-
-    cam.angle = 0;
-    cam.zoom = baseZoom;
-  }
-
-  public function swayStrumlineX(strumline:Null<Strumline>, baseX:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
-  {
-    if (strumline == null) return;
-
-    strumline.x = baseX + (sineWave(frequency, phaseOffset) * amplitude);
-  }
-
-  public function wobbleNoteAngles(strumline:Null<Strumline>, amplitude:Float, frequency:Float, phaseOffset:Float = 0, indexPhaseStep:Float = 0.35):Void
-  {
-    if (strumline == null) return;
-
-    for (index => note in strumline.notes.members)
-    {
-      if (note == null) continue;
-
-      note.angle = sineWave(frequency, phaseOffset + (index * indexPhaseStep)) * amplitude;
-    }
-  }
-
-  public function resetStrumlineTransform(strumline:Null<Strumline>, baseX:Float):Void
-  {
-    if (strumline == null) return;
-
-    strumline.x = baseX;
-
-    for (note in strumline.notes.members)
-    {
-      if (note != null) note.angle = 0;
-    }
-  }
-
-  public function wobblePitch(basePitch:Float, amplitude:Float, frequency:Float, phaseOffset:Float = 0):Void
-  {
-    if (FlxG.sound.music == null) return;
-
-    FlxG.sound.music.pitch = basePitch + (sineWave(frequency, phaseOffset) * amplitude);
-  }
-
-  public function resetPitch(basePitch:Float):Void
-  {
-    if (FlxG.sound.music == null) return;
-
-    FlxG.sound.music.pitch = basePitch;
-  }
-
-  public function onEnabled():Void
-  {
-  }
-
-  public function onDisabled():Void
-  {
-  }
-
+  /**
+   * Called when ANY script event is dispatched.
+   */
   public function onScriptEvent(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when the module is first created.
+   * This happens before the title screen appears!
+   */
   public function onCreate(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when a module is destroyed.
+   * This currently only happens when reloading modules with F5.
+   */
   public function onDestroy(event:ScriptEvent)
   {
-    cancelTimers();
   }
 
+  /**
+   * Called every frame.
+   */
   public function onUpdate(event:UpdateScriptEvent)
   {
-    if (isCurrentlyActive()) _moduleElapsedTime += event.elapsed;
   }
 
+  /**
+   * Called when the game is paused.
+   */
   public function onPause(event:PauseScriptEvent)
   {
   }
 
+  /**
+   * Called when the game is resumed.
+   */
   public function onResume(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when the song begins.
+   */
   public function onSongStart(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when the song ends.
+   */
   public function onSongEnd(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when the player dies.
+   */
   public function onGameOver(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when a note on the strumline has been rendered and is now onscreen.
+   * This gets dispatched for both the player and opponent strumlines.
+   */
   public function onNoteIncoming(event:NoteScriptEvent)
   {
   }
 
+  /**
+   * Called when a note has been hit.
+   * This gets dispatched for both the player and opponent strumlines.
+   */
   public function onNoteHit(event:HitNoteScriptEvent)
   {
   }
 
+  /**
+   * Called when a note has been missed.
+   * This gets dispatched for both the player and opponent strumlines.
+   */
   public function onNoteMiss(event:NoteScriptEvent)
   {
   }
@@ -367,110 +176,214 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
   {
   }
 
+  /**
+   * Called when the player presses a key without any notes present.
+   */
   public function onNoteGhostMiss(event:GhostMissNoteScriptEvent)
   {
   }
 
+  /**
+   * Called when a step is hit in the song.
+   */
   public function onStepHit(event:SongTimeScriptEvent)
   {
   }
 
+  /**
+   * Called when a beat is hit in the song.
+   */
   public function onBeatHit(event:SongTimeScriptEvent)
   {
   }
 
+  /**
+   * Called when a song event is triggered.
+   */
   public function onSongEvent(event:SongEventScriptEvent)
   {
   }
 
+  /**
+   * Called when the countdown begins.
+   */
   public function onCountdownStart(event:CountdownScriptEvent)
   {
   }
 
+  /**
+   * Called for every step in the countdown.
+   */
   public function onCountdownStep(event:CountdownScriptEvent)
   {
   }
 
+  /**
+   * Called when the countdown ends, but BEFORE the song starts.
+   */
   public function onCountdownEnd(event:CountdownScriptEvent)
   {
   }
 
+  /**
+   * Called when the song's chart has been parsed and loaded.
+   */
   public function onSongLoaded(event:SongLoadScriptEvent)
   {
   }
 
+  /**
+   * Called when the game is about to switch to a new state.
+   */
   public function onStateChangeBegin(event:StateChangeScriptEvent)
   {
   }
 
+  /**
+   * Called after the game has switched to a new state.
+   */
   public function onStateChangeEnd(event:StateChangeScriptEvent)
   {
   }
 
+  /**
+   * Called when the game regains focus.
+   * This does not get called if "Pause on Unfocus" is disabled.
+   */
   public function onFocusGained(event:FocusScriptEvent)
   {
   }
 
+  /**
+   * Called when the game loses focus.
+   * This does not get called if "Pause on Unfocus" is disabled.
+   */
   public function onFocusLost(event:FocusScriptEvent)
   {
   }
 
+  /**
+   * Called when the game is about to open a substate.
+   */
   public function onSubStateOpenBegin(event:SubStateScriptEvent)
   {
   }
 
+  /**
+   * Called when a substate has been opened.
+   */
   public function onSubStateOpenEnd(event:SubStateScriptEvent)
   {
   }
 
+  /**
+   * Called when the game is about to close a substate.
+   */
   public function onSubStateCloseBegin(event:SubStateScriptEvent)
   {
   }
 
+  /**
+   * Called when a substate has been closed.
+   */
   public function onSubStateCloseEnd(event:SubStateScriptEvent)
   {
   }
 
+  /**
+   * Called when the song has been restarted.
+   */
   public function onSongRetry(event:SongRetryEvent)
   {
   }
 
+  /**
+   * Called when any state is created.
+   */
   public function onStateCreate(event:ScriptEvent)
   {
   }
 
+  /**
+   * Called when a capsule is selected.
+   */
   public function onCapsuleSelected(event:CapsuleScriptEvent):Void
   {
   }
 
+  /**
+   * Called when the current difficulty is changed.
+   */
   public function onDifficultySwitch(event:CapsuleScriptEvent):Void
   {
   }
 
+  /**
+   * Called when a song is selected.
+   */
   public function onSongSelected(event:CapsuleScriptEvent):Void
   {
   }
 
+  /**
+   * Called when the intro for Freeplay finishes.
+   */
   public function onFreeplayIntroDone(event:FreeplayScriptEvent):Void
   {
   }
 
+  /**
+   * Called when the Freeplay outro begins.
+   */
   public function onFreeplayOutro(event:FreeplayScriptEvent):Void
   {
   }
 
+  /**
+   * Called when Freeplay is closed.
+   */
   public function onFreeplayClose(event:FreeplayScriptEvent):Void
   {
   }
 
+  /**
+   * Called when a capsule receives a new rank.
+   */
+  public function onCapsuleNewRank(event:CapsuleScriptEvent):Void
+  {
+  }
+
+  /**
+   * Called when the rank letter slams down on a freeplay capsule.
+   */
+  public function onRankSlam(event:CapsuleScriptEvent):Void
+  {
+  }
+
+  /**
+   * Called when the entire capsule slams down, after a new rank has been applied.
+   */
+  public function onCapsuleSlam(event:CapsuleScriptEvent):Void
+  {
+  }
+
+  /**
+   * Called when a character is selected.
+   */
   public function onCharacterSelect(event:CharacterSelectScriptEvent):Void
   {
   }
 
+  /**
+   * Called when the user presses BACK after confirming a character.
+   */
   public function onCharacterDeselect(event:CharacterSelectScriptEvent):Void
   {
   }
 
+  /**
+   * Called when a character has been confirmed.
+   */
   public function onCharacterConfirm(event:CharacterSelectScriptEvent):Void
   {
   }

@@ -7,15 +7,26 @@ import funkin.data.character.CharacterData.CharacterDataParser;
 import funkin.data.character.CharacterData.CharacterRenderType;
 import funkin.play.stage.Bopper;
 import funkin.play.notes.NoteDirection;
+import funkin.data.song.SongData.SongNoteData;
 import funkin.play.notes.notekind.NoteKind;
 import funkin.play.notes.notekind.NoteKindManager;
 import funkin.play.stage.Stage;
+import funkin.graphics.FunkinAnimationController;
 
+/**
+ * A Character is a stage prop which bops to the music as well as controlled by the strumlines.
+ *
+ * Remember: The character's origin is at its FEET. (horizontal center, vertical bottom)
+ */
 class BaseCharacter extends Bopper
 {
+  // Metadata about a character.
   public var characterId(default, null):String;
   public var characterName(default, null):String;
 
+  /**
+   * Whether the player is an active character (Boyfriend) or not.
+   */
   public var characterType(default, set):CharacterType = OTHER;
 
   function set_characterType(value:CharacterType):CharacterType
@@ -23,35 +34,76 @@ class BaseCharacter extends Bopper
     return this.characterType = value;
   }
 
+  /**
+   * Tracks how long, in seconds, the character has been playing the current `sing` animation.
+   * This is used to ensure that characters play the `sing` animations for at least one beat,
+   *   preventing them from reverting to the `idle` animation between notes.
+   */
   public var holdTimer:Float = 0;
 
+  /**
+   * Set to true when the character dead. Part of the handling for death animations.
+   */
   public var isDead:Bool = false;
 
+  /**
+   * Set to true when the character being used in a special way.
+   * This includes the Chart Editor and the Animation Editor.
+   *
+   * Used by scripts to ensure that they don't try to run code to interact with the stage when the stage doesn't actually exist.
+   */
   public var debug:Bool = false;
 
+  /**
+   * If set, this stage will be used instead of the current stage in PlayState.
+   */
   public var currentStage:Null<Stage> = null;
 
+  /**
+   * The current note kind.
+   */
   public var curNoteKind:NoteKind;
 
+  /**
+   * This character plays a given animation when hitting these specific combo numbers.
+   */
   public var comboNoteCounts(default, null):Array<Int>;
 
+  /**
+   * This character plays a given animation when dropping combos larger than these numbers.
+   */
   public var dropNoteCounts(default, null):Array<Int>;
 
   @:allow(funkin.ui.debug.anim.DebugBoundingState)
   final _data:CharacterData;
-  final singTimeSteps:Float;
 
+  /**
+   * The amount of time, in seconds, that the character's singing animations should last for.
+   */
+  public final singTimeSteps:Float;
+
+  /**
+   * When set to true, the next animation to play will temporarily force the character's vocals to play.
+   */
   public var tempVocals:Bool = false;
 
+  /**
+   * The offset between the corner of the sprite and the origin of the sprite (at the character's feet).
+   * cornerPosition = stageData - characterOrigin
+   */
   public var characterOrigin(get, never):FlxPoint;
 
   function get_characterOrigin():FlxPoint
   {
-    var xPos = (width / 2);
-    var yPos = (height);
+    var xPos = (width / 2); // Horizontal center
+    var yPos = (height); // Vertical bottom
     return new FlxPoint(xPos, yPos);
   }
 
+  /**
+   * The absolute position of the top-left of the character.
+   * @return
+   */
   public var cornerPosition(get, set):FlxPoint;
 
   function get_cornerPosition():FlxPoint
@@ -73,6 +125,9 @@ class BaseCharacter extends Bopper
     return value;
   }
 
+  /**
+   * The absolute position of the character's feet, at the bottom-center of the sprite.
+   */
   public var feetPosition(get, never):FlxPoint;
 
   function get_feetPosition():FlxPoint
@@ -80,8 +135,18 @@ class BaseCharacter extends Bopper
     return new FlxPoint(x + characterOrigin.x, y + characterOrigin.y);
   }
 
+  /**
+   * Returns the point the camera should focus on.
+   * Should be approximately centered on the character, and should not move based on the current animation.
+   *
+   * Set the position of this rather than reassigning it, so that anything referencing it will not be affected.
+   */
   public var cameraFocusPoint(default, null):FlxPoint = new FlxPoint(0, 0);
 
+  /**
+   * If the x position changes, other than via changing the animation offset,
+   *  then we need to update the camera focus point.
+   */
   override function set_x(value:Float):Float
   {
     if (value == this.x) return value;
@@ -92,6 +157,10 @@ class BaseCharacter extends Bopper
     return super.set_x(value);
   }
 
+  /**
+   * If the y position changes, other than via changing the animation offset,
+   *  then we need to update the camera focus point.
+   */
   override function set_y(value:Float):Float
   {
     if (value == this.y) return value;
@@ -101,6 +170,11 @@ class BaseCharacter extends Bopper
 
     return super.set_y(value);
   }
+
+  /**
+   * The render type of the character.
+   */
+  public var renderType(default, null):CharacterRenderType;
 
   public function new(id:String, renderType:CharacterRenderType)
   {
@@ -127,21 +201,12 @@ class BaseCharacter extends Bopper
       this.singTimeSteps = _data.singTime;
       this.globalOffsets = _data.offsets;
       this.flipX = _data.flipX;
+      this.renderType = renderType;
     }
 
     if (PlayState.instance != null) currentStage = PlayState.instance.currentStage;
 
     shouldBop = false;
-  }
-
-  public function isPlayerCharacter():Bool
-  {
-    return characterType == BF;
-  }
-
-  public function isOpponentCharacter():Bool
-  {
-    return characterType == DAD;
   }
 
   public function getDeathCameraOffsets():Array<Float>
@@ -164,38 +229,13 @@ class BaseCharacter extends Bopper
     return _data.death?.preTransitionDelay ?? 0.0;
   }
 
+  /**
+   * Gets the value of flipX from the character data.
+   * `!getFlipX()` is the direction Boyfriend should face.
+   */
   public function getDataFlipX():Bool
   {
     return _data.flipX;
-  }
-
-  public function applyPsychAnimations(animations:Array<funkin.mod.support.PsychSupport.PsychCharacterAnim>):Void
-  {
-    if (animations == null) return;
-
-    for (animData in animations)
-    {
-      if (animData == null || animData.anim == null || animData.anim == '') continue;
-
-      var symbolName:String = animData.name ?? animData.anim;
-      var fps:Int = animData.fps ?? 24;
-      var loop:Bool = animData.loop ?? false;
-
-      if (animData.indices != null && animData.indices.length > 0)
-      {
-        FlxG.log.warn('[BaseCharacter] Animation "${animData.anim}" for "$characterId" uses a Psych frame-index subset, which isn\'t supported yet; adding the full symbol instead.');
-      }
-
-      this.anim.addBySymbol(animData.anim, symbolName, fps, loop);
-
-      if (animData.offsets != null && animData.offsets.length >= 2 && (animData.offsets[0] != 0 || animData.offsets[1] != 0))
-      {
-        FlxG.log.warn('[BaseCharacter] Animation "${animData.anim}" for "$characterId" has a Psych offset (${animData.offsets[0]}, ${animData.offsets[1]}) that could not be applied - the correct API for per-animation offsets on this engine is not confirmed yet.');
-      }
-    }
-
-    this.comboNoteCounts = findCountAnimations('combo');
-    this.dropNoteCounts = findCountAnimations('drop');
   }
 
   function findCountAnimations(prefix:String):Array<Int>
@@ -216,22 +256,36 @@ class BaseCharacter extends Bopper
       }
     }
 
+    // Sort numerically.
     result.sort((a, b) -> a - b);
     return result;
   }
 
+  /**
+   * Reset the character so it can be used at the start of the level.
+   * Call this when restarting the level.
+   */
   public function resetCharacter(resetCamera:Bool = true):Void
   {
+    // Set the x and y to be their original values.
     this.resetPosition();
 
+    // Resets danceEvery value to the original one.
     this.danceEvery = _data.danceEvery;
 
-    this.dance(true);
+    this.dance(true); // Force to avoid the old animation playing with the wrong offset at the start of the song.
+    // Make sure we are playing the idle animation
+    // ...then update the hitbox so that this.width and this.height are correct.
     this.updateHitbox();
 
+    // Reset the camera focus point while we're at it.
     if (resetCamera) this.resetCameraFocusPoint();
   }
 
+  /**
+   * Set the character's sprite scale to the appropriate value.
+   * @param scale The desired scale.
+   */
   public function setScale(scale:Null<Float>):Void
   {
     if (scale == null) scale = 1.0;
@@ -240,10 +294,14 @@ class BaseCharacter extends Bopper
     this.scale.x = scale;
     this.scale.y = scale;
     this.updateHitbox();
+    // Reposition with newly scaled sprite.
     this.x = feetPos.x - characterOrigin.x + globalOffsets[0];
     this.y = feetPos.y - characterOrigin.y + globalOffsets[1];
   }
 
+  /**
+   * The per-character camera offset.
+   */
   var characterCameraOffsets(get, never):Array<Float>;
 
   function get_characterCameraOffsets():Array<Float>
@@ -255,13 +313,19 @@ class BaseCharacter extends Bopper
   {
     super.onCreate(event);
 
+    // Make sure we are playing the idle animation...
     this.dance(true);
+    // ...then update the hitbox so that this.width and this.height are correct.
     this.updateHitbox();
+    // Without the above code, width and height (and therefore character position)
+    // will be based on the first animation in the sheet rather than the default animation.
 
     this.resetCameraFocusPoint();
 
-    this.comboNoteCounts = findCountAnimations('combo');
-    this.dropNoteCounts = findCountAnimations('drop');
+    // Child class should have created animations by now,
+    // so we can query which ones are available.
+    this.comboNoteCounts = findCountAnimations('combo'); // ex. combo50
+    this.dropNoteCounts = findCountAnimations('drop'); // ex. drop50
     if (comboNoteCounts.length > 0) log('Character $characterId plays Combo animation at ${this.comboNoteCounts.join(', ')}');
     if (dropNoteCounts.length > 0) log('Character $characterId plays Drop animation at ${this.dropNoteCounts.join(', ')}');
 
@@ -272,20 +336,24 @@ class BaseCharacter extends Bopper
   {
     super.onAnimationFinished(animationName);
 
-    if ((animationName.endsWith(Constants.ANIMATION_END_SUFFIX) && !animationName.startsWith('idle') && !animationName.startsWith('dance'))
-      || animationName.startsWith('combo')
-      || animationName.startsWith('drop'))
+    if
+      ((animationName.endsWith(Constants.ANIMATION_END_SUFFIX) && !animationName.startsWith('idle') && !animationName.startsWith('dance'))
+        || animationName.startsWith('combo')
+        || animationName.startsWith('drop')
+      )
     {
+      // Force the character to play the idle after the animation ends.
       this.dance(true);
     }
     if (tempVocals)
     {
-      if (isPlayerCharacter() && PlayState.instance.vocals.playerVolume == 1)
+      // stop the temporary vocals
+      if (characterType == BF && PlayState.instance.vocals.playerVolume == 1)
       {
         PlayState.instance.vocals.playerVolume = 0;
       }
 
-      if (isOpponentCharacter() && PlayState.instance.vocals.opponentVolume == 1)
+      if (characterType == DAD && PlayState.instance.vocals.opponentVolume == 1)
       {
         PlayState.instance.vocals.opponentVolume = 0;
       }
@@ -295,6 +363,7 @@ class BaseCharacter extends Bopper
 
   public function resetCameraFocusPoint():Void
   {
+    // Calculate the camera focus point
     var charCenterX = this.originalPosition.x + this.width / 2;
     var charCenterY = this.originalPosition.y + this.height / 2;
     this.cameraFocusPoint = new FlxPoint(charCenterX + _data.cameraOffsets[0], charCenterY + _data.cameraOffsets[1]);
@@ -305,8 +374,14 @@ class BaseCharacter extends Bopper
     return _data?.healthIcon?.id ?? Constants.DEFAULT_HEALTH_ICON;
   }
 
+  public function getDiscordRPCImage():String
+  {
+    return _data?.discordRPCImage ?? 'icon-${getHealthIconId()}';
+  }
+
   public function initHealthIcon(isOpponent:Bool):Void
   {
+    // Modders may want to use characters outside of PlayState and this still gets called, so we ignore it.
     if (PlayState.instance == null) return;
 
     if (!isOpponent)
@@ -317,7 +392,7 @@ class BaseCharacter extends Bopper
         return;
       }
       PlayState.instance.iconP1.configure(_data?.healthIcon);
-      PlayState.instance.iconP1.flipX = !PlayState.instance.iconP1.flipX;
+      PlayState.instance.iconP1.flipX = !PlayState.instance.iconP1.flipX; // BF is looking the other way.
     }
     else
     {
@@ -334,31 +409,64 @@ class BaseCharacter extends Bopper
   {
     super.onUpdate(event);
 
+    // Reset hold timer for each note pressed.
     if (justPressedNote() && this.characterType == BF)
     {
-      holdTimer = 0;
+      // If the `noanim` noteKind is active, don't reset the holdTimer.
+      if (curNoteKind != null && curNoteKind.noanim) return;
+      else
+      {
+        holdTimer = 0;
+      }
     }
 
     if (isDead)
     {
+      // playDeathAnimation
       return;
     }
 
-    if (isAnimationFinished()
+    // If there is an animation, and another animation with the same name + "-hold" exists,
+    // the second animation will play (and be looped if configured to do so) after the first animation finishes.
+    // This is good for characters that need to hold a pose while maintaining an animation, like the parents (this keeps their eyes flickering)
+    // and Darnell (this keeps the flame on his lighter flickering).
+    // Works for idle, singLEFT/RIGHT/UP/DOWN, alt singing animations, and anything else really.
+
+    if (
+      isAnimationFinished()
       && !getCurrentAnimation().endsWith(Constants.ANIMATION_HOLD_SUFFIX)
-      && hasAnimation(getCurrentAnimation() + Constants.ANIMATION_HOLD_SUFFIX))
+      && hasAnimation(getCurrentAnimation() + Constants.ANIMATION_HOLD_SUFFIX)
+    )
     {
       playAnimation(getCurrentAnimation() + Constants.ANIMATION_HOLD_SUFFIX);
     }
+    else
+    {
+      if (isAnimationFinished())
+      {
+        // Not playing hold (${getCurrentAnimation()}) (${isAnimationFinished()}, ${getCurrentAnimation().endsWith(Constants.ANIMATION_HOLD_SUFFIX)}, ${hasAnimation(getCurrentAnimation() + Constants.ANIMATION_HOLD_SUFFIX)})
+      }
+    }
 
+    // Handle character note hold time.
     if (isSinging())
     {
+      // TODO: Rework this code (and all character animations ugh)
+      // such that the hold time is handled by padding frames,
+      // and reverting to the idle animation is done when `isAnimationFinished()`.
+      // This lets you add frames to the end of the sing animation to ease back into the idle!
+
       holdTimer += event.elapsed;
-      var singTimeSec:Float = singTimeSteps * (Conductor.instance.stepLengthMs / Constants.MS_PER_SEC);
+      var singTimeSec:Float = singTimeSteps * (Conductor.instance.stepLengthMs / Constants.MS_PER_SEC); // x beats, to ms.
 
-      if (getCurrentAnimation().endsWith('miss')) singTimeSec *= 2;
+      if (getCurrentAnimation().endsWith('miss')) singTimeSec *= 2; // makes it feel more awkward when you miss???
 
-      var shouldStopSinging:Bool = isPlayerCharacter() ? !isHoldingNote() : true;
+      // Without this check here, the player character would only play the `sing` animation
+      // for one beat, as opposed to holding it as long as the player is holding the button.
+      var shouldStopSinging:Bool = (this.characterType == BF) ? !isHoldingNote() : true;
+
+      var controller = cast(animation, FunkinAnimationController);
+      if (controller.shouldUseConductorSync && shouldStopSinging) shouldStopSinging = FlxG.sound.music != null && FlxG.sound.music.playing;
 
       FlxG.watch.addQuick('singTimeSec-${characterId}', singTimeSec);
       if (holdTimer > singTimeSec && shouldStopSinging)
@@ -366,16 +474,20 @@ class BaseCharacter extends Bopper
         holdTimer = 0;
 
         var currentAnimation:String = getCurrentAnimation();
-        if (currentAnimation.endsWith(Constants.ANIMATION_HOLD_SUFFIX)) currentAnimation = currentAnimation.substring(0,
-          currentAnimation.length - Constants.ANIMATION_HOLD_SUFFIX.length);
+        // Strip "-hold" from the end.
+        if (currentAnimation.endsWith(
+          Constants.ANIMATION_HOLD_SUFFIX
+        )) currentAnimation = currentAnimation.substring(0, currentAnimation.length - Constants.ANIMATION_HOLD_SUFFIX.length);
 
         var endAnimation:String = currentAnimation + Constants.ANIMATION_END_SUFFIX;
         if (hasAnimation(endAnimation))
         {
+          // Play the '-end' animation, if one exists.
           playAnimation(endAnimation);
         }
         else
         {
+          // Play the idle animation.
           dance(true);
         }
       }
@@ -383,6 +495,7 @@ class BaseCharacter extends Bopper
     else
     {
       holdTimer = 0;
+      // super.onBeatHit handles the regular `dance()` calls.
     }
     FlxG.watch.addQuick('holdTimer-${characterId}', holdTimer);
   }
@@ -395,30 +508,42 @@ class BaseCharacter extends Bopper
 
   override function dance(force:Bool = false):Void
   {
+    // Prevent default dancing behavior.
     if (isDead) return;
 
     if (!force)
     {
+      // Prevent dancing while a singing animation is playing.
       if (isSinging()) return;
 
+      // Prevent dancing while a non-idle special animation is playing.
       var currentAnimation:String = getCurrentAnimation();
       if (!currentAnimation.startsWith('dance') && !currentAnimation.startsWith('idle') && !isAnimationFinished()) return;
     }
 
+    // Otherwise, fallback to the super dance() method, which handles playing the idle animation.
     super.dance();
   }
 
+  /**
+   * Returns true if the player just pressed a note.
+   * Used when determing whether a the player character should revert to the `idle` animation.
+   * On non-player characters, this should be ignored.
+   */
   function justPressedNote(player:Int = 1):Bool
   {
+    // Returns true if at least one of LEFT, DOWN, UP, or RIGHT is being held.
     switch (player)
     {
       case 1:
-        return PlayerSettings.player1.controls.NOTE_LEFT_P
+        return
+          PlayerSettings.player1.controls.NOTE_LEFT_P
           || PlayerSettings.player1.controls.NOTE_DOWN_P
           || PlayerSettings.player1.controls.NOTE_UP_P
           || PlayerSettings.player1.controls.NOTE_RIGHT_P;
       case 2:
-        return PlayerSettings.player2.controls.NOTE_LEFT_P
+        return
+          PlayerSettings.player2.controls.NOTE_LEFT_P
           || PlayerSettings.player2.controls.NOTE_DOWN_P
           || PlayerSettings.player2.controls.NOTE_UP_P
           || PlayerSettings.player2.controls.NOTE_RIGHT_P;
@@ -426,17 +551,25 @@ class BaseCharacter extends Bopper
     return false;
   }
 
+  /**
+   * Returns true if the player is holding a note.
+   * Used when determing whether a the player character should revert to the `idle` animation.
+   * On non-player characters, this should be ignored.
+   */
   function isHoldingNote(player:Int = 1):Bool
   {
+    // Returns true if at least one of LEFT, DOWN, UP, or RIGHT is being held.
     switch (player)
     {
       case 1:
-        return PlayerSettings.player1.controls.NOTE_LEFT
+        return
+          PlayerSettings.player1.controls.NOTE_LEFT
           || PlayerSettings.player1.controls.NOTE_DOWN
           || PlayerSettings.player1.controls.NOTE_UP
           || PlayerSettings.player1.controls.NOTE_RIGHT;
       case 2:
-        return PlayerSettings.player2.controls.NOTE_LEFT
+        return
+          PlayerSettings.player2.controls.NOTE_LEFT
           || PlayerSettings.player2.controls.NOTE_DOWN
           || PlayerSettings.player2.controls.NOTE_UP
           || PlayerSettings.player2.controls.NOTE_RIGHT;
@@ -444,57 +577,74 @@ class BaseCharacter extends Bopper
     return false;
   }
 
-  function playNoteHitAnimation(direction:NoteDirection):Void
+  /**
+   * Play the appropriate singing animation based on the given note data.
+   * @param noteData The note data of the note.
+   */
+  public function playNoteSingAnimation(noteData:SongNoteData, judgement:Null<String> = null, comboCount:Int = 0):Void
   {
-    if (curNoteKind == null)
-    {
-      this.playSingAnimation(direction, false);
-      holdTimer = 0;
-      return;
-    }
+     curNoteKind = NoteKindManager.getNoteKind(noteData.kind);
+    // Let the character naturally transition back to their idle/dance animation
+    // if the notekind is set to noanim.
+    if (curNoteKind != null && curNoteKind.noanim) return;
 
-    if (!curNoteKind.noanim)
+    if (noteData.getMustHitNote() && characterType == BF)
     {
-      this.playSingAnimation(direction, false, curNoteKind?.suffix);
+      this.playSingAnimation(noteData.getDirection(), false, curNoteKind?.suffix ?? '');
       holdTimer = 0;
     }
-  }
-
-  override public function onNoteHit(event:HitNoteScriptEvent):Void
-  {
-    super.onNoteHit(event);
-    if (event.eventCanceled) return;
-    curNoteKind = NoteKindManager.getNoteKind(event.note.noteData.kind);
-
-    if (event.note.noteData.getMustHitNote() && isPlayerCharacter())
+    else if (!noteData.getMustHitNote() && characterType == DAD)
     {
-      playNoteHitAnimation(event.note.noteData.getDirection());
+      this.playSingAnimation(noteData.getDirection(), false, curNoteKind?.suffix ?? '');
+      holdTimer = 0;
     }
-    else if (!event.note.noteData.getMustHitNote() && isOpponentCharacter())
+    else if (characterType == GF && noteData.getMustHitNote() && judgement != null)
     {
-      playNoteHitAnimation(event.note.noteData.getDirection());
-    }
-    else if (characterType == GF && event.note.noteData.getMustHitNote())
-    {
-      switch (event.judgement)
+      switch (judgement)
       {
         case 'sick' | 'good':
-          playComboAnimation(event.comboCount);
+          playComboAnimation(comboCount);
         default:
-          playComboDropAnimation(event.comboCount);
+          playComboDropAnimation(comboCount);
       }
     }
   }
 
-  override public function onNoteMiss(event:NoteScriptEvent)
+  /**
+   * Every time a note is hit, check if the note is from the same strumline.
+   * If it is, then play the sing animation.
+   */
+  override public function onNoteHit(event:HitNoteScriptEvent):Void
+  {
+    super.onNoteHit(event);
+    // If another script cancelled the event, don't do anything.
+    if (event.eventCanceled) return;
+
+    playNoteSingAnimation(event.note.noteData, event.judgement, event.comboCount);
+  }
+
+  /**
+   * Every time a note is missed, check if the note is from the same strumline.
+   * If it is, then play the sing animation.
+   */
+  override public function onNoteMiss(event:NoteScriptEvent):Void
   {
     super.onNoteMiss(event);
 
+    // If another script cancelled the event, don't do anything.
     if (event.eventCanceled) return;
 
-    if ((event.note.noteData.getMustHitNote() && isPlayerCharacter()) || (!event.note.noteData.getMustHitNote() && isOpponentCharacter()))
+    if (event.note.noteData.getMustHitNote() && characterType == BF)
     {
+      // If the note is from the same strumline, play the miss animation.
       this.playSingAnimation(event.note.noteData.getDirection(), true);
+      holdTimer = 0;
+    }
+    else if (!event.note.noteData.getMustHitNote() && characterType == DAD)
+    {
+      // If the note is from the same strumline, play the miss animation.
+      this.playSingAnimation(event.note.noteData.getDirection(), true);
+      holdTimer = 0;
     }
     else if (event.note.noteData.getMustHitNote() && characterType == GF)
     {
@@ -502,15 +652,24 @@ class BaseCharacter extends Bopper
     }
   }
 
-  override public function onNoteHoldDrop(event:HoldNoteScriptEvent)
+  override public function onNoteHoldDrop(event:HoldNoteScriptEvent):Void
   {
     super.onNoteHoldDrop(event);
 
+    // If another script cancelled the event, don't do anything.
     if (event.eventCanceled) return;
 
-    if ((event.holdNote.noteData.getMustHitNote() && isPlayerCharacter()) || (!event.holdNote.noteData.getMustHitNote() && isOpponentCharacter()))
+    if (event.holdNote.noteData.getMustHitNote() && characterType == BF)
     {
+      // If the note is from the same strumline, play the miss animation.
       this.playSingAnimation(event.holdNote.noteData.getDirection(), true);
+      holdTimer = 0;
+    }
+    else if (!event.holdNote.noteData.getMustHitNote() && characterType == DAD)
+    {
+      // If the note is from the same strumline, play the miss animation.
+      this.playSingAnimation(event.holdNote.noteData.getDirection(), true);
+      holdTimer = 0;
     }
     else if (event.holdNote.noteData.getMustHitNote() && event.isComboBreak && characterType == GF)
     {
@@ -532,6 +691,9 @@ class BaseCharacter extends Bopper
   {
     var dropAnim:Null<String> = null;
 
+    // Choose the combo drop anim to play.
+    // If there are several (for example, drop10 and drop50) the highest one will be used.
+    // If the combo count is too low, no animation will be played.
     for (count in dropNoteCounts)
     {
       if (comboCount >= count)
@@ -547,17 +709,22 @@ class BaseCharacter extends Bopper
     }
   }
 
+  /**
+   * Every time a wrong key is pressed, play the miss animation if we are Boyfriend.
+   */
   override public function onNoteGhostMiss(event:GhostMissNoteScriptEvent):Void
   {
     super.onNoteGhostMiss(event);
 
     if (event.eventCanceled || !event.playAnim)
     {
+      // Skipping...
       return;
     }
 
-    if (isPlayerCharacter())
+    if (characterType == BF)
     {
+      // If the note is from the same strumline, play the sing animation.
       this.playSingAnimation(event.dir, true);
     }
   }
@@ -567,9 +734,18 @@ class BaseCharacter extends Bopper
     this.characterType = OTHER;
   }
 
+  /**
+   * Play the appropriate singing animation, for the given note direction.
+   * @param dir The direction of the note.
+   * @param miss If true, play the miss animation instead of the sing animation.
+   * @param suffix A suffix to append to the animation name, like `alt`.
+   */
   public function playSingAnimation(dir:NoteDirection, miss:Bool = false, ?suffix:String = ''):Void
   {
     var anim:String = 'sing${dir.nameUpper}${miss ? 'miss' : ''}${suffix != '' ? '-${suffix}' : ''}';
+
+    // restart even if already playing, because the character might sing the same note twice.
+    holdTimer = 0;
 
     playAnimation(anim, true);
   }
@@ -578,15 +754,16 @@ class BaseCharacter extends Bopper
   {
     if (tempVocals && PlayState.instance != null)
     {
-      if (isPlayerCharacter() && PlayState.instance.vocals.playerVolume == 0)
+      // restart the character's vocals for the duration of the animation
+      if (characterType == BF && PlayState.instance.vocals.playerVolume == 0)
       {
         PlayState.instance.vocals.playerVolume = 1;
       }
-      else if (isOpponentCharacter() && PlayState.instance.vocals.opponentVolume == 0)
+      else if (characterType == DAD && PlayState.instance.vocals.opponentVolume == 0)
       {
         PlayState.instance.vocals.opponentVolume = 1;
       }
-      else if (!isPlayerCharacter() && !isOpponentCharacter()) tempVocals = false;
+      else if (characterType != BF || characterType != DAD) tempVocals = false;
     }
 
     super.playAnimation(name, restart, ignoreOther, reversed);
@@ -599,14 +776,55 @@ class BaseCharacter extends Bopper
 
   static function log(message:String):Void
   {
-    FlxG.log.add(' CHARACTER '.bold().bg_blue() + ' $message');
+    trace(' CHARACTER '.bold().bg_blue() + ' $message');
+  }
+
+  public override function toString():String
+  {
+    return 'BaseCharacter($characterName ($characterId), pos=[$x, $y])';
   }
 }
 
+/**
+ * The type of a given character sprite. Defines its default behaviors.
+ */
 enum CharacterType
 {
+  /**
+   * The BF character has the following behaviors.
+   * - At idle, dances with `danceLeft` and `danceRight` if available, or `idle` if not.
+   * - When the player hits a note, plays the appropriate `singDIR` animation until BF is done singing.
+   * - If there is a `singDIR-end` animation, the `singDIR` animation will play once before looping the `singDIR-end` animation until BF is done singing.
+   * - If the player misses or hits a ghost note, plays the appropriate `singDIR-miss` animation until BF is done singing.
+   */
   BF;
+
+  /**
+   * The DAD character has the following behaviors.
+   * - At idle, dances with `danceLeft` and `danceRight` if available, or `idle` if not.
+   * - When the CPU hits a note, plays the appropriate `singDIR` animation until DAD is done singing.
+   * - If there is a `singDIR-end` animation, the `singDIR` animation will play once before looping the `singDIR-end` animation until DAD is done singing.
+   * - When the CPU misses a note (NOTE: This only happens via script, not by default),
+   *     plays the appropriate `singDIR-miss` animation until DAD is done singing.
+   */
   DAD;
+
+  /**
+   * The GF character has the following behaviors.
+   * - At idle, dances with `danceLeft` and `danceRight` if available, or `idle` if not.
+   * - If available, `combo###` animations will play when certain combo counts are reached.
+   *   - For example, `combo50` will play when the player hits 50 notes in a row.
+   *   - Multiple combo animations can be provided for different thresholds.
+   * - If available, `drop###` animations will play when combos are dropped above certain thresholds.
+   *   - For example, `drop10` will play when the player drops a combo larger than 10.
+   *   - Multiple drop animations can be provided for different thresholds (i.e. dropping larger combos).
+   *   - No drop animation will play if one isn't applicable (i.e. if the combo count is too low).
+   */
   GF;
+
+  /**
+   * The OTHER character will only perform the `danceLeft`/`danceRight` or `idle` animation by default, depending on what's available.
+   * Additional behaviors can be performed via scripts.
+   */
   OTHER;
 }

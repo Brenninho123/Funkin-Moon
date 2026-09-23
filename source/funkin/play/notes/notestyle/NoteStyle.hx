@@ -37,6 +37,75 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
   }
 
   /**
+   * Determine a list of the assets of the given type that are required to display this note style.
+   * @param type The type of asset to query.
+   * @return The list of assets to query.
+   */
+  public function queryAssets(type:funkin.assets.Assets.AssetType):Array<funkin.assets.Paths.AssetPath>
+  {
+    switch (type)
+    {
+      case IMAGE:
+        var paths = [
+          // TODO: Make these functions return asset paths directly, then rewrite queryAssets properly!
+
+          // Note sprites
+          getNoteAssetPath(),
+          getHoldNoteAssetPath(),
+          getStrumlineAssetPath(),
+          getSplashAssetPath(),
+
+          // Countdown sprites
+          buildCountdownSpritePath(THREE),
+          buildCountdownSpritePath(TWO),
+          buildCountdownSpritePath(ONE),
+          buildCountdownSpritePath(GO),
+
+          // Judgement sprites
+          buildJudgementSpritePath('sick'),
+          buildJudgementSpritePath('good'),
+          buildJudgementSpritePath('bad'),
+          buildJudgementSpritePath('shit'),
+
+          // Hold cover sprites
+          getHoldCoverDirectionAssetPath(NoteDirection.LEFT),
+          getHoldCoverDirectionAssetPath(NoteDirection.DOWN),
+          getHoldCoverDirectionAssetPath(NoteDirection.UP),
+          getHoldCoverDirectionAssetPath(NoteDirection.RIGHT),
+        ].filterNull().map((path) -> funkin.assets.Paths.image(path));
+
+        // Combo count sprites
+        paths.append([for (i in 0...9) buildComboNumSpritePath(i)].filterNull().map((path) -> funkin.assets.Paths.image(path)));
+
+        return paths;
+      case XML:
+        return [
+          getNoteAssetPath(),
+          getHoldNoteAssetPath(),
+          getStrumlineAssetPath(),
+
+          getSplashAssetPath(),
+          getHoldCoverDirectionAssetPath(NoteDirection.LEFT),
+          getHoldCoverDirectionAssetPath(NoteDirection.DOWN),
+          getHoldCoverDirectionAssetPath(NoteDirection.UP),
+          getHoldCoverDirectionAssetPath(NoteDirection.RIGHT),
+        ].map((path) ->
+        {
+          if (path == null) return null;
+          return funkin.assets.Paths.xml(path);
+        }).filterNull();
+      case SOUND:
+        return [getCountdownSoundPath(THREE), getCountdownSoundPath(TWO), getCountdownSoundPath(ONE), getCountdownSoundPath(GO)].map((path) ->
+        {
+          if (path == null) return null;
+          return funkin.assets.Paths.sound(path);
+        }).filterNull();
+      default:
+        return [];
+    }
+  }
+
+  /**
    * @param id The ID of the JSON file to parse.
    */
   public function new(id:String, ?params:Dynamic)
@@ -118,7 +187,7 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
       return null;
     }
 
-    if (!FunkinMemory.isTextureCached(Paths.image(noteAssetPath)))
+    if (!funkin.assets.Assets.isFlxGraphicCached(funkin.assets.Paths.image(noteAssetPath)))
     {
       FlxG.log.warn('Note texture is not cached: ${noteAssetPath}');
     }
@@ -160,17 +229,41 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
   function buildNoteAnimations(target:NoteSprite):Void
   {
     var leftData:Null<AnimationData> = fetchNoteAnimationData(LEFT);
-    if (leftData != null) target.animation.addByPrefix('purpleScroll', leftData.prefix ?? '', leftData.frameRate ?? 24, leftData.looped ?? false,
-      leftData.flipX, leftData.flipY);
+    if (leftData != null) target.animation.addByPrefix(
+      'purpleScroll',
+      leftData.prefix ?? '',
+      leftData.frameRate ?? 24,
+      leftData.looped ?? false,
+      leftData.flipX,
+      leftData.flipY
+    );
     var downData:Null<AnimationData> = fetchNoteAnimationData(DOWN);
-    if (downData != null) target.animation.addByPrefix('blueScroll', downData.prefix ?? '', downData.frameRate ?? 24, downData.looped ?? false,
-      downData.flipX, downData.flipY);
+    if (downData != null) target.animation.addByPrefix(
+      'blueScroll',
+      downData.prefix ?? '',
+      downData.frameRate ?? 24,
+      downData.looped ?? false,
+      downData.flipX,
+      downData.flipY
+    );
     var upData:Null<AnimationData> = fetchNoteAnimationData(UP);
-    if (upData != null) target.animation.addByPrefix('greenScroll', upData.prefix ?? '', upData.frameRate ?? 24, upData.looped ?? false, upData.flipX,
-      upData.flipY);
+    if (upData != null) target.animation.addByPrefix(
+      'greenScroll',
+      upData.prefix ?? '',
+      upData.frameRate ?? 24,
+      upData.looped ?? false,
+      upData.flipX,
+      upData.flipY
+    );
     var rightData:Null<AnimationData> = fetchNoteAnimationData(RIGHT);
-    if (rightData != null) target.animation.addByPrefix('redScroll', rightData.prefix ?? '', rightData.frameRate ?? 24, rightData.looped ?? false,
-      rightData.flipX, rightData.flipY);
+    if (rightData != null) target.animation.addByPrefix(
+      'redScroll',
+      rightData.prefix ?? '',
+      rightData.frameRate ?? 24,
+      rightData.looped ?? false,
+      rightData.flipX,
+      rightData.flipY
+    );
   }
 
   public function isNoteAnimated():Bool
@@ -240,14 +333,15 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
     // TODO: Add support for multi-Sparrow.
     // Will be less annoying after this is merged: https://github.com/HaxeFlixel/flixel/pull/2772
 
-    var atlas:FlxAtlasFrames = Paths.getSparrowAtlas(getStrumlineAssetPath() ?? '', getAssetLibrary(getStrumlineAssetPath(true)));
+    var assetPath = funkin.assets.Paths.image(getStrumlineAssetPath() ?? '');
+    var noteFrames = funkin.assets.Assets.getSparrowAtlas(assetPath);
 
-    if (atlas == null)
+    if (noteFrames == null)
     {
       throw 'Could not load spritesheet for note style: $id';
     }
 
-    target.frames = atlas;
+    target.frames = noteFrames;
 
     target.scale.set(_data.assets.noteStrumline?.scale ?? 1.0);
     target.antialiasing = !(_data.assets.noteStrumline?.isPixel ?? false);
@@ -912,7 +1006,7 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
       return null;
     }
 
-    if (!FunkinMemory.isTextureCached(Paths.image(splashAssetPath)))
+    if (!funkin.assets.Assets.isFlxGraphicCached(funkin.assets.Paths.image(splashAssetPath)))
     {
       FlxG.log.warn('Note Splash texture not cached: ${splashAssetPath}');
     }
@@ -1070,7 +1164,7 @@ class NoteStyle implements IRegistryEntry<NoteStyleData>
       return null;
     }
 
-    if (!FunkinMemory.isTextureCached(Paths.image(holdCoverAssetPath)))
+    if (!funkin.assets.Assets.isFlxGraphicCached(funkin.assets.Paths.image(holdCoverAssetPath)))
     {
       FlxG.log.warn('Hold Note Cover texture not cached: ${holdCoverAssetPath}');
     }

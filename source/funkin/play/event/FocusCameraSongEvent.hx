@@ -56,11 +56,11 @@ class FocusCameraSongEvent extends SongEvent
     });
   }
 
-  static final DEFAULT_X_POSITION:Float = 0.0;
-  static final DEFAULT_Y_POSITION:Float = 0.0;
-  static final DEFAULT_DURATION:Float = 4.0;
-  static final DEFAULT_CAMERA_EASE:String = 'CLASSIC';
-  static final DEFAULT_TARGET:Int = 0; // Boyfriend
+  public static final DEFAULT_X_POSITION:Float = 0.0;
+  public static final DEFAULT_Y_POSITION:Float = 0.0;
+  public static final DEFAULT_DURATION:Float = 4.0;
+  public static final DEFAULT_CAMERA_EASE:String = 'CLASSIC';
+  public static final DEFAULT_TARGET:Int = 0; // Boyfriend
 
   override public function handleEvent(data:SongEventData):Void
   {
@@ -180,7 +180,12 @@ class FocusCameraSongEvent extends SongEvent
         title: 'Target',
         defaultValue: DEFAULT_TARGET,
         type: SongEventFieldType.ENUM,
-        keys: ['Position' => -1, 'Player' => 0, 'Opponent' => 1, 'Girlfriend' => 2]
+        keys: [
+          'Position' => -1,
+          'Player' => 0,
+          'Opponent' => 1,
+          'Girlfriend' => 2
+        ]
       },
       {
         name: 'x',
@@ -235,7 +240,11 @@ class FocusCameraSongEvent extends SongEvent
         title: 'Easing Direction',
         defaultValue: SongEvent.DEFAULT_EASE_DIR,
         type: SongEventFieldType.ENUM,
-        keys: ['In' => 'In', 'Out' => 'Out', 'In/Out' => 'InOut']
+        keys: [
+          'In' => 'In',
+          'Out' => 'Out',
+          'In/Out' => 'InOut'
+        ]
       }
     ]);
   }

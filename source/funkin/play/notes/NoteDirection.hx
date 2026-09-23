@@ -2,6 +2,10 @@ package funkin.play.notes;
 
 import flixel.util.FlxColor;
 
+/**
+ * The direction of a note.
+ * This has implicit casting set up, so you can use this as an integer.
+ */
 enum abstract NoteDirection(Int) from Int to Int
 {
   public var LEFT = 0;
@@ -12,18 +16,11 @@ enum abstract NoteDirection(Int) from Int to Int
   public var nameUpper(get, never):String;
   public var color(get, never):FlxColor;
   public var colorName(get, never):String;
-  public var opposite(get, never):NoteDirection;
-  public var isHorizontal(get, never):Bool;
-  public var isVertical(get, never):Bool;
-
-  public static final ALL:Array<NoteDirection> = [LEFT, DOWN, UP, RIGHT];
 
   @:from
   public static function fromInt(value:Int):NoteDirection
   {
-    var wrapped:Int = ((value % 4) + 4) % 4;
-
-    return switch (wrapped)
+    return switch (value % 4)
     {
       case 0:
         LEFT;
@@ -35,25 +32,6 @@ enum abstract NoteDirection(Int) from Int to Int
         RIGHT;
       default:
         LEFT;
-    }
-  }
-
-  public static function fromString(value:Null<String>):Null<NoteDirection>
-  {
-    if (value == null) return null;
-
-    return switch (value.toLowerCase())
-    {
-      case 'left':
-        LEFT;
-      case 'down':
-        DOWN;
-      case 'up':
-        UP;
-      case 'right':
-        RIGHT;
-      default:
-        null;
     }
   }
 
@@ -81,7 +59,7 @@ enum abstract NoteDirection(Int) from Int to Int
 
   function get_color():FlxColor
   {
-    return Constants.COLOR_NOTES[fromInt(this)];
+    return Constants.COLOR_NOTES[this];
   }
 
   function get_colorName():String
@@ -98,50 +76,6 @@ enum abstract NoteDirection(Int) from Int to Int
         'red';
       default:
         'unknown';
-    }
-  }
-
-  function get_opposite():NoteDirection
-  {
-    return switch (abstract)
-    {
-      case LEFT:
-        RIGHT;
-      case RIGHT:
-        LEFT;
-      case UP:
-        DOWN;
-      case DOWN:
-        UP;
-      default:
-        abstract;
-    }
-  }
-
-  function get_isHorizontal():Bool
-  {
-    return abstract == LEFT || abstract == RIGHT;
-  }
-
-  function get_isVertical():Bool
-  {
-    return abstract == UP || abstract == DOWN;
-  }
-
-  public function getOffsetVector(distance:Float = 1.0):flixel.math.FlxPoint
-  {
-    return switch (abstract)
-    {
-      case LEFT:
-        flixel.math.FlxPoint.get(-distance, 0);
-      case RIGHT:
-        flixel.math.FlxPoint.get(distance, 0);
-      case UP:
-        flixel.math.FlxPoint.get(0, -distance);
-      case DOWN:
-        flixel.math.FlxPoint.get(0, distance);
-      default:
-        flixel.math.FlxPoint.get(0, 0);
     }
   }
 

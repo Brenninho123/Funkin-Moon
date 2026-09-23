@@ -4,7 +4,6 @@ import flixel.input.actions.FlxAction.FlxActionDigital;
 import flixel.input.actions.FlxActionInput;
 import flixel.input.FlxInput.FlxInputState;
 import flixel.input.actions.FlxActionInputDigital.FlxActionInputDigitalIFlxInput;
-import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.input.Controls;
 import funkin.mobile.ui.FunkinButton;
 import funkin.mobile.ui.FunkinHitbox;
@@ -16,48 +15,61 @@ import funkin.external.apple.KeyboardUtil;
 #end
 import lime.ui.Gamepad as LimeGamepad;
 import openfl.events.KeyboardEvent;
-import openfl.events.MouseEvent;
 import openfl.events.TouchEvent;
+import openfl.events.MouseEvent;
 
+/**
+ * Handles setting up and managing input controls for the game.
+ */
 class ControlsHandler
 {
+  /**
+   * Returns whether the last input was sent through touch (or mouse on desktop).
+   */
   public static var lastInputTouch(default, null):Bool = true;
 
+  /**
+   * Returns whether there's a gamepad or keyboard devices connected and active.
+   */
   public static var hasExternalInputDevice(get, never):Bool;
 
+  /**
+   * Returns whether an external input device is currently used as the main input.
+   */
   public static var usingExternalInputDevice(get, never):Bool;
 
-  public static final onInputDeviceChanged:FlxTypedSignal<Bool->Void> = new FlxTypedSignal<Bool->Void>();
-
-  static final DIRECTION_TO_CONTROL:Map<NoteDirection, Control> = [
-    NoteDirection.LEFT => Control.NOTE_LEFT,
-    NoteDirection.DOWN => Control.NOTE_DOWN,
-    NoteDirection.UP => Control.NOTE_UP,
-    NoteDirection.RIGHT => Control.NOTE_RIGHT,
-  ];
-
+  /**
+   * Initialize input trackers used to get the current status of the `lastInputTouch` field.
+   */
   public static function initInputTrackers():Void
   {
-    FlxG.stage.addEventListener(KeyboardEvent.KEY_DOWN, (_) -> setLastInputTouch(false));
-    FlxG.stage.addEventListener(MouseEvent.MOUSE_DOWN, (_) -> setLastInputTouch(false));
-    FlxG.stage.addEventListener(TouchEvent.TOUCH_BEGIN, (_) -> setLastInputTouch(true));
+    FlxG.stage.addEventListener(KeyboardEvent.KEY_DOWN, (_) -> lastInputTouch = false);
+    FlxG.stage.addEventListener(TouchEvent.TOUCH_BEGIN, (_) -> lastInputTouch = true);
+    FlxG.stage.addEventListener(MouseEvent.MOUSE_MOVE, (_) -> lastInputTouch = true);
+    FlxG.stage.addEventListener(MouseEvent.CLICK, (_) -> lastInputTouch = true);
 
     function doGamepad(gamepad:LimeGamepad)
     {
-      gamepad.onButtonDown.add((_) -> setLastInputTouch(false));
-      gamepad.onDisconnect.add(dispatchInputDeviceChanged);
+      gamepad.onButtonDown.add((_) -> lastInputTouch = false);
     }
 
     for (gamepad in LimeGamepad.devices.values()) doGamepad(gamepad);
 
-    LimeGamepad.onConnect.add((gamepad) ->
-    {
-      doGamepad(gamepad);
-      dispatchInputDeviceChanged();
-    });
+    LimeGamepad.onConnect.add((gamepad) -> doGamepad(gamepad));
   }
 
-  public static function addButton(action:FlxActionDigital, button:FunkinButton, state:FlxInputState, cachedInput:Array<FlxActionInput>):Void
+  /**
+   * Adds a button input to a given FlxActionDigital and caches it.
+   *
+   * @param action The FlxActionDigital to add the button input to.
+   * @param button The FunkinButton associated with the action.
+   * @param state The input state to associate with the action.
+   * @param cachedInput The array of FlxActionInput objects to cache the input.
+   */
+  public static function addButton(action:FlxActionDigital,
+    button:FunkinButton,
+    state:FlxInputState,
+    cachedInput:Array<FlxActionInput>):Void
   {
     if (action == null || button == null || cachedInput == null) return;
 
@@ -66,59 +78,76 @@ class ControlsHandler
     action.add(input);
   }
 
+  /**
+   * Sets up hitbox controls based on game controls and hitbox hints.
+   *
+   * @param controls The controls instance defining game controls.
+   * @param hitbox The hitbox to associate with the controls.
+   * @param cachedInput The array of action input objects to cache the input.
+   */
   @:access(funkin.input.Controls)
-  public static function setupHitbox(controls:Controls, hitbox:FunkinHitbox, cachedInput:Array<FlxActionInput>):Void
+  public static function setupHitbox(controls:Controls,
+    hitbox:FunkinHitbox,
+    cachedInput:Array<FlxActionInput>):Void
   {
     if (controls == null || hitbox == null) return;
 
     for (hint in hitbox.members)
     {
-      var control:Null<Control> = null;
-
       @:privateAccess
-      control = DIRECTION_TO_CONTROL.get(hint.noteDirection);
-
-      if (control == null) continue;
-
-      controls.forEachBound(control, function(action:FlxActionDigital, state:FlxInputState):Void
+      switch (hint.noteDirection)
       {
-        addButton(action, hint, state, cachedInput);
-      });
+        case NoteDirection.LEFT:
+          controls.forEachBound(Control.NOTE_LEFT, function(action:FlxActionDigital, state:FlxInputState):Void
+          {
+            addButton(action, hint, state, cachedInput);
+          });
+        case NoteDirection.DOWN:
+          controls.forEachBound(Control.NOTE_DOWN, function(action:FlxActionDigital, state:FlxInputState):Void
+          {
+            addButton(action, hint, state, cachedInput);
+          });
+        case NoteDirection.UP:
+          controls.forEachBound(Control.NOTE_UP, function(action:FlxActionDigital, state:FlxInputState):Void
+          {
+            addButton(action, hint, state, cachedInput);
+          });
+        case NoteDirection.RIGHT:
+          controls.forEachBound(Control.NOTE_RIGHT, function(action:FlxActionDigital, state:FlxInputState):Void
+          {
+            addButton(action, hint, state, cachedInput);
+          });
+      }
     }
   }
 
-  public static function removeCachedInput(controls:Controls, cachedInput:Array<FlxActionInput>):Void
+  /**
+   * Removes cached input associated with game controls.
+   *
+   * @param controls The Controls instance defining game controls.
+   * @param cachedInput The array of action input objects to clear cached input from.
+   */
+  public static function removeCachedInput(controls:Controls,
+    cachedInput:Array<FlxActionInput>):Void
   {
-    if (controls == null || cachedInput == null || cachedInput.length == 0) return;
-
-    var cachedSet:Map<FlxActionInput, Bool> = new Map();
-    for (input in cachedInput) cachedSet.set(input, true);
-
     for (action in controls.digitalActions)
     {
       var i:Int = action.inputs.length;
 
       while (i-- > 0)
       {
-        var input:FlxActionInput = action.inputs[i];
-        if (cachedSet.exists(input))
+        var j:Int = cachedInput.length;
+
+        while (j-- > 0)
         {
-          action.remove(input);
+          if (cachedInput[j] == action.inputs[i])
+          {
+            action.remove(action.inputs[i]);
+            cachedInput.remove(cachedInput[j]);
+          }
         }
       }
     }
-
-    cachedInput.resize(0);
-  }
-
-  public static function getActiveInputLabel():String
-  {
-    if (usingExternalInputDevice)
-    {
-      return FlxG.gamepads.numActiveGamepads > 0 ? 'Gamepad' : 'Keyboard';
-    }
-
-    return 'Touch';
   }
 
   @:noCompletion
@@ -135,18 +164,5 @@ class ControlsHandler
   static function get_usingExternalInputDevice():Bool
   {
     return ControlsHandler.hasExternalInputDevice && !ControlsHandler.lastInputTouch;
-  }
-
-  static function setLastInputTouch(value:Bool):Void
-  {
-    if (lastInputTouch == value) return;
-
-    lastInputTouch = value;
-    dispatchInputDeviceChanged();
-  }
-
-  static function dispatchInputDeviceChanged():Void
-  {
-    onInputDeviceChanged.dispatch(usingExternalInputDevice);
   }
 }

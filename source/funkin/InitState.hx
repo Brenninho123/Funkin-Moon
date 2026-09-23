@@ -1,5 +1,6 @@
 package funkin;
 
+import funkin.ui.debug.cameraeditor.CameraEditorState;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.addons.transition.FlxTransitionSprite.GraphicTransTileDiamond;
 import flixel.addons.transition.TransitionData;
@@ -19,6 +20,7 @@ import funkin.data.freeplay.style.FreeplayStyleRegistry;
 import funkin.data.notestyle.NoteStyleRegistry;
 import funkin.data.song.SongRegistry;
 import funkin.data.stickers.StickerRegistry;
+import funkin.util.plugins.SidePanelPlugin;
 import funkin.play.event.SongEventHelper;
 import funkin.data.event.SongEventRegistry;
 import funkin.data.stage.StageRegistry;
@@ -38,6 +40,9 @@ import funkin.util.TrackerUtil;
 import funkin.util.WindowUtil;
 import openfl.display.BitmapData;
 import funkin.ui.debug.playtest.ChartPlaytestMenu;
+#if FEATURE_MOBILE_RPC
+import funkin.mobile.util.MobileRPC;
+#end
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -62,6 +67,8 @@ class InitState extends FlxState
    */
   @:noCompletion
   static var _coreInitialized:Bool = false;
+
+  public static var customTitleState:Null<FlxState> = null;
 
   /**
    * Perform a bunch of game setup, then immediately transition to the title screen.
@@ -140,8 +147,8 @@ class InitState extends FlxState
       #end
 
       #if mobile
-      // Setup Mobile FNFC launcher.
-      funkin.mobile.util.FNFCProvider.init();
+      // Setup Mobile FNF Loader Provider.
+      funkin.mobile.util.FNFLoaderProvider.init();
       #end
 
       SongEventHelper.generateEaseGraphsBitmaps();
@@ -185,19 +192,47 @@ class InitState extends FlxState
       diamond.destroyOnNoUse = false;
 
       // NOTE: tileData is ignored if TransitionData.type is FADE instead of TILES.
-      var tileData:TransitionTileData = {asset: diamond, width: 32, height: 32};
+      var tileData:TransitionTileData = {
+        asset: diamond,
+        width: 32,
+        height: 32
+      };
 
-      FlxTransitionableState.defaultTransIn = new TransitionData(FADE, FlxColor.BLACK, 1, new FlxPoint(0, -1), tileData,
-        new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4));
-      FlxTransitionableState.defaultTransOut = new TransitionData(FADE, FlxColor.BLACK, 0.7, new FlxPoint(0, 1), tileData,
-        new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4));
+      FlxTransitionableState.defaultTransIn = new TransitionData(
+        FADE,
+        FlxColor.BLACK,
+        1,
+        new FlxPoint(0, -1),
+        tileData,
+        new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4)
+      );
+      FlxTransitionableState.defaultTransOut = new TransitionData(
+        FADE,
+        FlxColor.BLACK,
+        0.7,
+        new FlxPoint(0, 1),
+        tileData,
+        new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4)
+      );
 
       FlxG.signals.gameResized.add(function(width:Int, height:Int)
       {
-        FlxTransitionableState.defaultTransIn = new TransitionData(FADE, FlxColor.BLACK, 1, new FlxPoint(0, -1), tileData,
-          new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4));
-        FlxTransitionableState.defaultTransOut = new TransitionData(FADE, FlxColor.BLACK, 0.7, new FlxPoint(0, 1), tileData,
-          new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4));
+        FlxTransitionableState.defaultTransIn = new TransitionData(
+          FADE,
+          FlxColor.BLACK,
+          1,
+          new FlxPoint(0, -1),
+          tileData,
+          new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4)
+        );
+        FlxTransitionableState.defaultTransOut = new TransitionData(
+          FADE,
+          FlxColor.BLACK,
+          0.7,
+          new FlxPoint(0, 1),
+          tileData,
+          new FlxRect(-200, -200, FlxG.width * 1.4, FlxG.height * 1.4)
+        );
       });
 
       // SDL for some reason enables VSync on focus lost/gained in Android
@@ -236,6 +271,14 @@ class InitState extends FlxState
       });
       #end
 
+      #if FEATURE_MOBILE_RPC
+      MobileRPC.init();
+      lime.app.Application.current.onExit.add(function(exitCode)
+      {
+        MobileRPC.shutdown();
+      });
+      #end
+
       #if FEATURE_LOST_FOCUS_VOLUME
       FlxG.signals.focusLost.add(onLostFocus);
       FlxG.signals.focusGained.add(onGainFocus);
@@ -244,9 +287,7 @@ class InitState extends FlxState
       // ANDROID SETUP
       //
       #if android
-      FlxG.android.preventDefaultKeys = [
-        flixel.input.android.FlxAndroidKey.BACK
-      ];
+      FlxG.android.preventDefaultKeys = [flixel.input.android.FlxAndroidKey.BACK];
       #end
 
       //
@@ -271,10 +312,11 @@ class InitState extends FlxState
       funkin.util.plugins.VolumePlugin.initialize();
       #end
       funkin.util.plugins.WatchPlugin.initialize();
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       funkin.util.plugins.TouchPointerPlugin.initialize();
       funkin.mobile.input.ControlsHandler.initInputTrackers();
       #end
+      funkin.util.plugins.SidePanelPlugin.initialize();
 
       _coreInitialized = true;
     }
@@ -283,38 +325,13 @@ class InitState extends FlxState
     // GAME DATA PARSING
     //
 
-    // NOTE: Registries must be imported and not referenced with fully qualified names,
-    // to ensure build macros work properly.
-    trace('Parsing game data...');
-    SongEventRegistry.loadEventCache(); // SongEventRegistry is structured differently so it's not a BaseRegistry.
-    SongRegistry.instance.loadEntries();
-    LevelRegistry.instance.loadEntries();
-    NoteStyleRegistry.instance.loadEntries();
-    PlayerRegistry.instance.loadEntries();
-    ConversationRegistry.instance.loadEntries();
-    DialogueBoxRegistry.instance.loadEntries();
-    SpeakerRegistry.instance.loadEntries();
-    FreeplayStyleRegistry.instance.loadEntries();
-    AlbumRegistry.instance.loadEntries();
-    StageRegistry.instance.loadEntries();
-    StickerRegistry.instance.loadEntries();
-
-    // TODO: CharacterDataParser doesn't use json2object, so it's way slower than the other parsers and more prone to syntax errors.
-    // Move it to use a BaseRegistry.
-    CharacterDataParser.loadCharacterCache();
-
-    NoteKindManager.initialize();
+    // If you're looking for registry initialization, it moved to the preloader :)
 
     ModuleHandler.buildModuleCallbacks();
     ModuleHandler.loadModuleCache();
     ModuleHandler.callOnCreate();
 
     funkin.input.Cursor.hide();
-
-    #if !html5
-    // This fucking breaks on HTML5 builds because the "shared" library isn't loaded yet.
-    funkin.FunkinMemory.initialCache();
-    #end
   }
 
   #if FEATURE_LOST_FOCUS_VOLUME
@@ -389,6 +406,9 @@ class InitState extends FlxState
     #elseif STAGEBUILD
     // -DSTAGEBUILD
     FlxG.switchState(() -> new funkin.ui.debug.stage.StageBuilderState());
+    #elseif EYESOFGOD
+    // -DEYESOFGOD
+    FlxG.switchState(() -> new funkin.ui.debug.cameraeditor.CameraEditorState());
     #elseif RESULTS
     // -DRESULTS
     FlxG.switchState(() -> new funkin.play.ResultState({
@@ -430,6 +450,12 @@ class InitState extends FlxState
     #end
   }
 
+  public static function resetTitleState():Void
+  {
+    if (customTitleState != null) customTitleState.destroy();
+    customTitleState = null;
+  }
+
   /**
    * Start the game by moving to the title state and play the game as normal.
    */
@@ -437,11 +463,41 @@ class InitState extends FlxState
   {
     var params:CLIParams = CLIUtil.processArgs();
 
+    #if FEATURE_ONE_CLICK_INSTALL
+    // Claims the handoff lock, so any later launch forwards its link here instead of booting.
+    funkin.modding.install.OneClickInstallHandler.initialize();
+
+    #if mobile
+    final fnfModUrl:Null<String> = funkin.mobile.util.FNFLoaderProvider.queryFNFMOD();
+
+    if (fnfModUrl != null && fnfModUrl.length > 0)
+    {
+      funkin.modding.install.OneClickInstallHandler.handleLink(fnfModUrl);
+    }
+    #end
+
+    if (funkin.modding.install.OneClickInstallHandler.stashLaunchLink(params.oneClickUrl) || funkin.modding.install.OneClickInstallHandler.hasPendingLink())
+    {
+      FlxG.switchState(() -> new funkin.ui.modmenu.ModMenuState());
+      return;
+    }
+    #end
+
     if (params.chart.shouldLoadChart)
     {
       #if FEATURE_CHART_EDITOR
       FlxG.switchState(() -> new ChartEditorState({
-        fnfcTargetPath: params.chart.chartPath,
+        loadFromPath: params.chart.chartPath,
+      }));
+      #else
+      FlxG.switchState(() -> new TitleState());
+      #end
+    }
+    else if (params.camera.shouldLoadChart)
+    {
+      #if FEATURE_CAMERA_EDITOR
+      FlxG.switchState(() -> new CameraEditorState({
+        loadFromPath: params.camera.chartPath,
       }));
       #else
       FlxG.switchState(() -> new TitleState());
@@ -468,7 +524,7 @@ class InitState extends FlxState
     else
     {
       #if mobile
-      funkin.mobile.util.FNFCProvider.onFNFCOpen.add(function(fnfcFile:String)
+      funkin.mobile.util.FNFLoaderProvider.onFNFCOpen.add(function(fnfcFile:String)
       {
         flixel.tweens.FlxTween.globalManager.clear();
         flixel.util.FlxTimer.globalManager.clear();
@@ -482,10 +538,12 @@ class InitState extends FlxState
         FlxG.switchState(() -> new ChartPlaytestMenu(fnfcFile));
       });
 
-      final fnfcFile = funkin.mobile.util.FNFCProvider.queryFNFC();
+      final fnfcFile = funkin.mobile.util.FNFLoaderProvider.queryFNFC();
+
       if (fnfcFile != null)
       {
         trace('launching FNFC from $fnfcFile');
+
         FlxG.switchState(() -> new ChartPlaytestMenu(fnfcFile));
       }
       else
@@ -493,6 +551,12 @@ class InitState extends FlxState
         FlxG.switchState(() -> new TitleState());
       }
       #else
+      if (customTitleState != null)
+      {
+        FlxG.switchState(() -> customTitleState);
+        return;
+      }
+
       FlxG.switchState(() -> new TitleState());
       #end
     }
@@ -505,7 +569,9 @@ class InitState extends FlxState
    */
   function startSong(songId:String, difficultyId:String = 'normal'):Void
   {
-    var songData:Null<funkin.play.song.Song> = funkin.data.song.SongRegistry.instance.fetchEntry(songId, {variation: Constants.DEFAULT_VARIATION});
+    var songData:Null<funkin.play.song.Song> = funkin.data.song.SongRegistry.instance.fetchEntry(songId, {
+      variation: Constants.DEFAULT_VARIATION
+    });
 
     if (songData == null)
     {
@@ -517,28 +583,20 @@ class InitState extends FlxState
     switch (songId)
     {
       case 'tutorial' | 'bopeebo' | 'fresh' | 'dadbattle':
-        Paths.setCurrentLevel('week1');
         PlayStatePlaylist.campaignId = 'week1';
       case 'spookeez' | 'south' | 'monster':
-        Paths.setCurrentLevel('week2');
         PlayStatePlaylist.campaignId = 'week2';
       case 'pico' | 'philly-nice' | 'blammed':
-        Paths.setCurrentLevel('week3');
         PlayStatePlaylist.campaignId = 'week3';
       case 'high' | 'satin-panties' | 'milf':
-        Paths.setCurrentLevel('week4');
         PlayStatePlaylist.campaignId = 'week4';
       case 'cocoa' | 'eggnog' | 'winter-horrorland':
-        Paths.setCurrentLevel('week5');
         PlayStatePlaylist.campaignId = 'week5';
       case 'senpai' | 'roses' | 'thorns':
-        Paths.setCurrentLevel('week6');
         PlayStatePlaylist.campaignId = 'week6';
       case 'ugh' | 'guns' | 'stress':
-        Paths.setCurrentLevel('week7');
         PlayStatePlaylist.campaignId = 'week7';
       case 'darnell' | 'lit-up' | '2hot' | 'blazin':
-        Paths.setCurrentLevel('weekend1');
         PlayStatePlaylist.campaignId = 'weekend1';
     }
 
@@ -564,8 +622,6 @@ class InitState extends FlxState
       return;
     }
 
-    // TODO: Rework loading behavior so we don't have to do this.
-    Paths.setCurrentLevel(levelId);
     PlayStatePlaylist.campaignId = levelId;
 
     PlayStatePlaylist.playlistSongIds = currentLevel.getSongs();
@@ -576,7 +632,9 @@ class InitState extends FlxState
 
     var targetSong:Null<funkin.play.song.Song> = null;
 
-    if (targetSongId != null) targetSong = SongRegistry.instance.fetchEntry(targetSongId, {variation: Constants.DEFAULT_VARIATION});
+    if (targetSongId != null) targetSong = SongRegistry.instance.fetchEntry(targetSongId, {
+      variation: Constants.DEFAULT_VARIATION
+    });
 
     if (targetSongId == null)
     {

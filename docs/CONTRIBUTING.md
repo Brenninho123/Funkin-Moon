@@ -60,8 +60,8 @@ This section provides guidelines to follow when [opening an issue](https://githu
 
 ## Requirements
 Make sure you're playing:
-- the latest version of the game (currently v0.8.6, or v0.8.7 for Android) or a public playtest version (v0.9 Feature Preview builds)
-- without any mods (unless the issue involves mods)
+- the latest version of the game (currently v0.8.3)
+- without any mods
 - on [Newgrounds](https://www.newgrounds.com/portal/view/770371) or downloaded from [itch.io](https://ninja-muffin24.itch.io/funkin)
 
 ## Rejected Features
@@ -402,7 +402,7 @@ Be sure to choose `develop` as the base branch for `funkin.assets` PRs, just as 
 ### Charting PRs
 Charting PRs make changes such as **adjusting chart metadata**.
 
-This involves modifying one or several of the `funkin.assets` repository's `*-metadata.json` files, found in the `preload/data/songs/` directory.
+This involves modifying one or several of the `funkin.assets` repository's `*-metadata.json` files, found in the `assets/gameplay/songs/` directory.
 
 > [!CAUTION]
 > We **do not** accept changes to the chart `.json` file itself.

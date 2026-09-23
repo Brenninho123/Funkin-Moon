@@ -6,7 +6,7 @@ import funkin.graphics.FunkinSprite;
 import funkin.ui.MusicBeatState;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.ui.mainmenu.MainMenuState;
-#if mobile
+#if FEATURE_TOUCH_CONTROLS
 import funkin.util.TouchUtil;
 import funkin.util.SwipeUtil;
 #end
@@ -33,25 +33,25 @@ class GitarooPause extends MusicBeatState
       FlxG.sound.music = null;
     }
 
-    var bg:FunkinSprite = FunkinSprite.create('pauseAlt/pauseBG');
+    var bg:FunkinSprite = FunkinSprite.create('ui/pause/alternate/pause-bg');
     bg.setGraphicSize(Std.int(FlxG.width));
     bg.updateHitbox();
     bg.screenCenter();
     add(bg);
 
-    var bf:FunkinSprite = FunkinSprite.createSparrow(0, 30, 'pauseAlt/bfLol');
+    var bf:FunkinSprite = FunkinSprite.createSparrow(0, 30, 'ui/pause/alternate/bf-lol');
     bf.animation.addByPrefix('lol', "funnyThing", 13);
     bf.animation.play('lol');
     bf.screenCenter(X);
     add(bf);
 
-    replayButton = FunkinSprite.createSparrow(FlxG.width * 0.25, FlxG.height * 0.7, 'pauseAlt/pauseUI');
+    replayButton = FunkinSprite.createSparrow(FlxG.width * 0.25, FlxG.height * 0.7, 'ui/pause/alternate/pause-ui');
     replayButton.animation.addByPrefix('selected', 'bluereplay', 0, false);
     replayButton.animation.appendByPrefix('selected', 'yellowreplay');
     replayButton.animation.play('selected');
     add(replayButton);
 
-    cancelButton = FunkinSprite.createSparrow(FlxG.width * 0.58, replayButton.y, 'pauseAlt/pauseUI');
+    cancelButton = FunkinSprite.createSparrow(FlxG.width * 0.58, replayButton.y, 'ui/pause/alternate/pause-ui');
     cancelButton.animation.addByPrefix('selected', 'bluecancel', 0, false);
     cancelButton.animation.appendByPrefix('selected', 'cancelyellow');
     cancelButton.animation.play('selected');
@@ -62,7 +62,7 @@ class GitarooPause extends MusicBeatState
     super.create();
   }
 
-  #if mobile
+  #if FEATURE_TOUCH_CONTROLS
   function checkSelectionPress():Bool
   {
     var buttonAcceptCheck:Bool = replaySelect ? TouchUtil.pressAction(replayButton) : TouchUtil.pressAction(cancelButton);
@@ -72,9 +72,9 @@ class GitarooPause extends MusicBeatState
 
   override function update(elapsed:Float):Void
   {
-    if (controls.UI_LEFT_P || controls.UI_RIGHT_P #if mobile || SwipeUtil.justSwipedLeft || SwipeUtil.justSwipedRight #end) changeThing();
+    if (controls.UI_LEFT_P || controls.UI_RIGHT_P #if FEATURE_TOUCH_CONTROLS || SwipeUtil.justSwipedLeft || SwipeUtil.justSwipedRight #end) changeThing();
 
-    if (controls.ACCEPT_P #if mobile || checkSelectionPress() #end)
+    if (controls.ACCEPT_P #if FEATURE_TOUCH_CONTROLS || checkSelectionPress() #end)
     {
       if (replaySelect)
       {

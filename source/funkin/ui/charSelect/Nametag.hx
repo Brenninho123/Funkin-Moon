@@ -55,10 +55,7 @@ class Nametag extends FlxSprite
 
   public function switchChar(str:String, playMosaicSequence:Bool = true):Void
   {
-    var path:String = (str == "bf") ? "boyfriend" : "bf";
-    if (str != "bf") path = str;
-
-    loadGraphic(Paths.image("charSelect/" + path + "Nametag"));
+    loadGraphic(Paths.image('ui/character-select/characters/nametag-$str'));
     updateHitbox();
     scale.set(0.77, 0.77);
 

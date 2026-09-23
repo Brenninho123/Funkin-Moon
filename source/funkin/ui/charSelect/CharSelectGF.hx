@@ -1,5 +1,6 @@
 package funkin.ui.charSelect;
 
+import funkin.graphics.FunkinCamera;
 import funkin.graphics.FunkinSprite;
 import funkin.modding.IScriptedClass.IBPMSyncedScriptedClass;
 import funkin.modding.events.ScriptEvent;
@@ -13,7 +14,7 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
 {
   var analyzer:Null<SpectralAnalyzer>;
   var analyzerLevelsCache:Array<Bar> = new Array<Bar>();
-  var currentGFPath:String = "";
+  var currentGFPath:String = '';
   var enableVisualizer:Bool = false;
   var danceEvery:Int = 2;
 
@@ -23,6 +24,7 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
     this.applyStageMatrix = true;
 
     switchGF(Constants.DEFAULT_CHARACTER);
+    loadAnimations();
   }
 
   public function onStepHit(event:SongTimeScriptEvent):Void
@@ -36,24 +38,24 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
     // I tried make this not interrupt an existing idle,
     // but isAnimationFinished() and isLoopComplete() both don't work! What the hell?
     // danceEvery isn't necessary if that gets fixed.
-    if (getCurrentAnimation() == "idle" && (event.beat % danceEvery == 0))
+    if (getCurrentAnimation() == 'idle' && (event.beat % danceEvery == 0))
     {
-      anim.play("idle", true);
+      animation.play('idle', true);
     }
   };
 
-  override public function draw()
+  override public function draw():Void
   {
     if (analyzer != null) drawFFT();
     super.draw();
   }
 
-  function drawFFT()
+  function drawFFT():Void
   {
     if (enableVisualizer && analyzer != null)
     {
       analyzerLevelsCache = analyzer.getLevels(analyzerLevelsCache);
-      var frame:Null<animate.internal.Frame> = this.timeline.getLayer("VIZ_bars")?.getFrameAtIndex(anim.curAnim.curFrame) ?? null;
+      var frame:Null<animate.internal.Frame> = this.timeline.getLayer('VIZ_bars')?.getFrameAtIndex(animation.curAnim.curFrame) ?? null;
       var elements:Array<animate.internal.elements.Element> = frame?.elements ?? [];
       var len:Int = cast Math.min(elements.length, 7);
 
@@ -81,8 +83,8 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
   }
 
   /**
-   * For switching between "GFs" such as gf, nene, etc
-   * @param bf Which BF we are selecting, so that we know the accompyaning GF
+   * For switching between 'GFs' such as GF, Nene, etc
+   * @param bf Which BF we are selecting, so that we know the accompanying GF
    */
   public function switchGF(bf:String):Void
   {
@@ -90,12 +92,12 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
 
     var bfObj = PlayerRegistry.instance.fetchEntry(bf);
     var gfData = bfObj?.getCharSelectData()?.gf;
-    var assetPath:Null<String> = gfData?.assetPath ?? "";
+    var assetPath:Null<String> = gfData?.assetPath ?? '';
 
     currentGFPath = assetPath;
 
     // We don't need to update any anims if we didn't change GF
-    if (currentGFPath == "")
+    if (currentGFPath == '')
     {
       this.visible = false;
       return;
@@ -109,20 +111,46 @@ class CharSelectGF extends FunkinSprite implements IBPMSyncedScriptedClass
       if (texture != null)
       {
         frames = texture;
+        loadAnimations();
       }
       else
       {
         this.visible = false;
-        currentGFPath = "";
+        currentGFPath = '';
         return;
       }
 
       enableVisualizer = gfData?.visualizer ?? false;
     }
 
-    anim.play("idle", true);
+    animation.play('idle', true);
 
     updateHitbox();
+  }
+
+  override function checkRenderTexture():Bool
+  {
+    // GF and Nene have an overlay blend on their deselect animation
+    // Nene also has a blush overlay on her idle animation
+    // We enable render texture here on devices that don't support KHR_blend_equation_advanced to save on performance
+    // TODO: Softcode this in scripts when character select data is refactored!!
+    if (!FunkinCamera.hasKhronosExtension)
+    {
+      if (animation.curAnim.name.startsWith('deselect') || (currentGFPath.contains('nene') && animation.curAnim.name.startsWith('idle')))
+      {
+        return true;
+      }
+    }
+
+    return super.checkRenderTexture();
+  }
+
+  function loadAnimations():Void
+  {
+    // TODO: Refactor Character Select data so these animations can be defined from JSON
+    anim.addByFrameLabel('idle', 'idle', 24, false);
+    anim.addByFrameLabel('confirm', 'confirm', 24, false);
+    anim.addByFrameLabel('deselect', 'deselect', 24, false);
   }
 
   public function onScriptEvent(event:ScriptEvent):Void

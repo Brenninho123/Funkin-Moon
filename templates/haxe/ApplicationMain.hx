@@ -22,6 +22,7 @@ class ApplicationIcon extends lime.graphics.Image {}
 class ApplicationMain
 {
   #if !macro
+
   public static function main():Void
   {
     #if (static_link || ios)
@@ -35,6 +36,27 @@ class ApplicationMain
 
     // Disable Windows error reporting (avoids sending bug reports to Microsoft).
     funkin.external.windows.WinAPI.disableErrorReporting();
+    #end
+
+    #if (sys && !mobile)
+    // The shell launches us with its own working directory when a file is dropped on the exe or a
+    // `funkin:` link is opened, which would put the mods folder somewhere random.
+    funkin.util.CLIUtil.resetWorkingDir();
+    #end
+
+    funkin.util.logging.CrashHandler.installNativeHandler();
+
+    #if (FEATURE_ONE_CLICK_INSTALL && sys && !macos)
+    // A one-click mod link launches the game again with the URL as an argument. If a copy is
+    // already running, hand the URL over and get out before a second window is ever created.
+    // macOS is exempt, LaunchServices delivers the URL to the running instance itself.
+    final oneClickUrl:Null<String> = funkin.util.protocol.OneClickBridge.extractUrl(Sys.args());
+
+    if (oneClickUrl != null && funkin.util.protocol.OneClickBridge.isInstanceLive())
+    {
+      funkin.util.protocol.OneClickBridge.enqueue(oneClickUrl);
+      Sys.exit(0);
+    }
     #end
 
     lime.system.System.__registerEntryPoint("::APP_FILE::", create);
@@ -129,6 +151,19 @@ class ApplicationMain
 
     app.createWindow(attributes);
     ::end::
+
+    #if (FEATURE_ONE_CLICK_INSTALL && macos && cpp)
+    funkin.external.apple.URLSchemeExtern.installHandler();
+    #end
+
+    // Set the current working directory for Android and iOS devices
+    #if android
+    // On Android use External Files Dir.
+    Sys.setCwd(haxe.io.Path.addTrailingSlash(extension.androidtools.content.Context.getExternalFilesDir()));
+    #elseif ios
+    // On iOS use Documents Dir.
+    Sys.setCwd(haxe.io.Path.addTrailingSlash(lime.system.System.documentsDirectory));
+    #end
 
     var preloader = getPreloader();
     app.preloader.onProgress.add (function(loaded, total)

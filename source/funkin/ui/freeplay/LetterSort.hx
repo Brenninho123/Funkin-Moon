@@ -42,13 +42,13 @@ class LetterSort extends FlxSpriteGroup
     grpSeperators = new FlxSpriteGroup();
     add(grpSeperators);
 
-    leftArrow = new FlxSprite(-20, 15).loadGraphic(Paths.image('freeplay/miniArrow'));
-    // leftArrow.animation.play("arrow");
+    leftArrow = new FlxSprite(-20, 15).loadGraphic(Paths.image('ui/freeplay/interface/mini-arrow'));
+    // leftArrow.animation.play('arrow');
     leftArrow.flipX = true;
     add(leftArrow);
 
-    rightArrow = new FlxSprite(380, 15).loadGraphic(Paths.image('freeplay/miniArrow'));
-    // rightArrow.animation.play("arrow");
+    rightArrow = new FlxSprite(380, 15).loadGraphic(Paths.image('ui/freeplay/interface/mini-arrow'));
+    // rightArrow.animation.play('arrow');
     add(rightArrow);
 
     for (i in 0...5)
@@ -72,11 +72,11 @@ class LetterSort extends FlxSpriteGroup
 
       letter.color = letter.color.getDarkened(darkness);
 
-      // don't put the last seperator
+      // don't put the last separator
       if (i == 4) continue;
 
-      var sep:FlxSprite = new FlxSprite((i * 80) + 60, 20).loadGraphic(Paths.image('freeplay/seperator'));
-      // sep.animation.play("seperator");
+      var sep:FlxSprite = new FlxSprite((i * 80) + 60, 20).loadGraphic(Paths.image('ui/freeplay/interface/separator'));
+      // sep.animation.play('separator');
       sep.color = letter.color.getDarkened(darkness);
       grpSeperators.add(sep);
     }
@@ -138,11 +138,15 @@ class LetterSort extends FlxSpriteGroup
     }
     #end
 
-    if (controls.FREEPLAY_LEFT #if FEATURE_TOUCH_CONTROLS
-      || (TouchUtil.overlaps(swipeBounds, instance.funnyCam) && SwipeUtil.swipeLeft && !pressedOnCapsule) #end) changeSelection(-1);
+    if (controls.FREEPLAY_LEFT
+      #if FEATURE_TOUCH_CONTROLS
+      || (TouchUtil.overlaps(swipeBounds, instance.funnyCam) && SwipeUtil.swipeLeft && !pressedOnCapsule)
+      #end) changeSelection(-1);
 
-    if (controls.FREEPLAY_RIGHT #if FEATURE_TOUCH_CONTROLS
-      || (TouchUtil.overlaps(swipeBounds, instance.funnyCam) && SwipeUtil.swipeRight && !pressedOnCapsule) #end) changeSelection(1);
+    if (controls.FREEPLAY_RIGHT
+      #if FEATURE_TOUCH_CONTROLS
+      || (TouchUtil.overlaps(swipeBounds, instance.funnyCam) && SwipeUtil.swipeRight && !pressedOnCapsule)
+      #end) changeSelection(1);
   }
 
   public function changeSelection(diff:Int = 0, playSound:Bool = true):Void
@@ -159,7 +163,7 @@ class LetterSort extends FlxSpriteGroup
     {
       arrowToMove.offset.x = 0;
     });
-    if (playSound && diff != 0) FunkinSound.playOnce(Paths.sound('scrollMenu'), 0.4);
+    if (playSound && diff != 0) FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
   }
 
   /**
@@ -270,7 +274,7 @@ class FreeplayLetter extends FunkinSprite
   {
     super(x, y);
 
-    loadTextureAtlas('freeplay/sortedLetters');
+    loadTextureAtlas('ui/freeplay/interface/sorted-letters');
 
     // this is used for the regex
     // /^[OR].*/gi doesn't work for showing the song Pico, so now it's
@@ -288,19 +292,21 @@ class FreeplayLetter extends FunkinSprite
     //    until we get him programming classes (and since i cant find the .fla file....))
     animLetters = regexLetters.map(animLetter -> animLetter.replace('-', ''));
 
+    loadAnimations();
+
     if (letterInd != null)
     {
-      this.anim.play(animLetters[letterInd] + ' move', true);
+      this.animation.play(animLetters[letterInd] + ' move', true);
       curLetter = letterInd;
 
       if (curSelected != curLetter)
       {
-        this.anim.pause();
+        this.animation.pause();
       }
 
-      this.anim.onFinish.add(function(name:String)
+      this.animation.onFinish.add(function(name:String)
       {
-        this.anim.play(animLetters[curLetter] + ' move', true);
+        this.animation.play(animLetters[curLetter] + ' move', true);
       });
     }
   }
@@ -329,10 +335,10 @@ class FreeplayLetter extends FunkinSprite
         animName = 'T move';
     }
 
-    this.anim.play(animName, true);
+    this.animation.play(animName, true);
     if (curSelection != curLetter)
     {
-      this.anim.pause();
+      this.animation.pause();
     }
   }
 
@@ -345,5 +351,14 @@ class FreeplayLetter extends FunkinSprite
     output.x -= 50;
     output.y -= 60;
     return output;
+  }
+
+  function loadAnimations():Void
+  {
+    for (letter in animLetters)
+    {
+      anim.addBySymbol(letter, letter, 24, false);
+      anim.addBySymbol(letter + ' move', letter + ' move', 24, false);
+    }
   }
 }

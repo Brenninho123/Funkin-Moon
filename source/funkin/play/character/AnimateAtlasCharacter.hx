@@ -38,10 +38,9 @@ class AnimateAtlasCharacter extends BaseCharacter
   function loadAtlas():Void
   {
     log('Loading sprite atlas for ${characterId}.');
-    var assetLibrary:String = Paths.getLibrary(_data.assetPath);
     var assetPath:String = Paths.stripLibrary(_data.assetPath);
 
-    loadTextureAtlas(assetPath, assetLibrary, getAtlasSettings());
+    loadTextureAtlas(assetPath, getAtlasSettings());
 
     if (_data.isPixel)
     {
@@ -91,5 +90,10 @@ class AnimateAtlasCharacter extends BaseCharacter
   static function log(message:String):Void
   {
     trace(' ATLASCHAR '.bold().bg_blue() + ' $message');
+  }
+
+  public override function toString():String
+  {
+    return 'AnimateAtlasCharacter($characterName ($characterId), pos=[$x, $y])';
   }
 }

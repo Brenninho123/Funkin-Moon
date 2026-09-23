@@ -1,7 +1,6 @@
 package funkin.data.dialogue;
 
 import funkin.play.cutscene.dialogue.Conversation;
-import funkin.play.cutscene.dialogue.ScriptedConversation;
 import funkin.util.tools.ISingleton;
 import funkin.data.DefaultRegistryImpl;
 
@@ -19,7 +18,12 @@ class ConversationRegistry extends BaseRegistry<Conversation, ConversationData, 
 
   public function new()
   {
-    super('CONVERSATION', 'dialogue/conversations', CONVERSATION_DATA_VERSION_RULE);
+    super({
+      registryId: 'CONVERSATION',
+      dataFilePath: 'gameplay/dialogue/conversations/',
+      nestedEntries: true,
+      versionRule: CONVERSATION_DATA_VERSION_RULE
+    });
   }
 }
 

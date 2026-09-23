@@ -42,7 +42,7 @@ class MultiAnimateAtlasCharacter extends BaseCharacter
 
   function loadAtlases():Void
   {
-    log('Loading sprite atlases for ${characterId}.');
+    log('Loading texture atlases for ${characterId}.');
 
     var textureList:Array<FlxAtlasFrames> = [];
     var addedAssetPaths:Array<String> = [];
@@ -82,7 +82,7 @@ class MultiAnimateAtlasCharacter extends BaseCharacter
             // This breaks mix-and-match for some reason.
             // TODO: Re-enable this line once a proper fix is found.
             // - Abnormal
-            // FunkinMemory.cacheTexture(Paths.image(animation.assetPath));
+            // funkin.assets.Assets.cacheFlxGraphic(Paths.image(animation.assetPath));
           }
 
           textureList.push(subTexture);
@@ -120,7 +120,7 @@ class MultiAnimateAtlasCharacter extends BaseCharacter
 
   function loadAnimations():Void
   {
-    log('[MULTIATLASCHAR] Loading ${_data.animations.length} animations for ${characterId}');
+    log('Loading ${_data.animations.length} animations for ${characterId}');
 
     for (anim in _data.animations)
     {
@@ -143,7 +143,7 @@ class MultiAnimateAtlasCharacter extends BaseCharacter
     }
 
     var animationNames:Array<String> = this.animation.getNameList();
-    log('[MULTIATLASCHAR] Successfully loaded ${animationNames.length} animations for ${characterId}');
+    log('Successfully loaded ${animationNames.length} animations for ${characterId}');
   }
 
   /**
@@ -171,5 +171,10 @@ class MultiAnimateAtlasCharacter extends BaseCharacter
     _usedAtlases.clear();
 
     super.destroy();
+  }
+
+  public override function toString():String
+  {
+    return 'MultiAnimateAtlasCharacter($characterName ($characterId), pos=[$x, $y])';
   }
 }

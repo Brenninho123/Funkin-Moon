@@ -2,6 +2,7 @@ package funkin.modding.events;
 
 import funkin.modding.IScriptedClass.IPlayStateScriptedClass;
 import funkin.modding.IScriptedClass;
+import funkin.modding.ScriptGuard;
 import funkin.modding.module.Module;
 
 /**
@@ -18,7 +19,25 @@ class ScriptEventDispatcher
   public static function callEvent(target:Null<IScriptedClass>, event:ScriptEvent):Void
   {
     if (target == null || event == null) return;
+    if (ScriptGuard.brokenCount > 0 && ScriptGuard.isBroken(target)) return;
 
+    try
+    {
+      dispatch(target, event);
+    }
+    catch (e:UnhandledEventError)
+    {
+      // Not a script problem, the dispatcher is missing a case.
+      throw 'No corresponding function called for dispatched event type: ${e.type}';
+    }
+    catch (e:Dynamic)
+    {
+      ScriptGuard.handle(e, 'the ${event.type} event', target);
+    }
+  }
+
+  static function dispatch(target:IScriptedClass, event:ScriptEvent):Void
+  {
     target.onScriptEvent(event);
 
     // If one target says to stop propagation, stop.
@@ -98,7 +117,10 @@ class ScriptEventDispatcher
         ScriptEventType.DIALOGUE_COMPLETE_LINE,
         ScriptEventType.DIALOGUE_SKIP,
         ScriptEventType.DIALOGUE_END
-      ].contains(event.type)) return;
+      ].contains(event.type))
+      {
+        return;
+      }
     }
 
     if (Std.isOfType(target, INoteScriptedClass))
@@ -207,7 +229,10 @@ class ScriptEventDispatcher
         ScriptEventType.COUNTDOWN_STEP,
         ScriptEventType.COUNTDOWN_END,
         ScriptEventType.SONG_LOADED
-      ].contains(event.type)) return;
+      ].contains(event.type))
+      {
+        return;
+      }
     }
 
     if (Std.isOfType(target, IStateChangingScriptedClass))
@@ -254,7 +279,10 @@ class ScriptEventDispatcher
         ScriptEventType.SUBSTATE_CLOSE_END,
         ScriptEventType.FOCUS_LOST,
         ScriptEventType.FOCUS_GAINED
-      ].contains(event.type)) return;
+      ].contains(event.type))
+      {
+        return;
+      }
     }
 
     if (Std.isOfType(target, IFreeplayScriptedClass))
@@ -280,6 +308,15 @@ class ScriptEventDispatcher
         case FREEPLAY_CLOSE:
           t.onFreeplayClose(cast event);
           return;
+        case FREEPLAY_NEW_RANK:
+          t.onCapsuleNewRank(cast event);
+          return;
+        case FREEPLAY_RANK_SLAM:
+          t.onRankSlam(cast event);
+          return;
+        case FREEPLAY_CAPSULE_SLAM:
+          t.onCapsuleSlam(cast event);
+          return;
         default: // Continue;
       }
     }
@@ -292,8 +329,14 @@ class ScriptEventDispatcher
         ScriptEventType.SONG_SELECTED,
         ScriptEventType.FREEPLAY_INTRO,
         ScriptEventType.FREEPLAY_OUTRO,
-        ScriptEventType.FREEPLAY_CLOSE
-      ].contains(event.type)) return;
+        ScriptEventType.FREEPLAY_CLOSE,
+        ScriptEventType.FREEPLAY_NEW_RANK,
+        ScriptEventType.FREEPLAY_RANK_SLAM,
+        ScriptEventType.FREEPLAY_CAPSULE_SLAM
+      ].contains(event.type))
+      {
+        return;
+      }
     }
 
     if (Std.isOfType(target, ICharacterSelectScriptedClass))
@@ -320,15 +363,25 @@ class ScriptEventDispatcher
         ScriptEventType.CHARACTER_SELECTED,
         ScriptEventType.CHARACTER_DESELECTED,
         ScriptEventType.CHARACTER_CONFIRMED
-      ].contains(event.type)) return;
+      ].contains(event.type))
+      {
+        return;
+      }
     }
 
     // If we reach this line, it means a script event was dispatched while not being properly handled.
     // Throw an error so we know to add additional fallbacks.
-    throw 'No corresponding function called for dispatched event type: ${event.type}';
+    throw new UnhandledEventError(event.type);
   }
 
-  public static function callEventOnAllTargets(targets:Iterator<IScriptedClass>, event:ScriptEvent):Void
+  /**
+   * Invoke the given event hook on all given scripted classes.
+   *
+   * @param targets The target classes to call script hooks on.
+   * @param event The event, which determines the script hook to call and provides parameters for it.
+   */
+  public static function callEventOnAllTargets(targets:Iterator<IScriptedClass>,
+    event:ScriptEvent):Void
   {
     if (targets == null || event == null) return;
 
@@ -351,5 +404,18 @@ class ScriptEventDispatcher
         return;
       }
     }
+  }
+}
+
+/**
+ * Thrown when the dispatcher has no case for an event, which is a bug in the game and not in a script.
+ */
+private class UnhandledEventError
+{
+  public final type:ScriptEventType;
+
+  public function new(type:ScriptEventType)
+  {
+    this.type = type;
   }
 }

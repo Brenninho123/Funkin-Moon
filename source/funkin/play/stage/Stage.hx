@@ -1,7 +1,6 @@
 package funkin.play.stage;
 
 import openfl.display.BlendMode;
-import funkin.graphics.framebuffer.FrameBufferManager;
 import flixel.util.FlxColor;
 import funkin.graphics.FunkinCamera;
 import flixel.FlxSprite;
@@ -12,6 +11,7 @@ import flixel.util.FlxSort;
 import openfl.display.BitmapData;
 import funkin.modding.IScriptedClass.IPlayStateScriptedClass;
 import funkin.modding.events.ScriptEvent;
+import funkin.play.PlayState;
 import funkin.modding.events.ScriptEventDispatcher;
 import funkin.play.character.BaseCharacter;
 import funkin.data.IRegistryEntry;
@@ -20,6 +20,8 @@ import funkin.data.stage.StageData.StageDataCharacter;
 import funkin.data.stage.StageRegistry;
 import funkin.util.SortUtil;
 import funkin.util.assets.FlxAnimationUtil;
+import funkin.graphics.FunkinSprite;
+import funkin.group.FunkinGroup;
 
 typedef StagePropGroup = FlxTypedSpriteGroup<StageProp>;
 
@@ -30,6 +32,7 @@ typedef StagePropGroup = FlxTypedSpriteGroup<StageProp>;
  */
 class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements IRegistryEntry<StageData>
 {
+  public var vcamPoint:Null<FlxPoint> = null;
   public var stageName(get, never):String;
 
   function get_stageName():String
@@ -43,13 +46,6 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
   {
     return _data?.cameraZoom ?? 1.0;
   }
-
-  var frameBufferMan:FrameBufferManager;
-
-  /**
-   * The texture that has the mask information. Used for shader effects.
-   */
-  public var maskTexture:BitmapData;
 
   var namedProps:Map<String, StageProp> = new Map<String, StageProp>();
   var characters:Map<String, BaseCharacter> = new Map<String, BaseCharacter>();
@@ -80,16 +76,19 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    */
   public function onCreate(event:ScriptEvent):Void
   {
-    if (frameBufferMan != null) frameBufferMan.dispose();
-    frameBufferMan = new FrameBufferManager(FlxG.camera);
-    setupFrameBuffers();
-
     buildStage();
     this.refresh();
 
     debugIconGroup = new FlxSpriteGroup();
     debugIconGroup.visible = false;
     debugIconGroup.zIndex = 1000000;
+  }
+
+  /**
+   * Called by the camera editor to reset the event state.
+  **/
+  public function onEventReset():Void
+  {
   }
 
   public function resetStage():Void
@@ -183,7 +182,6 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
       {
         propSprite = new StageProp();
       }
-
       if (isAnimated)
       {
         // Initalize sprite frames.
@@ -192,7 +190,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
           case 'packer':
             propSprite.loadPacker(dataProp.assetPath);
           case 'animateatlas':
-            propSprite.loadTextureAtlas(dataProp.assetPath, _data.directory, cast dataProp.atlasSettings);
+            propSprite.loadTextureAtlas(dataProp.assetPath, null, cast dataProp.atlasSettings);
           default: // 'sparrow'
             propSprite.loadSparrow(dataProp.assetPath);
         }
@@ -225,7 +223,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
       if (propSprite.frames == null || propSprite.frames.numFrames == 0)
       {
         @:privateAccess
-        log(' ERROR '.error() + ' Could not build texture for prop. Check the asset path (${Paths.currentLevel ?? 'default'}, ${dataProp.assetPath}).');
+        log(' ERROR '.error() + ' Could not build texture for prop. Check the asset path (assets/${dataProp.assetPath}).');
         continue;
       }
 
@@ -333,6 +331,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    */
   public function addProp(prop:StageProp, ?name:String):Void
   {
+    prop.vcamPoint = this.vcamPoint;
     if (name != null)
     {
       namedProps.set(name, prop);
@@ -357,6 +356,30 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    */
   public function refresh():Void
   {
+    // loop over and reapply vcam
+    forEachAlive(function(prop:FlxSprite)
+    {
+      if (Std.isOfType(prop, FunkinSprite))
+      {
+        var funkProp:FunkinSprite = cast prop;
+        funkProp.vcamPoint = vcamPoint;
+      }
+      if (Std.isOfType(prop, FunkinGroup))
+      {
+        var funkGroup:FunkinGroup<FlxSprite> = cast prop;
+        funkGroup.vcamPoint = vcamPoint;
+        // go through children
+        for (child in funkGroup.children)
+        {
+          if (Std.isOfType(child, FunkinSprite))
+          {
+            var funkChild:FunkinSprite = cast child;
+            funkChild.vcamPoint = vcamPoint;
+          }
+        }
+      }
+    });
+
     sort(SortUtil.byZIndex, FlxSort.ASCENDING);
   }
 
@@ -424,7 +447,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
         stageCharData = _data.characters.bf;
         character.flipX = !character.getDataFlipX();
         character.name = 'bf';
-        character.initHealthIcon(false);
+        if (PlayState.instance != null) character.initHealthIcon(false);
       case GF:
         this.characters.set('gf', character);
         stageCharData = _data.characters.gf;
@@ -435,7 +458,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
         stageCharData = _data.characters.dad;
         character.flipX = character.getDataFlipX();
         character.name = 'dad';
-        character.initHealthIcon(true);
+        if (PlayState.instance != null) character.initHealthIcon(true);
       default:
         this.characters.set(character.characterId, character);
     }
@@ -443,6 +466,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
     // Reset the character before adding it to the stage.
     // This ensures positioning is based on the idle animation.
     character.resetCharacter(true);
+    character.vcamPoint = this.vcamPoint;
 
     if (stageCharData != null)
     {
@@ -489,12 +513,17 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
     // Add the character to the scene.
     this.add(character);
 
-    ScriptEventDispatcher.callEvent(character, new ScriptEvent(ADDED, false));
+    if (PlayState.instance != null)
+    {
+      var event:ScriptEvent = ScriptEvent.get(ADDED);
+      ScriptEventDispatcher.callEvent(character, event);
+      event.finish();
 
-    #if FEATURE_DEBUG_FUNCTIONS
-    debugIconGroup.add(debugIcon);
-    debugIconGroup.add(debugIcon2);
-    #end
+      #if FEATURE_DEBUG_FUNCTIONS
+      debugIconGroup.add(debugIcon);
+      debugIconGroup.add(debugIcon2);
+      #end
+    }
   }
 
   /**
@@ -527,7 +556,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
   /**
    * Retrieves a given character from the stage.
    */
-  public function getCharacter(id:String):BaseCharacter
+  public function getCharacter(id:String):Null<BaseCharacter>
   {
     return this.characters.get(id);
   }
@@ -537,11 +566,11 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param pop If true, the character will be removed from the stage as well.
    * @return The Boyfriend character.
    */
-  public function getBoyfriend(pop:Bool = false):BaseCharacter
+  public function getBoyfriend(pop:Bool = false):Null<BaseCharacter>
   {
     if (pop)
     {
-      var boyfriend:BaseCharacter = getCharacter('bf');
+      var boyfriend:BaseCharacter = getCharacter('bf') ?? return null;
 
       // Remove the character from the stage.
       this.remove(boyfriend);
@@ -560,7 +589,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param pop If true, the character will be removed from the stage as well.
    * @return The player/Boyfriend character.
    */
-  public function getPlayer(pop:Bool = false):BaseCharacter
+  public function getPlayer(pop:Bool = false):Null<BaseCharacter>
   {
     return getBoyfriend(pop);
   }
@@ -570,11 +599,11 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param pop If true, the character will be removed from the stage as well.
    * @return The Girlfriend character.
    */
-  public function getGirlfriend(pop:Bool = false):BaseCharacter
+  public function getGirlfriend(pop:Bool = false):Null<BaseCharacter>
   {
     if (pop)
     {
-      var girlfriend:BaseCharacter = getCharacter('gf');
+      var girlfriend:BaseCharacter = getCharacter('gf') ?? return null;
 
       // Remove the character from the stage.
       this.remove(girlfriend);
@@ -593,11 +622,11 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param pop If true, the character will be removed from the stage as well.
    * @return The Dad character.
    */
-  public function getDad(pop:Bool = false):BaseCharacter
+  public function getDad(pop:Bool = false):Null<BaseCharacter>
   {
     if (pop)
     {
-      var dad:BaseCharacter = getCharacter('dad');
+      var dad:BaseCharacter = getCharacter('dad') ?? return null;
 
       // Remove the character from the stage.
       this.remove(dad);
@@ -616,7 +645,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param pop If true, the character will be removed from the stage as well.
    * @return The opponent character.
    */
-  public function getOpponent(pop:Bool = false):BaseCharacter
+  public function getOpponent(pop:Bool = false):Null<BaseCharacter>
   {
     return getDad(pop);
   }
@@ -626,7 +655,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    * @param name The name of the prop to retrieve.
    * @return The corresponding FlxSprite.
    */
-  public function getNamedProp(name:String):StageProp
+  public function getNamedProp(name:String):Null<StageProp>
   {
     return this.namedProps.get(name);
   }
@@ -711,7 +740,7 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
    */
   public function dispatchToCharacter(characterId:String, event:ScriptEvent):Void
   {
-    var character:BaseCharacter = getCharacter(characterId);
+    var character:Null<BaseCharacter> = getCharacter(characterId);
     if (character != null)
     {
       ScriptEventDispatcher.callEvent(character, event);
@@ -783,11 +812,6 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
     {
       debugIconGroup = null;
     }
-
-    if (frameBufferMan != null)
-    {
-      frameBufferMan.dispose();
-    }
   }
 
   /**
@@ -819,6 +843,11 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
     if (group != null) group.kill();
   }
 
+  override public function destroy():Void
+  {
+    trace(' WARNING '.warning() + ' Tried to destroy the singleton Stage instance! This will break the level.');
+  }
+
   override public function remove(sprite:FlxSprite, splice:Bool = false):FlxSprite
   {
     if (sprite == null || !(sprite is FlxSprite)) return sprite;
@@ -830,38 +859,6 @@ class Stage extends FlxSpriteGroup implements IPlayStateScriptedClass implements
     if (group != null) group.remove(sprite, splice);
 
     return sprite;
-  }
-
-  override function draw():Void
-  {
-    if (frameBufferMan != null)
-    {
-      frameBufferMan.lock();
-    }
-    super.draw();
-    if (frameBufferMan != null)
-    {
-      frameBufferMan.unlock();
-    }
-    frameBuffersUpdated();
-  }
-
-  /**
-   * Called when the frame buffer manager is ready.
-   * Create frame buffers inside this method.
-   */
-  function setupFrameBuffers():Void
-  {
-  }
-
-  /**
-   * Called when all the frame buffers are updated. If you need any
-   * frame buffers before `grabScreen()`, make sure you
-   * grab the screen inside this method since it immediately uses the
-   * frame buffers.
-   */
-  function frameBuffersUpdated():Void
-  {
   }
 
   public function onScriptEvent(event:ScriptEvent)

@@ -21,7 +21,6 @@ import funkin.util.SerializerUtil;
 import funkin.util.SortUtil;
 import funkin.util.WindowUtil;
 import funkin.audio.FunkinSound;
-import funkin.mobile.ui.FunkinBackButton;
 import haxe.ui.components.DropDown;
 import haxe.ui.containers.dialogs.CollapsibleDialog;
 import haxe.ui.core.Screen;
@@ -32,6 +31,11 @@ import openfl.events.Event;
 import openfl.events.IOErrorEvent;
 import openfl.geom.Rectangle;
 import openfl.net.FileReference;
+#if FEATURE_TOUCH_CONTROLS
+import funkin.mobile.input.ControlsHandler;
+import funkin.mobile.ui.FunkinBackButton;
+import flixel.input.touch.FlxTouch;
+#end
 
 using flixel.util.FlxSpriteUtil;
 
@@ -51,6 +55,10 @@ class DebugBoundingState extends FlxState
   var haxeUIFocused(get, default):Bool = false;
   var currentAnimationName(get, never):String;
 
+  #if FEATURE_TOUCH_CONTROLS
+  var backButton:FunkinBackButton;
+  #end
+
   function get_currentAnimationName():String
   {
     return offsetAnimationDropdown?.value?.id ?? "idle";
@@ -58,23 +66,16 @@ class DebugBoundingState extends FlxState
 
   function get_haxeUIFocused():Bool
   {
-    // get the screen position, according to the HUD camera, temp default to FlxG.camera juuust in case?
     var hudMousePos:FlxPoint = FlxG.mouse.getViewPosition(hudCam ?? FlxG.camera);
     return Screen.instance.hasSolidComponentUnderPoint(hudMousePos.x, hudMousePos.y);
   }
 
-  #if FEATURE_TOUCH_CONTROLS
-  var touchButtons:Array<TouchButton> = [];
-  #end
-
   override function create():Void
   {
-    Paths.setCurrentLevel('week1');
-
     FlxG.sound.music?.stop();
 
     Cursor.show();
-    FunkinSound.playMusic('chartEditorLoop', {
+    FunkinSound.playMusic('ui/editors/chart-editor/artistic-expression/artistic-expression', {
       startingVolume: 0.0
     });
     FlxG.sound.music.fadeIn(10, 0, 1);
@@ -87,13 +88,13 @@ class DebugBoundingState extends FlxState
     bg = new FlxBackdrop(FlxGridOverlay.createGrid(10, 10, FlxG.width, FlxG.height, true, 0xffe7e6e6, 0xffd9d5d5));
     add(bg);
 
-    // we are setting this as the default draw camera only temporarily, to trick haxeui
     FlxG.cameras.add(hudCam);
 
-    var str = Paths.xml('ui/animation-editor/offset-editor-view');
+    var str = Paths.xml('ui/editors/animation-editor/offset-editor-view');
     offsetEditorDialog = cast RuntimeComponentBuilder.fromAsset(str);
 
-    // offsetEditorDialog.findComponent("btnViewSpriteSheet").onClick = _ -> curView = SPRITESHEET;
+    if (offsetEditorDialog == null) throw "Could not build editor UI, check the layout file.";
+
     var viewDropdown:DropDown = offsetEditorDialog.findComponent("swapper", DropDown);
     viewDropdown.onChange = function(e:UIEvent)
     {
@@ -108,43 +109,24 @@ class DebugBoundingState extends FlxState
     add(offsetEditorDialog);
     offsetEditorDialog.showDialog(false);
 
-    // Anchor to the left side by default
     offsetEditorDialog.x = 16;
     offsetEditorDialog.y = 16;
 
-    // sets the default camera back to FlxG.camera, since we set it to hudCamera for haxeui stuf
     FlxG.cameras.setDefaultDrawTarget(FlxG.camera, true);
     FlxG.cameras.setDefaultDrawTarget(hudCam, false);
 
     initSpritesheetView();
     initOffsetView();
 
-    initBackButton();
-
-    #if FEATURE_TOUCH_CONTROLS
-    initTouchControls();
-    #end
-
     Cursor.show();
 
-    super.create();
-  }
-
-  var backButton:Null<FunkinBackButton> = null;
-
-  function initBackButton():Void
-  {
     #if FEATURE_TOUCH_CONTROLS
-    backButton = new FunkinBackButton(FlxG.width - 90, 10, FlxColor.WHITE, goBack, 0.6, false);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitEditor);
     backButton.cameras = [hudCam];
     add(backButton);
     #end
-  }
 
-  function goBack():Void
-  {
-    resetWindowTitle();
-    FlxG.switchState(() -> new MainMenuState());
+    super.create();
   }
 
   var bf:FlxSprite;
@@ -155,8 +137,7 @@ class DebugBoundingState extends FlxState
     spriteSheetView = new FlxGroup();
     add(spriteSheetView);
 
-    var tex = Paths.getSparrowAtlas('characters/BOYFRIEND');
-    // tex.frames[0].uv
+    var tex = Paths.getSparrowAtlas('gameplay/characters/bf-pixel/bf-pixel');
 
     bf = new FlxSprite();
     bf.loadGraphic(tex.parent);
@@ -179,8 +160,6 @@ class DebugBoundingState extends FlxState
 
   function generateOutlines(frameShit:Array<FlxFrame>):Void
   {
-    // swagOutlines.width = frameShit[0].parent.width;
-    // swagOutlines.height = frameShit[0].parent.height;
     swagOutlines.pixels.fillRect(new Rectangle(0, 0, swagOutlines.width, swagOutlines.height), 0x00000000);
 
     for (i in frameShit)
@@ -193,10 +172,7 @@ class DebugBoundingState extends FlxState
       var uvW:Float = (i.uv.right * i.parent.width) - (i.uv.left * i.parent.width);
       var uvH:Float = (i.uv.bottom * i.parent.height) - (i.uv.top * i.parent.height);
 
-      // trace(Std.int(i.uv.right * i.parent.width));
       swagOutlines.drawRect(i.uv.left * i.parent.width, i.uv.top * i.parent.height, uvW, uvH, FlxColor.TRANSPARENT, lineStyle);
-      // swagGraphic.setPosition(, );
-      // trace(uvH);
     }
   }
 
@@ -231,7 +207,7 @@ class DebugBoundingState extends FlxState
     add(offsetView);
 
     txtOffsetShit = new FlxText(20, 20, 0, "", 20);
-    txtOffsetShit.setFormat(Paths.font("vcr.ttf"), 26, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    txtOffsetShit.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 26, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
     txtOffsetShit.cameras = [hudCam];
     txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
     offsetView.add(txtOffsetShit);
@@ -256,6 +232,17 @@ class DebugBoundingState extends FlxState
   public var mouseOffset:FlxPoint = FlxPoint.get(0, 0);
   public var oldPos:FlxPoint = FlxPoint.get(0, 0);
   public var movingCharacter:Bool = false;
+
+  #if FEATURE_TOUCH_CONTROLS
+  var touchMovingCharacter:Bool = false;
+  var touchOffset:FlxPoint = FlxPoint.get(0, 0);
+  var touchPanning:Bool = false;
+  var touchPanLastX:Float = 0;
+  var touchPanLastY:Float = 0;
+  var pinchActive:Bool = false;
+  var pinchStartDistance:Float = 0;
+  var pinchStartZoom:Float = 1.0;
+  #end
 
   function mouseOffsetMovement()
   {
@@ -289,10 +276,146 @@ class DebugBoundingState extends FlxState
     }
   }
 
+  #if FEATURE_TOUCH_CONTROLS
+  function handleTouchInput():Void
+  {
+    var activeTouches:Array<FlxTouch> = [];
+    for (touch in FlxG.touches.list)
+    {
+      if (touch.pressed) activeTouches.push(touch);
+    }
+
+    if (activeTouches.length >= 2)
+    {
+      touchMovingCharacter = false;
+      handlePinchAndPan(activeTouches[0], activeTouches[1]);
+      return;
+    }
+
+    pinchActive = false;
+
+    if (activeTouches.length == 1)
+    {
+      handleSingleTouch(activeTouches[0]);
+    }
+    else
+    {
+      touchMovingCharacter = false;
+      touchPanning = false;
+    }
+  }
+
+  function handlePinchAndPan(touchA:FlxTouch, touchB:FlxTouch):Void
+  {
+    var posA:FlxPoint = touchA.getViewPosition(hudCam ?? FlxG.camera);
+    var posB:FlxPoint = touchB.getViewPosition(hudCam ?? FlxG.camera);
+
+    var dx:Float = posB.x - posA.x;
+    var dy:Float = posB.y - posA.y;
+    var distance:Float = Math.sqrt(dx * dx + dy * dy);
+
+    var midX:Float = (posA.x + posB.x) / 2;
+    var midY:Float = (posA.y + posB.y) / 2;
+
+    if (!pinchActive)
+    {
+      pinchActive = true;
+      pinchStartDistance = distance;
+      pinchStartZoom = FlxG.camera.zoom;
+      touchPanLastX = midX;
+      touchPanLastY = midY;
+      return;
+    }
+
+    if (pinchStartDistance > 0)
+    {
+      var rawScale:Float = pinchStartZoom * (distance / pinchStartDistance);
+      FlxG.camera.zoom = Math.min(10.0, Math.max(0.1, rawScale));
+    }
+
+    var panDx:Float = midX - touchPanLastX;
+    var panDy:Float = midY - touchPanLastY;
+
+    FlxG.camera.scroll.x -= panDx / FlxG.camera.zoom;
+    FlxG.camera.scroll.y -= panDy / FlxG.camera.zoom;
+
+    touchPanLastX = midX;
+    touchPanLastY = midY;
+  }
+
+  function handleSingleTouch(touch:FlxTouch):Void
+  {
+    if (haxeUIFocused) return;
+
+    if (curView == ANIMATIONS && swagChar != null)
+    {
+      handleTouchOffsetMovement(touch);
+      return;
+    }
+
+    handleTouchPan(touch);
+  }
+
+  function handleTouchOffsetMovement(touch:FlxTouch):Void
+  {
+    if (touch.justPressed)
+    {
+      touchMovingCharacter = true;
+      touchOffset.set(touch.x - -swagChar.animOffsets[0], touch.y - -swagChar.animOffsets[1]);
+    }
+
+    if (!touchMovingCharacter) return;
+
+    swagChar.animOffsets = [
+      (touch.x - touchOffset.x) * -1,
+      (touch.y - touchOffset.y) * -1
+    ];
+
+    swagChar.animationOffsets.set(swagChar.getCurrentAnimation(), swagChar.animOffsets);
+
+    txtOffsetShit.text = 'Offset: ' + swagChar.animOffsets;
+    txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
+
+    if (touch.justReleased)
+    {
+      touchMovingCharacter = false;
+    }
+  }
+
+  function handleTouchPan(touch:FlxTouch):Void
+  {
+    var pos:FlxPoint = touch.getViewPosition(hudCam ?? FlxG.camera);
+
+    if (touch.justPressed)
+    {
+      touchPanning = true;
+      touchPanLastX = pos.x;
+      touchPanLastY = pos.y;
+      return;
+    }
+
+    if (!touchPanning) return;
+
+    var dx:Float = pos.x - touchPanLastX;
+    var dy:Float = pos.y - touchPanLastY;
+
+    FlxG.camera.scroll.x -= dx / FlxG.camera.zoom;
+    FlxG.camera.scroll.y -= dy / FlxG.camera.zoom;
+
+    touchPanLastX = pos.x;
+    touchPanLastY = pos.y;
+
+    if (touch.justReleased)
+    {
+      touchPanning = false;
+    }
+  }
+  #end
+
   function addInfo(str:String, value:Dynamic)
   {
     var swagText:FlxText = new FlxText(10, FlxG.height - 32);
-    swagText.setFormat(Paths.font("vcr.ttf"), 26, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    swagText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 26, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
     swagText.scrollFactor.set();
 
     for (text in txtGrp.members)
@@ -343,29 +466,65 @@ class DebugBoundingState extends FlxState
         offsetView.active = true;
         offsetAnimationDropdown.show();
         offsetControls();
+        #if FEATURE_TOUCH_CONTROLS
+        if (!ControlsHandler.lastInputTouch) mouseOffsetMovement();
+        #else
         mouseOffsetMovement();
+        #end
     }
 
     if (FlxG.keys.justPressed.H) hudCam.visible = !hudCam.visible;
 
-    if (FlxG.keys.justPressed.F4) goBack();
+    if (FlxG.keys.justPressed.F4)
+    {
+      exitEditor();
+    }
+
+    if (FlxG.mouse.justPressed || FlxG.mouse.justPressedMiddle) FunkinSound.playOnce(Paths.sound('ui/editors/chart-editor/charting-sounds/click-down'));
+    if (FlxG.mouse.justReleased || FlxG.mouse.justReleasedMiddle) FunkinSound.playOnce(Paths.sound('ui/editors/chart-editor/charting-sounds/click-up'));
 
     #if FEATURE_TOUCH_CONTROLS
-    checkTouchControls();
-    #end
-
-    if (FlxG.mouse.justPressed || FlxG.mouse.justPressedMiddle) FunkinSound.playOnce(Paths.sound("chartingSounds/ClickDown"));
-    if (FlxG.mouse.justReleased || FlxG.mouse.justReleasedMiddle) FunkinSound.playOnce(Paths.sound("chartingSounds/ClickUp"));
-
+    if (ControlsHandler.lastInputTouch)
+    {
+      handleTouchInput();
+    }
+    else
+    {
+      MouseUtil.mouseCamDrag();
+      if (!haxeUIFocused) handleTrackpadScroll();
+    }
+    #else
     MouseUtil.mouseCamDrag();
-    if (!haxeUIFocused) MouseUtil.mouseWheelZoom();
-
-    // bg.scale.x = FlxG.camera.zoom;
-    // bg.scale.y = FlxG.camera.zoom;
+    if (!haxeUIFocused) handleTrackpadScroll();
+    #end
 
     bg.setGraphicSize(Std.int(bg.width / FlxG.camera.zoom));
 
     super.update(elapsed);
+  }
+
+  static final TRACKPAD_PAN_SCALE:Float = 25.0;
+
+  function handleTrackpadScroll():Void
+  {
+    var dx:Float = FlxG.mouse.deltaWheel.x;
+    var dy:Float = FlxG.mouse.deltaWheel.y;
+    if (dx == 0 && dy == 0) return;
+
+    if (FlxG.keys.pressed.CONTROL)
+    {
+      if (dy == 0) return;
+      var scaledDelta:Float = dy * 10.0;
+      var rawScale:Float = Math.exp(scaledDelta / 100.0);
+      rawScale = Math.min(1.25, Math.max(0.75, rawScale));
+      FlxG.camera.zoom *= rawScale;
+      if (FlxG.camera.zoom < 0.1) FlxG.camera.zoom = 0.1;
+      if (FlxG.camera.zoom > 10.0) FlxG.camera.zoom = 10.0;
+      return;
+    }
+
+    FlxG.camera.scroll.x -= (-dx * TRACKPAD_PAN_SCALE) / FlxG.camera.zoom;
+    FlxG.camera.scroll.y -= (dy * TRACKPAD_PAN_SCALE) / FlxG.camera.zoom;
   }
 
   function resetWindowTitle():Void
@@ -373,63 +532,25 @@ class DebugBoundingState extends FlxState
     WindowUtil.setWindowTitle('Friday Night Funkin\'');
   }
 
+  function exitEditor():Void
+  {
+    resetWindowTitle();
+    FlxG.switchState(() -> new MainMenuState());
+  }
+
   override function destroy()
   {
     super.destroy();
 
-    // Hide the mouse cursor on other states.
     Cursor.hide();
 
-    // Reset the sounds used by some playables.
     funkin.play.GameOverSubState.reset();
     funkin.play.PauseSubState.reset();
     funkin.play.Countdown.reset();
   }
 
-  function nudgeOffset(dx:Float, dy:Float):Void
-  {
-    if (swagChar == null) return;
-
-    var animName:String = currentAnimationName;
-    var existing:Null<Array<Float>> = swagChar.animationOffsets.get(animName);
-    var coolValues:Array<Float> = existing != null ? existing.copy() : [0.0, 0.0];
-
-    coolValues[0] += dx;
-    coolValues[1] += dy;
-
-    swagChar.animationOffsets.set(animName, coolValues);
-    swagChar.playAnimation(animName);
-
-    txtOffsetShit.text = 'Offset: ' + coolValues;
-    txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
-  }
-
-  function cycleAnimation(forward:Bool):Void
-  {
-    if (offsetAnimationDropdown.dataSource.size == 0) return;
-
-    if (forward)
-    {
-      offsetAnimationDropdown.selectedIndex =
-        (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size) ? offsetAnimationDropdown.selectedIndex
-          + 1
-          : 0;
-    }
-    else
-    {
-      offsetAnimationDropdown.selectedIndex =
-        (offsetAnimationDropdown.selectedIndex - 1 >= 0) ? offsetAnimationDropdown.selectedIndex - 1 : offsetAnimationDropdown.dataSource.size
-          - 1;
-    }
-
-    playCharacterAnimation(currentAnimationName, true);
-  }
-
   function offsetControls():Void
   {
-    // CTRL + S = Save Character Data
-    // CTRL + SHIFT + S = Save Offsets
-    // "WINDOWS" key code is the same keycode as COMMAND on mac
     if ((FlxG.keys.pressed.CONTROL || FlxG.keys.pressed.WINDOWS) && FlxG.keys.justPressed.S)
     {
       var outputString = FlxG.keys.pressed.SHIFT ? buildOutputStringOld() : buildOutputStringNew();
@@ -439,16 +560,29 @@ class DebugBoundingState extends FlxState
 
     if (FlxG.keys.justPressed.RBRACKET || FlxG.keys.justPressed.E)
     {
-      cycleAnimation(true);
+      if (offsetAnimationDropdown.selectedIndex + 1 <= offsetAnimationDropdown.dataSource.size)
+      {
+        offsetAnimationDropdown.selectedIndex += 1;
+      }
+      else
+      {
+        offsetAnimationDropdown.selectedIndex = 0;
+      }
+      playCharacterAnimation(currentAnimationName, true);
     }
     if (FlxG.keys.justPressed.LBRACKET || FlxG.keys.justPressed.Q)
     {
-      cycleAnimation(false);
+      if (offsetAnimationDropdown.selectedIndex - 1 >= 0)
+      {
+        offsetAnimationDropdown.selectedIndex -= 1;
+      }
+      else
+      {
+        offsetAnimationDropdown.selectedIndex = offsetAnimationDropdown.dataSource.size - 1;
+      }
+      playCharacterAnimation(currentAnimationName, true);
     }
 
-    // Keyboards controls for general WASD "movement"
-    // modifies the animDrooffsetAnimationDropdownpDownMenu so that it's properly updated and shit
-    // and then it's just played and updated from the offsetAnimationDropdown callback, which is set in the loadAnimShit() function probably
     if (FlxG.keys.justPressed.W || FlxG.keys.justPressed.S || FlxG.keys.justPressed.D || FlxG.keys.justPressed.A)
     {
       var suffix:String = '';
@@ -468,14 +602,10 @@ class DebugBoundingState extends FlxState
           text: targetLabel
         };
 
-        // Play the new animation if the IDs are different.
-        // Override the onion skin.
         playCharacterAnimation(currentAnimationName, true);
       }
       else
       {
-        // Replay the current animation if the IDs are the same.
-        // Don't override the onion skin.
         playCharacterAnimation(currentAnimationName, false);
       }
     }
@@ -492,7 +622,6 @@ class DebugBoundingState extends FlxState
       if (onionSkinChar.visible) updateOnionSkin();
     }
 
-    // Plays the idle animation
     if (FlxG.keys.justPressed.SPACE)
     {
       if (swagChar?.hasAnimation('danceLeft')) offsetAnimationDropdown.value = {
@@ -508,7 +637,6 @@ class DebugBoundingState extends FlxState
       playCharacterAnimation(currentAnimationName, true);
     }
 
-    // Playback the animation
     if (FlxG.keys.justPressed.ENTER)
     {
       playCharacterAnimation(currentAnimationName, false);
@@ -516,21 +644,25 @@ class DebugBoundingState extends FlxState
 
     if (FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.UP || FlxG.keys.justPressed.DOWN)
     {
+      var animName = currentAnimationName;
+      var coolValues:Array<Float> = swagChar.animationOffsets.get(animName).copy();
+
       var multiplier:Int = 5;
 
       if (FlxG.keys.pressed.CONTROL) multiplier = 1;
 
       if (FlxG.keys.pressed.SHIFT) multiplier = 10;
 
-      var dx:Float = 0;
-      var dy:Float = 0;
+      if (FlxG.keys.justPressed.RIGHT) coolValues[0] -= 1 * multiplier;
+      else if (FlxG.keys.justPressed.LEFT) coolValues[0] += 1 * multiplier;
+      else if (FlxG.keys.justPressed.UP) coolValues[1] += 1 * multiplier;
+      else if (FlxG.keys.justPressed.DOWN) coolValues[1] -= 1 * multiplier;
 
-      if (FlxG.keys.justPressed.RIGHT) dx -= 1 * multiplier;
-      else if (FlxG.keys.justPressed.LEFT) dx += 1 * multiplier;
-      else if (FlxG.keys.justPressed.UP) dy += 1 * multiplier;
-      else if (FlxG.keys.justPressed.DOWN) dy -= 1 * multiplier;
+      swagChar.animationOffsets.set(currentAnimationName, coolValues);
+      swagChar.playAnimation(animName);
 
-      nudgeOffset(dx, dy);
+      txtOffsetShit.text = 'Offset: ' + coolValues;
+      txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
     }
   }
 
@@ -552,10 +684,47 @@ class DebugBoundingState extends FlxState
   {
     var charData:CharacterData = Reflect.copy(swagChar._data);
 
+    if (charData.renderType == CharacterDataParser.DEFAULT_RENDERTYPE) Reflect.deleteField(charData, "renderType");
+    if (charData.offsets == CharacterDataParser.DEFAULT_OFFSETS) Reflect.deleteField(charData, "offsets");
+    if (charData.cameraOffsets == CharacterDataParser.DEFAULT_OFFSETS) Reflect.deleteField(charData, "cameraOffsets");
+
+    if (charData.healthIcon.id == swagChar.characterId) Reflect.deleteField(charData.healthIcon, "id");
+    if (charData.healthIcon.scale == CharacterDataParser.DEFAULT_SCALE) Reflect.deleteField(charData.healthIcon, "scale");
+    if (charData.healthIcon.flipX == CharacterDataParser.DEFAULT_FLIPX) Reflect.deleteField(charData.healthIcon, "flipX");
+    if (charData.healthIcon.isPixel == CharacterDataParser.DEFAULT_ISPIXEL) Reflect.deleteField(charData.healthIcon, "isPixel");
+    if (charData.healthIcon.offsets == CharacterDataParser.DEFAULT_OFFSETS) Reflect.deleteField(charData.healthIcon, "offsets");
+
+    if (
+      charData.healthIcon.id == null
+      && charData.healthIcon.scale == null
+      && charData.healthIcon.flipX == null
+      && charData.healthIcon.isPixel == null
+      && charData.healthIcon.offsets == null
+    )
+    {
+      Reflect.deleteField(charData, "healthIcon");
+    }
+
+    if (charData.startingAnimation == CharacterDataParser.DEFAULT_STARTINGANIM) Reflect.deleteField(charData, "startingAnimation");
+    if (charData.scale == CharacterDataParser.DEFAULT_SCALE) Reflect.deleteField(charData, "scale");
+    if (charData.isPixel == CharacterDataParser.DEFAULT_ISPIXEL) Reflect.deleteField(charData, "isPixel");
+    if (charData.danceEvery == CharacterDataParser.DEFAULT_DANCEEVERY) Reflect.deleteField(charData, "danceEvery");
+    if (charData.singTime == CharacterDataParser.DEFAULT_SINGTIME) Reflect.deleteField(charData, "singTime");
+    if (charData.flipX == CharacterDataParser.DEFAULT_FLIPX) Reflect.deleteField(charData, "flipX");
+    if (charData.applyStageMatrix == CharacterDataParser.DEFAULT_APPLYSTAGEMATRIX) Reflect.deleteField(charData, "applyStageMatrix");
+    if (charData.atlasSettings == CharacterDataParser.DEFAULT_ATLASSETTINGS) Reflect.deleteField(charData, "atlasSettings");
+
     for (charDataAnim in charData.animations)
     {
       var animName:String = charDataAnim.name;
       charDataAnim.offsets = swagChar.animationOffsets.get(animName);
+
+      if (charDataAnim.animType == CharacterDataParser.DEFAULT_ANIMTYPE) Reflect.deleteField(charDataAnim, "animType");
+      if (charDataAnim.frameRate == CharacterDataParser.DEFAULT_FRAMERATE) Reflect.deleteField(charDataAnim, "frameRate");
+      if (charDataAnim.offsets[0] == 0 && charDataAnim.offsets[1] == 0) Reflect.deleteField(charDataAnim, "offsets");
+      if (charDataAnim.looped == CharacterDataParser.DEFAULT_LOOP) Reflect.deleteField(charDataAnim, "looped");
+      if (charDataAnim.flipX == CharacterDataParser.DEFAULT_FLIPX) Reflect.deleteField(charDataAnim, "flipX");
+      if (charDataAnim.flipY == CharacterDataParser.DEFAULT_FLIPY) Reflect.deleteField(charDataAnim, "flipY");
     }
 
     return SerializerUtil.toJSON(charData, true);
@@ -563,9 +732,6 @@ class DebugBoundingState extends FlxState
 
   var swagChar:BaseCharacter;
 
-  /**
-   * Called when animation dropdown is changed!
-   */
   function loadAnimShit(char:String)
   {
     if (swagChar != null)
@@ -588,17 +754,10 @@ class DebugBoundingState extends FlxState
     onionSkinChar.x = swagChar.x;
     onionSkinChar.y = swagChar.y;
 
-    // Enable `useRenderTexture` for texture atlas sprites so the alpha renders properly for them.
-    // This doesn't do anything for sparrows, don't worry!
     onionSkinChar.useRenderTexture = true;
 
     offsetView.add(onionSkinChar);
     offsetView.add(swagChar);
-
-    if (swagChar == null || swagChar.frames == null)
-    {
-      trace('ERROR: Failed to load character ${char}!');
-    }
 
     updateOnionSkin();
     generateOutlines(swagChar.frames.frames);
@@ -628,13 +787,10 @@ class DebugBoundingState extends FlxState
 
     offsetAnimationDropdown.selectedIndex = 0;
 
-    trace('Added ${offsetAnimationDropdown.dataSource.size} animations to HaxeUI dropdown');
-
     offsetAnimationDropdown.onChange = function(event:UIEvent)
     {
       if (event.data != null)
       {
-        trace('Selected animation ${event.data.id}');
         playCharacterAnimation(event.data.id, true);
       }
     }
@@ -650,9 +806,8 @@ class DebugBoundingState extends FlxState
   {
     if (setOnionSkin) updateOnionSkin();
 
-    // var animName = characterAnimNames[Std.parseInt(str)];
     var animName = str;
-    swagChar.playAnimation(animName, true); // trace();
+    swagChar.playAnimation(animName, true);
 
     txtOffsetShit.text = 'Offset: ' + swagChar.animOffsets;
     txtOffsetShit.y = FlxG.height - 20 - txtOffsetShit.height;
@@ -681,9 +836,6 @@ class DebugBoundingState extends FlxState
     FlxG.log.notice("Successfully saved LEVEL DATA.");
   }
 
-  /**
-   * Called when the save file dialog is cancelled.
-   */
   function onSaveCancel(_):Void
   {
     _file.removeEventListener(Event.COMPLETE, onSaveComplete);
@@ -692,9 +844,6 @@ class DebugBoundingState extends FlxState
     _file = null;
   }
 
-  /**
-   * Called if there is an error while saving the gameplay recording.
-   */
   function onSaveError(_):Void
   {
     _file.removeEventListener(Event.COMPLETE, onSaveComplete);
@@ -703,82 +852,7 @@ class DebugBoundingState extends FlxState
     _file = null;
     FlxG.log.error("Problem saving Level data");
   }
-
-  #if FEATURE_TOUCH_CONTROLS
-  function initTouchControls():Void
-  {
-    var panelY:Float = FlxG.height - 140;
-
-    addTouchButton('PREV', 10, panelY, 70, () -> cycleAnimation(false));
-    addTouchButton('NEXT', 90, panelY, 70, () -> cycleAnimation(true));
-    addTouchButton('PLAY', 170, panelY, 70, () -> playCharacterAnimation(currentAnimationName, false));
-    addTouchButton('FLIP', 250, panelY, 70, () ->
-    {
-      if (swagChar == null) return;
-      swagChar.flipX = !swagChar.flipX;
-      if (onionSkinChar.visible) updateOnionSkin();
-    });
-    addTouchButton('ONION', 330, panelY, 70, () ->
-    {
-      if (onionSkinChar == null) return;
-      onionSkinChar.visible = !onionSkinChar.visible;
-      if (onionSkinChar.visible) updateOnionSkin();
-    });
-
-    var padX:Float = FlxG.width - 190;
-    var padY:Float = FlxG.height - 190;
-
-    addTouchButton('UP', padX + 55, padY, 50, () -> nudgeOffset(0, 5));
-    addTouchButton('DOWN', padX + 55, padY + 100, 50, () -> nudgeOffset(0, -5));
-    addTouchButton('LEFT', padX, padY + 50, 50, () -> nudgeOffset(5, 0));
-    addTouchButton('RIGHT', padX + 110, padY + 50, 50, () -> nudgeOffset(-5, 0));
-  }
-
-  function addTouchButton(label:String, x:Float, y:Float, width:Float, onTap:Void->Void):Void
-  {
-    var buttonSprite:FlxSprite = new FlxSprite(x, y).makeGraphic(Std.int(width), 40, 0xCC1E2022);
-    buttonSprite.scrollFactor.set(0, 0);
-    buttonSprite.cameras = [hudCam];
-    add(buttonSprite);
-
-    var buttonLabel:FlxText = new FlxText(x, y + 10, width, label, 12);
-    buttonLabel.alignment = CENTER;
-    buttonLabel.color = FlxColor.WHITE;
-    buttonLabel.scrollFactor.set(0, 0);
-    buttonLabel.cameras = [hudCam];
-    add(buttonLabel);
-
-    touchButtons.push({
-      sprite: buttonSprite,
-      onTap: onTap
-    });
-  }
-
-  function checkTouchControls():Void
-  {
-    if (!FlxG.mouse.justPressed) return;
-
-    var mousePos:FlxPoint = FlxG.mouse.getViewPosition(hudCam);
-
-    for (button in touchButtons)
-    {
-      if (button.sprite.overlapsPoint(mousePos, false, hudCam))
-      {
-        button.onTap();
-        break;
-      }
-    }
-  }
-  #end
 }
-
-#if FEATURE_TOUCH_CONTROLS
-typedef TouchButton =
-{
-  var sprite:FlxSprite;
-  var onTap:Void->Void;
-}
-#end
 
 enum abstract ANIMDEBUGVIEW(String)
 {

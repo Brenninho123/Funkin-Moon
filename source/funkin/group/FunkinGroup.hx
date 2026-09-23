@@ -7,6 +7,9 @@ import flixel.math.FlxRect;
 import flixel.util.FlxSort;
 import funkin.util.SortUtil;
 import flixel.math.FlxPoint;
+import flixel.FlxCamera;
+import flixel.util.FlxDestroyUtil;
+import flixel.group.IFlxGroupable;
 
 /**
  * A FunkinGroup of FlxSprites.
@@ -16,17 +19,42 @@ typedef FunkinSpriteGroup = FunkinGroup<FlxSprite>;
 /**
  * FlxSpriteGroup but better. Kinda like if `FlxNestedSprite` and `FlxSpriteGroup` were merged.
  */
-class FunkinGroup<T:FlxSprite> extends FlxSprite
+class FunkinGroup<T:FlxSprite> extends FlxSprite implements IFlxGroupable<T>
 {
+  /**
+   * A `FlxPoint` used by the Camera Editor to determine positioning.
+   */
+  public var vcamPoint:Null<FlxPoint> = null;
+
   /**
    * The children of this FunkinGroup.
    */
-  public var children:Null<Array<T>>;
+  public var children:Array<T>;
 
   /**
    * The size of this FunkinGroup. Read only.
    */
   public var size(get, never):Int;
+
+  /**
+   * Screen-space clip rect inherited from a parent FunkinGroup, if any.
+   * Combined with this group's own (screen-space) `clipRect` to form the
+   * effective region applied to children. `null` = nothing inherited.
+   */
+  var _inheritedClipRect:Null<FlxRect> = null;
+
+  /** Reusable scratch rect for the combined effective clip. */
+  var _effectiveClipRect:Null<FlxRect> = null;
+
+  var _childOwnClips:Map<FlxSprite, FlxRect> = new Map();
+
+  /** Register a sprite's own (local) clip that should survive the group's clipping. */
+  public function setChildClipRect(child:FlxSprite, ?localClip:FlxRect):Void
+  {
+    if (localClip == null) _childOwnClips.remove(child);
+    else
+      _childOwnClips.set(child, localClip);
+  }
 
   function get_size():Int
   {
@@ -43,6 +71,100 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
   function get_length():Int
   {
     return size;
+  }
+
+  /**
+   * The combined screen-space clip for this group.
+  **/
+  function getEffectiveClipRect():Null<FlxRect>
+  {
+    if (clipRect == null && _inheritedClipRect == null) return null;
+
+    if (_effectiveClipRect == null) _effectiveClipRect = FlxRect.get();
+
+    if (clipRect == null) return _effectiveClipRect.copyFrom(_inheritedClipRect);
+    if (_inheritedClipRect == null) return _effectiveClipRect.copyFrom(clipRect);
+
+    return clipRect.intersection(_inheritedClipRect, _effectiveClipRect);
+  }
+
+  /**
+   * Pushes this group's screen-space clip down to its children.
+  **/
+  public function updateClipRects():Void
+  {
+    var screenClip:Null<FlxRect> = getEffectiveClipRect();
+    var cam:FlxCamera = getDefaultCamera();
+
+    for (child in children)
+    {
+      if (child == null || !child.exists) continue;
+
+      if (Std.isOfType(child, FunkinGroup))
+      {
+        var childGroup:FunkinGroup<Dynamic> = cast child;
+
+        if (screenClip == null)
+        {
+          childGroup._inheritedClipRect = FlxDestroyUtil.put(childGroup._inheritedClipRect);
+        }
+        else
+        {
+          if (childGroup._inheritedClipRect == null) childGroup._inheritedClipRect = FlxRect.get();
+          childGroup._inheritedClipRect.copyFrom(screenClip);
+        }
+      }
+      else
+      {
+        var own:FlxRect = _childOwnClips.get(child);
+
+        if (screenClip == null)
+        {
+          if (own != null) child.clipRect = child.clipRect != null ? child.clipRect.copyFrom(own) : FlxRect.get().copyFrom(own);
+          else if (child.clipRect != null) child.clipRect = FlxDestroyUtil.put(child.clipRect);
+        }
+        else
+        {
+          var dest:FlxRect = child.clipRect != null ? child.clipRect : FlxRect.get();
+          screenToLocalClipRect(child, screenClip, dest, cam);
+          if (own != null) dest = own.intersection(dest, dest);
+          child.clipRect = dest;
+        }
+      }
+    }
+  }
+
+  /**
+   * Projects a screen-space rect into a child sprite's local graphic-pixel space.
+  **/
+  function screenToLocalClipRect(child:FlxSprite, screenClip:FlxRect, result:FlxRect, ?camera:FlxCamera):FlxRect
+  {
+    var minX:Float = Math.POSITIVE_INFINITY;
+    var minY:Float = Math.POSITIVE_INFINITY;
+    var maxX:Float = Math.NEGATIVE_INFINITY;
+    var maxY:Float = Math.NEGATIVE_INFINITY;
+
+    var screenCorner:FlxPoint = FlxPoint.get();
+    var localCorner:FlxPoint = FlxPoint.get();
+
+    for (i in 0...4)
+    {
+      var sx:Float = (i == 1 || i == 2) ? screenClip.right : screenClip.left;
+      var sy:Float = (i >= 2) ? screenClip.bottom : screenClip.top;
+
+      screenCorner.set(sx, sy);
+      child.transformScreenToPixels(screenCorner, camera, localCorner);
+
+      if (localCorner.x < minX) minX = localCorner.x;
+      if (localCorner.y < minY) minY = localCorner.y;
+      if (localCorner.x > maxX) maxX = localCorner.x;
+      if (localCorner.y > maxY) maxY = localCorner.y;
+    }
+
+    screenCorner.put();
+    localCorner.put();
+
+    return result.set(minX, minY, maxX - minX, maxY - minY);
   }
 
   /**
@@ -105,8 +227,22 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
     {
       if (child == null || !child.alive || !child.localVisible) continue;
 
-      var left:Float = child.localX * scale.x;
-      var right:Float = left + child.frameWidth * child.scale.x;
+      var left:Float;
+      var right:Float;
+
+      if (Std.isOfType(child, FunkinGroup))
+      {
+        var childGroup:FunkinGroup<Dynamic> = cast child;
+        var childW:Float = childGroup.width;
+        if (childW <= 0) continue;
+        left = child.localX * scale.x;
+        right = left + childW * scale.x;
+      }
+      else
+      {
+        left = child.localX * scale.x;
+        right = left + child.frameWidth * child.scale.x;
+      }
 
       if (left < minLeft) minLeft = left;
       if (right > maxRight) maxRight = right;
@@ -128,10 +264,24 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
     for (child in children)
     {
       if (child == null || !child.alive || !child.localVisible) continue;
-      if (child.scale.y != scale.y * child.localScale.y) continue;
 
-      var top:Float = child.localY;
-      var bottom:Float = top + child.frameHeight * child.scale.y;
+      var top:Float;
+      var bottom:Float;
+
+      if (Std.isOfType(child, FunkinGroup))
+      {
+        var childGroup:FunkinGroup<Dynamic> = cast child;
+        var childH:Float = childGroup.height;
+        if (childH <= 0) continue;
+        top = child.localY;
+        bottom = top + childH * scale.y;
+      }
+      else
+      {
+        if (child.scale.y != scale.y * child.localScale.y) continue;
+        top = child.localY;
+        bottom = top + child.frameHeight * child.scale.y;
+      }
 
       if (top < minTop) minTop = top;
       if (bottom > maxBottom) maxBottom = bottom;
@@ -200,6 +350,24 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
   }
 
   /**
+   * Gets the screen position of the sprite, taking into account the camera scroll and the `vcamPoint` if it exists.
+   * @param result An optional `FlxPoint` to store the result in. If null, a new `FlxPoint` will be created.
+   * @param camera The camera to calculate the screen position relative to. If null, the default camera will be used.
+   * @return The screen position of the sprite.
+   */
+  override function getScreenPosition(?result:FlxPoint, ?camera:FlxCamera):FlxPoint
+  {
+    if (result == null) result = FlxPoint.get();
+    if (camera == null) camera = getDefaultCamera();
+    result.set(x, y);
+    if (pixelPerfectPosition) result.floor();
+
+    if (vcamPoint != null) return result.subtract((vcamPoint.x * scrollFactor.x) + camera.scroll.x, (vcamPoint.y * scrollFactor.y) + camera.scroll.y);
+
+    return result.subtract(camera.scroll.x * scrollFactor.x, camera.scroll.y * scrollFactor.y);
+  }
+
+  /**
    * Sets the child at an index.
    *
    * @param index The position.
@@ -221,59 +389,14 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
     for (child in children)
     {
       if (child != null && child.exists && child.active) child.update(elapsed);
-    }
-  }
 
-  override public function draw():Void
-  {
-    for (child in children)
-    {
-      if (child == null || !child.exists || !child.visible) continue;
-      if (clipRect != null)
+      if (this.scrollFactor.x != 1 || this.scrollFactor.y != 1)
       {
-        // Preserve the child's original clip so we can restore it after drawing.
-        var originalClip:Null<FlxRect> = child.clipRect;
-
-        // Convert this group's clipRect into the child's local space.
-        var groupClip:FlxRect = FlxRect.get(x + clipRect.x, y + clipRect.y, clipRect.width, clipRect.height);
-        var childClip:FlxRect = null;
-
-        if (Std.isOfType(child, FunkinGroup))
-        {
-          // Nested groups expect clipRect in group-local world units.
-          childClip = FlxRect.get(groupClip.x - child.x, groupClip.y - child.y, groupClip.width, groupClip.height);
-        }
-        else
-        {
-          // Sprites expect clipRect in texture-local units, so include scale.
-          var sx:Float = child.scale.x != 0 ? child.scale.x : 1.0;
-          var sy:Float = child.scale.y != 0 ? child.scale.y : 1.0;
-          childClip = FlxRect.get((groupClip.x - child.x) / sx, (groupClip.y - child.y) / sy, groupClip.width / sx, groupClip.height / sy);
-        }
-
-        // If the child already has its own clip, intersect it in the same local space.
-        if (originalClip != null)
-        {
-          var ix:Float = Math.max(childClip.x, originalClip.x);
-          var iy:Float = Math.max(childClip.y, originalClip.y);
-          var ir:Float = Math.min(childClip.right, originalClip.right);
-          var ib:Float = Math.min(childClip.bottom, originalClip.bottom);
-
-          childClip.set(ix, iy, Math.max(0, ir - ix), Math.max(0, ib - iy));
-        }
-
-        child.clipRect = childClip;
-        child.draw();
-        childClip.put();
-
-        // Restore the child's original clip object.
-        child.clipRect = originalClip;
-      }
-      else
-      {
-        child.draw();
+        child.scrollFactor.set(child.scrollFactor.x * this.scrollFactor.x, child.scrollFactor.y * this.scrollFactor.y);
       }
     }
+
+    updateClipRects();
   }
 
   /**
@@ -292,7 +415,7 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
         child.scale.x = scale.x * child.localScale.x;
         child.scale.y = scale.y * child.localScale.y;
 
-        var displace = new FlxPoint(child.localX, child.localY);
+        var displace:FlxPoint = FlxPoint.weak(child.localX, child.localY);
 
         var dx:Float = 0;
         var dy:Float = 0;
@@ -303,7 +426,6 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
         if (preciseScale && !preciseAngle)
         {
           dx += scale.x * (child.localX - origin.x + child.width / 2);
-
           dy += scale.y * (child.localY - origin.y + child.height / 2);
         }
         else if (preciseAngle && !preciseScale)
@@ -336,6 +458,8 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
         child.x = x + displace.x;
         child.y = y + displace.y;
 
+        displace.put();
+
         child.alpha = alpha * child.localAlpha;
         child.visible = visible && child.localVisible;
         // force child cameras to the group's cameras.
@@ -356,6 +480,8 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
     if (maxSize > 0 && size >= maxSize) return null;
 
     children.push(child);
+    child.container = cast this;
+
     return child;
   }
 
@@ -416,7 +542,10 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
       child.destroy();
     }
 
-    children = null;
+    children = [];
+
+    _inheritedClipRect = FlxDestroyUtil.put(_inheritedClipRect);
+    _effectiveClipRect = FlxDestroyUtil.put(_effectiveClipRect);
 
     super.destroy();
   }
@@ -425,12 +554,15 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
    * Removes a child from the group, also returns it for convenience.
    *
    * @param child The child to remove.
+   * @param splice Unused: Only here because the interface mandates it.
    * @return The removed child.
    */
-  public function remove(child:T):Null<T>
+  public function remove(child:T, splice:Bool = false):Null<T>
   {
     var index = children.indexOf(child);
     if (index != -1) children.splice(index, 1);
+
+    child.container = null;
 
     return child;
   }
@@ -447,6 +579,17 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
       if (child != null)
       {
         func(child);
+      }
+    }
+  }
+
+  override public function draw():Void
+  {
+    for (child in children)
+    {
+      if (child != null && child.exists && child.visible)
+      {
+        child.draw();
       }
     }
   }
@@ -518,6 +661,19 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
     }
 
     return null;
+  }
+
+  /**
+   * Clears all children from this FunkinGroup.
+   */
+  public inline function clear():Void
+  {
+    for (child in children)
+    {
+      child.destroy();
+    }
+
+    children = [];
   }
 
   /**
@@ -700,8 +856,12 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
    * This functionality isn't supported in `FunkinGroup`.
    * @return this group
    */
-  override public function loadGraphic(Graphic:flixel.system.FlxAssets.FlxGraphicAsset, Animated:Bool = false, Width:Int = 0, Height:Int = 0,
-      Unique:Bool = false, ?Key:String):FlxSprite
+  override public function loadGraphic(Graphic:flixel.system.FlxAssets.FlxGraphicAsset,
+    Animated:Bool = false,
+    Width:Int = 0,
+    Height:Int = 0,
+    Unique:Bool = false,
+    ?Key:String):FlxSprite
   {
     return this;
   }
@@ -710,8 +870,12 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
    * This functionality isn't supported in `FunkinGroup`.
    * @return this group
    */
-  override public function loadRotatedGraphic(Graphic:flixel.system.FlxAssets.FlxGraphicAsset, Rotations:Int = 16, Frame:Int = -1, AntiAliasing:Bool = false,
-      AutoBuffer:Bool = false, ?Key:String):FlxSprite
+  override public function loadRotatedGraphic(Graphic:flixel.system.FlxAssets.FlxGraphicAsset,
+    Rotations:Int = 16,
+    Frame:Int = -1,
+    AntiAliasing:Bool = false,
+    AutoBuffer:Bool = false,
+    ?Key:String):FlxSprite
   {
     #if FLX_DEBUG
     throw 'This function is not supported in FunkinGroup';
@@ -761,48 +925,48 @@ class FunkinGroup<T:FlxSprite> extends FlxSprite
   }
 
   /**
-	 * Iterates through every member.
-	 */
-	public inline function iterator(?filter:T->Bool):FunkinGroupIterator<T>
-	{
-		return new FunkinGroupIterator<T>(children, filter);
-	}
+   * Iterates through every member.
+   */
+  public inline function iterator(?filter:T->Bool):FunkinGroupIterator<T>
+  {
+    return new FunkinGroupIterator<T>(children, filter);
+  }
 
-	/**
-	 * Iterates through every member and index.
-	 */
-	public inline function keyValueIterator()
-	{
-		return children.keyValueIterator();
-	}
+  /**
+   * Iterates through every member and index.
+   */
+  public inline function keyValueIterator()
+  {
+    return children.keyValueIterator();
+  }
 }
 
 class FunkinGroupIterator<T>
 {
-	var _groupMembers:Array<T>;
-	var _filter:T->Bool;
-	var _cursor:Int;
-	var _length:Int;
+  var _groupMembers:Array<T>;
+  var _filter:T->Bool;
+  var _cursor:Int;
+  var _length:Int;
 
-	public inline function new(groupMembers:Array<T>, ?filter:T->Bool)
-	{
-		_groupMembers = groupMembers;
-		_filter = filter;
-		_cursor = 0;
-		_length = _groupMembers.length;
-	}
+  public inline function new(groupMembers:Array<T>, ?filter:T->Bool)
+  {
+    _groupMembers = groupMembers;
+    _filter = filter;
+    _cursor = 0;
+    _length = _groupMembers.length;
+  }
 
-	public inline function next()
-	{
-		return hasNext() ? _groupMembers[_cursor++] : null;
-	}
+  public inline function next()
+  {
+    return hasNext() ? _groupMembers[_cursor++] : null;
+  }
 
-	public inline function hasNext():Bool
-	{
-		while (_cursor < _length && (_groupMembers[_cursor] == null || _filter != null && !_filter(_groupMembers[_cursor])))
-		{
-			_cursor++;
-		}
-		return _cursor < _length;
-	}
+  public inline function hasNext():Bool
+  {
+    while (_cursor < _length && (_groupMembers[_cursor] == null || _filter != null && !_filter(_groupMembers[_cursor])))
+    {
+      _cursor++;
+    }
+    return _cursor < _length;
+  }
 }

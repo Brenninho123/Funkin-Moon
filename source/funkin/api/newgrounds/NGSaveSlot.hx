@@ -113,7 +113,10 @@ class NGSaveSlot
 
       if (onError != null)
       {
-        onError(RESPONSE({message: error, code: 500}));
+        onError(RESPONSE({
+          message: error,
+          code: 500
+        }));
       }
     }
   }

@@ -1,5 +1,6 @@
 package funkin.ui.mainmenu;
 
+import funkin.assets.FunkinAssetCache;
 import flixel.addons.transition.FlxTransitionableState;
 #if FEATURE_DEBUG_MENU
 import funkin.ui.debug.DebugMenuSubState;
@@ -12,6 +13,7 @@ import flixel.math.FlxPoint;
 import flixel.util.typeLimit.NextState;
 import flixel.util.FlxColor;
 import flixel.tweens.FlxEase;
+import flixel.text.FlxText.FlxTextFormat;
 import funkin.graphics.FunkinCamera;
 import funkin.audio.FunkinSound;
 import funkin.util.SwipeUtil;
@@ -35,11 +37,7 @@ import funkin.util.TouchUtil;
 import funkin.api.newgrounds.Referral;
 import funkin.ui.mainmenu.UpgradeSparkle;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
-import flixel.text.FlxText;
-#if FEATURE_ONLINE
-import funkin.online.FunkinOnline;
-import funkin.online.FunkinUser;
-#end
+import funkin.ui.quickpanel.QuickPanelState;
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -50,18 +48,20 @@ import funkin.api.newgrounds.NewgroundsClient;
 import funkin.mobile.input.ControlsHandler;
 import funkin.mobile.util.InAppPurchasesUtil;
 #end
+import funkin.assets.Paths as Paths;
+import funkin.assets.Assets as Assets;
 
 @:nullSafety
 class MainMenuState extends MusicBeatState
 {
+  static inline final BUILD_VERSION:String = "v0.8.5.1";
+  static inline final BUILD_NUMBER:String = "67";
+  static inline final TAGGED_BUILD_NUMBER:String = "67";
+
   var menuItems:Null<MenuTypedList<AtlasMenuItem>>;
   var bg:Null<FlxSprite>;
   var magenta:FlxSprite;
   var camFollow:FlxObject;
-  var mainMenuCam:FunkinCamera;
-  #if FEATURE_3D_RENDERING
-  var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
-  #end
   #if mobile
   var gyroPan:Null<FlxPoint>;
   #end
@@ -78,13 +78,6 @@ class MainMenuState extends MusicBeatState
 
   var hasUpgraded:Bool = false;
   var upgradeSparkles:FlxTypedSpriteGroup<UpgradeSparkle>;
-  #if FEATURE_ONLINE
-  var onlineBarBg:Null<FlxSprite> = null;
-  var onlineStatusText:Null<FlxText> = null;
-
-  static final ONLINE_SERVER_HOST:String = "your-server-address.example.com";
-  static final ONLINE_SERVER_PORT:Int = 7777;
-  #end
 
   public function new(_overrideMusic:Bool = false)
   {
@@ -94,9 +87,8 @@ class MainMenuState extends MusicBeatState
     uiStateMachine.transition(EnteringMainMenu);
 
     upgradeSparkles = new FlxTypedSpriteGroup<UpgradeSparkle>();
-    magenta = new FlxSprite(Paths.image('menuBGMagenta'));
+    magenta = new FlxSprite(Paths.image('ui/main-menu/menu-bg-magenta').toFlxGraphicAsset());
     camFollow = new FlxObject(0, 0, 1, 1);
-    mainMenuCam = new FunkinCamera('mainMenu');
 
     FlxG.keys.enabled = true;
   }
@@ -104,17 +96,10 @@ class MainMenuState extends MusicBeatState
   override function create():Void
   {
     #if FEATURE_DISCORD_RPC
-    DiscordClient.instance.setPresence({
-      state: "In the Menus",
-      details: null
-    });
+    DiscordClient.instance.setPresence({state: "In the Menus", details: null});
     #end
 
-    FlxG.cameras.reset(mainMenuCam);
-
-    #if FEATURE_3D_RENDERING
-    init3DBackground();
-    #end
+    FlxG.cameras.reset(new FunkinCamera('mainMenu'));
 
     transIn = FlxTransitionableState.defaultTransIn;
     transOut = FlxTransitionableState.defaultTransOut;
@@ -131,7 +116,7 @@ class MainMenuState extends MusicBeatState
     persistentUpdate = true;
     persistentDraw = true;
 
-    bg = new FlxSprite(Paths.image('menuBG'));
+    bg = new FlxSprite(Paths.image('ui/main-menu/menu-bg').toFlxGraphicAsset());
     bg.scrollFactor.x = #if !mobile 0 #else 0.17 #end;
     bg.scrollFactor.y = 0.17;
     bg.setGraphicSize(Std.int(FlxG.width * 1.2));
@@ -161,18 +146,21 @@ class MainMenuState extends MusicBeatState
     });
 
     menuItems.enabled = true;
-
-    createMenuItem('storymode', 'mainmenu/storymode', () ->
+    createMenuItem('storymode', 'ui/main-menu/items/story-mode', () ->
     {
       FlxG.signals.preStateSwitch.addOnce(() ->
       {
-        funkin.FunkinMemory.clearFreeplay();
-        funkin.FunkinMemory.purgeCache();
+        FunkinAssetCache.instance.preparePurgeCache();
+      });
+
+      FlxG.signals.postStateSwitch.addOnce(() ->
+      {
+        funkin.memory.FunkinMemory.clearFreeplay();
+        FunkinAssetCache.instance.purgeCache(true);
       });
       startExitState(() -> new StoryMenuState());
     });
-
-    createMenuItem('freeplay', 'mainmenu/freeplay', function()
+    createMenuItem('freeplay', 'ui/main-menu/items/freeplay', () ->
     {
       persistentDraw = true;
       persistentUpdate = false;
@@ -201,26 +189,18 @@ class MainMenuState extends MusicBeatState
       }));
     });
 
-    #if FEATURE_ONLINE
-    createMenuItem('online', 'mainmenu/online', function()
-    {
-      startExitState(() -> new funkin.ui.online.OnlineMenuState());
-    });
-    #end
-
-    #if !debug
     if (hasUpgraded)
     {
       #if FEATURE_OPEN_URL
-      var hasPopupBlocker:Bool = #if web true #else false #end;
-      createMenuItem('merch', 'mainmenu/merch', selectMerch, hasPopupBlocker);
+      var hasPopupBlocker = #if web true #else false #end;
+      createMenuItem('merch', 'ui/main-menu/items/merch', selectMerch, hasPopupBlocker);
       #end
     }
     else
     {
       add(upgradeSparkles);
 
-      createMenuItem('upgrade', 'mainmenu/upgrade', function()
+      createMenuItem('upgrade', 'ui/main-menu/items/upgrade', function()
       {
         #if FEATURE_MOBILE_IAP
         InAppPurchasesUtil.purchase(InAppPurchasesUtil.UPGRADE_PRODUCT_ID, FlxG.resetState);
@@ -228,17 +208,16 @@ class MainMenuState extends MusicBeatState
         #end
       });
     }
-    #end
 
     if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end)
     {
-      createMenuItem('options', 'mainmenu/options', function()
+      createMenuItem('options', 'ui/main-menu/items/options', function()
       {
         startExitState(() -> new funkin.ui.options.OptionsState());
       });
     }
 
-    createMenuItem('credits', 'mainmenu/credits', function()
+    createMenuItem('credits', 'ui/main-menu/items/credits', function()
     {
       startExitState(() -> new funkin.ui.credits.CreditsState());
     });
@@ -258,7 +237,6 @@ class MainMenuState extends MusicBeatState
 
     menuItems.selectItem(rememberedSelectedIndex);
 
-    #if !debug
     if (!hasUpgraded)
     {
       var targetItem = menuItems.members[2];
@@ -285,7 +263,6 @@ class MainMenuState extends MusicBeatState
         }
       });
     }
-    #end
 
     resetCamStuff();
 
@@ -328,145 +305,15 @@ class MainMenuState extends MusicBeatState
     super.create();
 
     initLeftWatermarkText();
-
-    #if FEATURE_ONLINE
-    initOnlineStatusBar();
-    initOnlineSystem();
-    #end
-
-    checkModConversions();
-  }
-
-  #if FEATURE_ONLINE
-  function initOnlineStatusBar():Void
-  {
-    var barWidth:Int = 170;
-    var barHeight:Int = 46;
-    var barX:Float = FlxG.width - barWidth - 10;
-    var barY:Float = 10;
-
-    onlineBarBg = new FlxSprite(barX, barY);
-    onlineBarBg.makeGraphic(barWidth, barHeight, 0xCC000000);
-    onlineBarBg.scrollFactor.set(0, 0);
-    onlineBarBg.zIndex = 100000;
-    add(onlineBarBg);
-
-    onlineStatusText = new FlxText(barX + 8, barY + 6, barWidth - 16, '', 14);
-    onlineStatusText.setFormat('VCR OSD Mono', 14, FlxColor.WHITE, LEFT);
-    onlineStatusText.scrollFactor.set(0, 0);
-    onlineStatusText.zIndex = 100001;
-    add(onlineStatusText);
-
-    updateOnlineStatusBar();
-  }
-
-  function initOnlineSystem():Void
-  {
-    FunkinUser.instance.init(generateGuestId(), generateGuestName());
-    FunkinUser.instance.setActivity('In Menu');
-
-    FunkinOnline.instance.onConnected.add(updateOnlineStatusBar);
-    FunkinOnline.instance.onDisconnected.add(updateOnlineStatusBar);
-    FunkinUser.instance.onActiveUsersChanged.add(updateOnlineStatusBar);
-
-    if (FunkinOnline.instance.state == Disconnected)
-    {
-      FunkinOnline.instance.connect(ONLINE_SERVER_HOST, ONLINE_SERVER_PORT);
-    }
-  }
-
-  function generateGuestId():String
-  {
-    return 'guest-${Std.int(Math.abs(Date.now().getTime()))}-${FlxG.random.int(1000, 9999)}';
-  }
-
-  function generateGuestName():String
-  {
-    return 'Guest${FlxG.random.int(1000, 9999)}';
-  }
-
-  function updateOnlineStatusBar():Void
-  {
-    if (onlineStatusText == null) return;
-
-    var status:String = FunkinOnline.instance.isConnected() ? 'Online' : 'Offline';
-    var userCount:Int = FunkinUser.instance.getActiveUserCount();
-
-    onlineStatusText.text = 'Status: $status\nUsers: $userCount';
-  }
-  #end
-
-  #if FEATURE_3D_RENDERING
-  static final MENU_3D_MODEL_PATH:String = 'assets/models/menuBackground.gltf';
-
-  function init3DBackground():Void
-  {
-    if (!Preferences.mode3D) return;
-
-    if (!Paths.exists(MENU_3D_MODEL_PATH, BINARY))
-    {
-      FlxG.log.warn('[MainMenuState] 3D background model not found at $MENU_3D_MODEL_PATH, skipping.');
-      return;
-    }
-
-    scene3D = mainMenuCam.attach3DScene(FlxG.width, FlxG.height);
-    scene3D.loadGLTFModel(MENU_3D_MODEL_PATH);
-    scene3D.setCameraPosition(0, 1.4, -6);
-
-    add(scene3D.scene);
-  }
-
-  function destroy3DBackground():Void
-  {
-    if (scene3D == null) return;
-
-    remove(scene3D.scene);
-    mainMenuCam.detach3DScene();
-    scene3D = null;
-  }
-  #end
-
-  var modConversionText:Null<FlxText> = null;
-
-  function checkModConversions():Void
-  {
-    var totalConverted:Int = 0;
-    var totalErrors:Int = 0;
-    var modNames:Array<String> = [];
-
-    for (dirName => report in funkin.modding.PolymodHandler.conversionReports)
-    {
-      totalConverted++;
-      totalErrors += report.errors.length;
-      modNames.push(dirName);
-    }
-
-    if (totalConverted == 0) return;
-
-    FlxG.log.add('[MainMenuState] $totalConverted mod(s) auto-converted from Psych Engine format this session: ${modNames.join(", ")}');
-
-    if (totalErrors > 0)
-    {
-      FlxG.log.warn('[MainMenuState] $totalErrors conversion issue(s) reported across those mods — see PolymodHandler.conversionReports for details.');
-    }
-
-    var message:String = totalConverted == 1 ? '1 mod converted from Psych Engine format' : '$totalConverted mods converted from Psych Engine format';
-    if (totalErrors > 0) message += ' ($totalErrors issue${totalErrors == 1 ? '' : 's'}, see log)';
-
-    modConversionText = new FlxText(10, FlxG.height - 40, FlxG.width - 20, message, 12);
-    modConversionText.scrollFactor.set(0, 0);
-    modConversionText.setFormat('VCR OSD Mono', 12, totalErrors > 0 ? FlxColor.YELLOW : FlxColor.LIME, LEFT);
-    modConversionText.zIndex = 100000;
-    add(modConversionText);
   }
 
   function initLeftWatermarkText():Void
   {
     if (leftWatermarkText == null) return;
 
-    // se vc for dev ative isso.
-    leftWatermarkText.text += 'Friday Night Funkin: v0.8.7 | Moon Engine v${Constants.MOON_VERSION} (DEV-TEST - ${Constants.GIT_BRANCH}) - [Build ${Constants.BUILD_NUMBER}]';
-    // leftWatermarkText.text += 'Friday Night Funkin: v0.8.7 | Moon Engine v${Constants.MOON_VERSION} - ${Constants.BUILD_NUMBER}';
+    final prefix:String = '${BUILD_VERSION} - Build: ';
+
+    leftWatermarkText.text = prefix + BUILD_NUMBER;
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
@@ -474,11 +321,30 @@ class MainMenuState extends MusicBeatState
       leftWatermarkText.text += ' | Newgrounds: Logged in as ${NewgroundsClient.instance.user?.name}';
     }
     #end
+
+    if (BUILD_NUMBER == TAGGED_BUILD_NUMBER)
+    {
+      final startIndex:Int = prefix.length;
+      final endIndex:Int = startIndex + BUILD_NUMBER.length;
+
+      FlxTween.num(0, 1, 0.5, {type: PINGPONG, ease: FlxEase.quadInOut}, (value:Float) ->
+      {
+        if (leftWatermarkText == null) return;
+
+        final blendedColor:FlxColor = FlxColor.interpolate(FlxColor.YELLOW, FlxColor.WHITE, value);
+
+        leftWatermarkText.addFormat(new FlxTextFormat(blendedColor), startIndex, endIndex);
+      });
+    }
+
+    if (rightWatermarkText == null) return;
+
+    rightWatermarkText.text += 'Mod Menu Playtest Build (v0.9 Feature Preview #3)';
   }
 
   function playMenuMusic():Void
   {
-    FunkinSound.playMusic('freakyMenu', {
+    FunkinSound.playMusic('ui/main-menu/freaky-menu/freaky-menu', {
       overrideExisting: true,
       restartTrack: false,
       persist: true
@@ -489,27 +355,14 @@ class MainMenuState extends MusicBeatState
   {
     FlxG.camera.follow(camFollow, null, 0.06);
 
-    trace('=== CAMERA RESET ===');
-    trace('target: ${FlxG.camera.target}');
-    trace('followLerp: ${FlxG.camera.followLerp}');
-    trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
-    trace('zoom: ${FlxG.camera.zoom}');
-    trace('deadzone: ${FlxG.camera.deadzone}');
-
-    if (snap)
-    {
-      FlxG.camera.snapToTarget();
-
-      trace('AFTER SNAP');
-      trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
-    }
+    if (snap) FlxG.camera.snapToTarget();
   }
 
   function createMenuItem(name:String, atlas:String, callback:Void->Void, fireInstantly:Bool = false):Void
   {
     if (menuItems == null) return;
 
-    var item:AtlasMenuItem = new AtlasMenuItem(name, Paths.getSparrowAtlas(atlas), callback);
+    var item:AtlasMenuItem = new AtlasMenuItem(name, Assets.getSparrowAtlas(Paths.image(atlas)), callback);
     item.fireInstantly = fireInstantly;
     item.ID = menuItems.length;
     item.scrollFactor.set();
@@ -519,12 +372,18 @@ class MainMenuState extends MusicBeatState
     menuItems.addItem(name, item);
   }
 
+  var buttonGrp:Array<FlxSprite> = [];
+
+  function createMenuButtion(name:String, atlas:String, callback:Void->Void):Void
+  {
+    var item:FunkinButton = new FunkinButton(Math.round(FlxG.width * 0.8), Math.round(FlxG.height * 0.7));
+    item.makeGraphic(250, 250, FlxColor.BLUE);
+    item.onDown.add(callback);
+    buttonGrp.push(item);
+  }
+
   override function closeSubState():Void
   {
-    trace('=== closeSubState ===');
-    trace('persistentUpdate BEFORE: $persistentUpdate');
-    trace('camera target BEFORE: ${FlxG.camera.target}');
-
     magenta.visible = false;
 
     if (!(subState is flixel.addons.transition.Transition))
@@ -534,30 +393,21 @@ class MainMenuState extends MusicBeatState
       #if FEATURE_TOUCH_CONTROLS
       backButton?.animation.play('idle');
       backButton?.resetCallbacks();
+
       optionsButton?.animation.play('idle');
       optionsButton?.resetCallbacks();
       #end
     }
 
     super.closeSubState();
-
-    persistentUpdate = true;
-
-    trace('persistentUpdate AFTER: $persistentUpdate');
-    trace('camera target AFTER: ${FlxG.camera.target}');
   }
 
   function onMenuItemChange(selected:MenuListItem)
   {
-    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end)
-    {
-      camFollow.setPosition(selected.getGraphicMidpoint().x, selected.getGraphicMidpoint().y);
-
-      trace('=== MENU CHANGE ===');
-      trace('camFollow: ${camFollow.x}, ${camFollow.y}');
-      trace('camera target: ${FlxG.camera.target}');
-      trace('camera scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
-    }
+    if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end) camFollow.setPosition(
+      selected.getGraphicMidpoint().x,
+      selected.getGraphicMidpoint().y
+    );
   }
 
   #if FEATURE_OPEN_URL
@@ -596,26 +446,14 @@ class MainMenuState extends MusicBeatState
     var fadeOutDuration:Float = 0.4;
     menuItems.forEach(item ->
     {
-      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {
-        alpha: 0
-      }, fadeOutDuration, {
-        ease: FlxEase.quadOut
-      });
+      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
       else
         item.visible = false;
     });
 
     #if mobile
-    if (optionsButton != null) FlxTween.tween(optionsButton, {
-      alpha: 0
-    }, fadeOutDuration, {
-      ease: FlxEase.quadOut
-    });
-    if (backButton != null) FlxTween.tween(backButton, {
-      alpha: 0
-    }, fadeOutDuration, {
-      ease: FlxEase.quadOut
-    });
+    if (optionsButton != null) FlxTween.tween(optionsButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
+    if (backButton != null) FlxTween.tween(backButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
     #end
 
     FlxTimer.wait(fadeOutDuration, () ->
@@ -665,6 +503,21 @@ class MainMenuState extends MusicBeatState
     #end
   }
 
+  function emptyTallies():Dynamic
+  {
+    return {
+      sick: 0,
+      good: 0,
+      bad: 0,
+      shit: 0,
+      missed: 0,
+      combo: 0,
+      maxCombo: 0,
+      totalNotesHit: 0,
+      totalNotes: 0,
+    };
+  }
+
   function handleInputs():Void
   {
     if (!canInteract) return;
@@ -689,41 +542,21 @@ class MainMenuState extends MusicBeatState
 
     if (InputUtil.allPressedWithDebounce([CONTROL, ALT, SHIFT, W]))
     {
-      FunkinSound.playOnce(Paths.sound('confirmMenu'));
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu').toFlxSoundAsset());
       funkin.save.Save.instance.setLevelScore('weekend1', 'easy', {
         score: 1,
-        tallies: {
-          sick: 0,
-          good: 0,
-          bad: 0,
-          shit: 0,
-          missed: 0,
-          combo: 0,
-          maxCombo: 0,
-          totalNotesHit: 0,
-          totalNotes: 0,
-        }
+        tallies: emptyTallies()
       });
     }
 
     if (InputUtil.allPressedWithDebounce([CONTROL, ALT, SHIFT, M]))
     {
-      FunkinSound.playOnce(Paths.sound('confirmMenu'));
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu').toFlxSoundAsset());
       for (diff in ['easy', 'normal', 'hard'])
       {
         funkin.save.Save.instance.setLevelScore('weekend1', diff, {
           score: 0,
-          tallies: {
-            sick: 0,
-            good: 0,
-            bad: 0,
-            shit: 0,
-            missed: 0,
-            combo: 0,
-            maxCombo: 0,
-            totalNotesHit: 0,
-            totalNotes: 0,
-          }
+          tallies: emptyTallies()
         });
       }
     }
@@ -764,21 +597,6 @@ class MainMenuState extends MusicBeatState
     if (controls.BACK_P) goBack();
   }
 
-  override public function destroy():Void
-  {
-    #if FEATURE_3D_RENDERING
-    destroy3DBackground();
-    #end
-
-    #if FEATURE_ONLINE
-    FunkinOnline.instance.onConnected.remove(updateOnlineStatusBar);
-    FunkinOnline.instance.onDisconnected.remove(updateOnlineStatusBar);
-    FunkinUser.instance.onActiveUsersChanged.remove(updateOnlineStatusBar);
-    #end
-
-    super.destroy();
-  }
-
   function goOptions():Void
   {
     startExitState(() -> new funkin.ui.options.OptionsState());
@@ -788,7 +606,7 @@ class MainMenuState extends MusicBeatState
   {
     uiStateMachine.transition(Exiting);
     rememberedSelectedIndex = menuItems?.selectedIndex ?? 0;
-    FunkinSound.playOnce(Paths.sound('cancelMenu'));
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu').toString());
 
     FlxG.switchState(() -> new TitleState());
   }

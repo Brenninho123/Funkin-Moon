@@ -1,11 +1,9 @@
 package funkin.ui;
 
-import flixel.FlxState;
 import flixel.FlxSubState;
 import flixel.text.FlxText;
 import funkin.ui.mainmenu.MainMenuState;
 import flixel.util.FlxColor;
-import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.audio.FunkinSound;
 import funkin.modding.events.ScriptEvent;
 import funkin.modding.IScriptedClass.IEventHandler;
@@ -14,24 +12,29 @@ import funkin.modding.PolymodHandler;
 import funkin.util.SortUtil;
 import funkin.util.WindowUtil;
 import flixel.util.FlxSort;
+import flixel.util.typeLimit.NextState;
 import funkin.input.Controls;
-#if mobile
+import funkin.ui.transition.preload.hotreload.HotReloadState.HotReloadStateParams;
+#if FEATURE_TOUCH_CONTROLS
 import funkin.graphics.FunkinCamera;
+import funkin.mobile.ui.FunkinBackButton;
+import funkin.mobile.ui.mainmenu.FunkinOptionsButton;
+#end
+#if FEATURE_TOUCH_CONTROLS
 import funkin.mobile.ui.FunkinHitbox;
 import funkin.mobile.input.PreciseInputHandler;
-import funkin.mobile.ui.FunkinBackButton;
 import funkin.play.notes.NoteDirection;
 #end
 
+/**
+ * MusicBeatSubState reincorporates the functionality of MusicBeatState into an FlxSubState.
+ */
+@:nullSafety
 class MusicBeatSubState extends FlxSubState implements IEventHandler
 {
   public var leftWatermarkText:Null<FlxText> = null;
   public var rightWatermarkText:Null<FlxText> = null;
   public var conductorInUse(get, set):Conductor;
-
-  public var moduleErrorCount(default, null):Int = 0;
-
-  public var onModuleError:FlxTypedSignal<Dynamic->Void> = new FlxTypedSignal<Dynamic->Void>();
 
   var _conductorInUse:Null<Conductor>;
 
@@ -50,69 +53,59 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
 
   inline function get_controls():Controls return PlayerSettings.player1.controls;
 
-  #if mobile
+  #if FEATURE_TOUCH_CONTROLS
   public var hitbox:Null<FunkinHitbox>;
   public var backButton:Null<FunkinBackButton>;
+  public var optionsButton:Null<FunkinOptionsButton>;
   public var camControls:Null<FunkinCamera>;
 
-  function ensureControlsCamera():FunkinCamera
+  public function addHitbox(visible:Bool = true,
+    initInput:Bool = true,
+    ?schemeOverride:String,
+    ?directionsOverride:Array<NoteDirection>,
+    ?colorsOverride:Array<FlxColor>):Void
   {
-    var cam:Null<FunkinCamera> = camControls;
-
-    if (cam == null)
+    if (hitbox != null)
     {
-      cam = new FunkinCamera('camControls');
-      camControls = cam;
-      FlxG.cameras.add(cam, false);
-      cam.bgColor = 0x0;
+      hitbox.kill();
+      remove(hitbox);
+      hitbox.destroy();
     }
 
-    return cam;
-  }
-
-  public function addHitbox(visible:Bool = true, initInput:Bool = true, ?schemeOverride:String, ?directionsOverride:Array<NoteDirection>,
-      ?colorsOverride:Array<FlxColor>):Void
-  {
-    removeHitbox();
-
-    var cam:FunkinCamera = ensureControlsCamera();
+    if (camControls == null)
+    {
+      camControls = new FunkinCamera('camControls');
+      FlxG.cameras.add(camControls, false);
+      camControls.bgColor = 0x0;
+    }
 
     hitbox = new FunkinHitbox(schemeOverride, directionsOverride, colorsOverride);
-    hitbox.cameras = [cam];
+    hitbox.cameras = [camControls];
     hitbox.visible = visible;
     add(hitbox);
 
     if (initInput) PreciseInputHandler.initializeHitbox(hitbox);
   }
 
-  public function removeHitbox():Void
+  public function addBackButton(?xPos:Float = 0,
+    ?yPos:Float = 0,
+    ?color:FlxColor = FlxColor.WHITE,
+    ?confirmCallback:Void->Void = null,
+    ?restOpacity:Float = 0.3,
+    ?instant:Bool = false):Void
   {
-    if (hitbox == null) return;
+    if (backButton != null) remove(backButton);
 
-    hitbox.kill();
-    remove(hitbox);
-    hitbox.destroy();
-    hitbox = null;
-  }
-
-  public function addBackButton(?xPos:Float = 0, ?yPos:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void = null,
-      ?restOpacity:Float = 0.3, ?instant:Bool = false):Void
-  {
-    removeBackButton();
-
-    var cam:FunkinCamera = ensureControlsCamera();
+    if (camControls == null)
+    {
+      camControls = new FunkinCamera('camControls');
+      FlxG.cameras.add(camControls, false);
+      camControls.bgColor = 0x0;
+    }
 
     backButton = new FunkinBackButton(xPos, yPos, color, confirmCallback, restOpacity, instant);
-    backButton.cameras = [cam];
+    backButton.cameras = [camControls];
     add(backButton);
-  }
-
-  public function removeBackButton():Void
-  {
-    if (backButton == null) return;
-
-    remove(backButton);
-    backButton = null;
   }
   #end
 
@@ -146,12 +139,8 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   {
     super.destroy();
 
-    #if mobile
-    if (camControls != null)
-    {
-      FlxG.cameras.remove(camControls);
-      camControls = null;
-    }
+    #if FEATURE_TOUCH_CONTROLS
+    if (camControls != null) FlxG.cameras.remove(camControls);
     #end
 
     Conductor.beatHit.remove(this.beatHit);
@@ -162,163 +151,232 @@ class MusicBeatSubState extends FlxSubState implements IEventHandler
   {
     super.update(elapsed);
 
+    // Emergency exit button.
     if (FlxG.keys.justPressed.F4)
     {
-      this.close();
       FlxG.switchState(() -> new MainMenuState());
       WindowUtil.setWindowTitle('Friday Night Funkin\'');
-      return;
     }
 
+    // Display Conductor info in the watch window.
     FlxG.watch.addQuick('musicTime', FlxG.sound.music?.time ?? 0.0);
     Conductor.watchQuick(conductorInUse);
 
-    dispatchEvent(new UpdateScriptEvent(elapsed));
+    var event:UpdateScriptEvent = UpdateScriptEvent.get(elapsed);
+    dispatchEvent(event);
   }
 
   override function onFocus():Void
   {
     super.onFocus();
 
-    dispatchEvent(new FocusScriptEvent(FOCUS_GAINED));
+    var event:ScriptEvent = FocusScriptEvent.get(FOCUS_GAINED);
+    dispatchEvent(event);
   }
 
   override function onFocusLost():Void
   {
     super.onFocusLost();
 
-    dispatchEvent(new FocusScriptEvent(FOCUS_LOST));
+    var event:ScriptEvent = FocusScriptEvent.get(FOCUS_LOST);
+    dispatchEvent(event);
   }
 
   public function initConsoleHelpers():Void
   {
   }
 
-  function reloadAssets()
+  /**
+   * The parameters to use when hot reloading.
+   * Can be overwritten by states to ensure that they're hot reloaded properly.
+   * @return HotReloadStateParams
+   */
+  public function getHotReloadParams():HotReloadStateParams
   {
-    PolymodHandler.forceReloadAssets();
-
-    FlxG.resetState();
+    return {
+      targetState: getConstructor()
+    };
   }
 
+  function getConstructor():NextState
+  {
+    var scriptedNextState:NextState = () ->
+    {
+      var path:String = _asc?.fullyQualifiedName ?? '';
+      var constructorArgs:Array<Dynamic> = _asc?.getConstructorArgs() ?? [];
+
+      var newState:Null<MusicBeatSubState> = MusicBeatSubState.scriptInit(path, ...constructorArgs);
+      if (newState == null) return new funkin.ui.mainmenu.MainMenuState();
+      return newState;
+    }
+    var nextState:NextState = _asc != null ? scriptedNextState : _constructor;
+
+    return nextState;
+  }
+
+  /**
+   * Called right before hot reloading begins.
+   */
+  public function onPreHotReload():Void
+  {
+  }
+
+  /**
+   * Called right after hot reloading and the state is initalized.
+   */
+  public function onPostHotReload():Void
+  {
+  }
+
+  /**
+   * Refreshes the state, by redoing the render order of all sprites.
+   * It does this based on the `zIndex` of each prop.
+   */
   public function refresh()
   {
     sort(SortUtil.byZIndex, FlxSort.ASCENDING);
   }
 
+  /**
+   * Called when a step is hit in the current song.
+   * Continues outside of PlayState, for things like animations in menus.
+   * @return Whether the event should continue (not canceled).
+   */
   public function stepHit():Bool
   {
     if (this.subState != null && !persistentUpdate) return false;
 
-    var event:ScriptEvent = new SongTimeScriptEvent(SONG_STEP_HIT, conductorInUse.currentBeat, conductorInUse.currentStep);
+    var event:ScriptEvent = SongTimeScriptEvent.get(SONG_STEP_HIT, conductorInUse.currentBeat, conductorInUse.currentStep);
 
-    dispatchEvent(event);
+    dispatchEvent(event, false);
 
-    if (event.eventCanceled) return false;
+    if (event.eventCanceled)
+    {
+      event.finish();
+      return false;
+    }
 
+    event.finish();
     return true;
   }
 
+  /**
+   * Called when a beat is hit in the current song.
+   * Continues outside of PlayState, for things like animations in menus.
+   * @return Whether the event should continue (not canceled).
+   */
   public function beatHit():Bool
   {
     if (this.subState != null && !persistentUpdate) return false;
 
-    var event:ScriptEvent = new SongTimeScriptEvent(SONG_BEAT_HIT, conductorInUse.currentBeat, conductorInUse.currentStep);
+    var event:ScriptEvent = SongTimeScriptEvent.get(SONG_BEAT_HIT, conductorInUse.currentBeat, conductorInUse.currentStep);
 
-    dispatchEvent(event);
+    dispatchEvent(event, false);
 
-    if (event.eventCanceled) return false;
+    if (event.eventCanceled)
+    {
+      event.finish();
+      return false;
+    }
 
+    event.finish();
     return true;
   }
 
-  public function dispatchEvent(event:ScriptEvent)
+  public function dispatchEvent(event:ScriptEvent, finish:Bool = true):Void
   {
-    try
-    {
-      ModuleHandler.callEvent(event);
-    }
-    catch (e:Dynamic)
-    {
-      moduleErrorCount++;
-      FlxG.log.error('[MusicBeatSubState] A module/script threw an error handling "${event.type}": $e');
-      onModuleError.dispatch(e);
-    }
+    ModuleHandler.callEvent(event);
+
+    if (finish) event.finish();
   }
 
   function createWatermarkText():Void
   {
+    // Both have an xPos of 0, but a width equal to the full screen.
+    // The rightWatermarkText is right aligned, which puts the text in the correct spot.
     leftWatermarkText = new FlxText(0, FlxG.height - 18, FlxG.width, '', 12);
     rightWatermarkText = new FlxText(0, FlxG.height - 18, FlxG.width, '', 12);
 
+    // 100,000 should be good enough.
     leftWatermarkText.zIndex = 100000;
     rightWatermarkText.zIndex = 100000;
     leftWatermarkText.scrollFactor.set(0, 0);
     rightWatermarkText.scrollFactor.set(0, 0);
-    leftWatermarkText.setFormat('VCR OSD Mono', 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-    rightWatermarkText.setFormat('VCR OSD Mono', 16, FlxColor.WHITE, RIGHT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    leftWatermarkText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    rightWatermarkText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 16, FlxColor.WHITE, RIGHT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 
     add(leftWatermarkText);
     add(rightWatermarkText);
   }
 
+  /**
+   * Close this substate and replace it with a different one.
+   */
   public function switchSubState(substate:FlxSubState):Void
   {
-    var parent:Null<FlxState> = this._parentState;
-
     this.close();
-
-    if (parent != null) parent.openSubState(substate);
+    this._parentState.openSubState(substate);
   }
 
   @:nullSafety(Off)
   override function startOutro(onComplete:() -> Void):Void
   {
-    var event = new StateChangeScriptEvent(STATE_CHANGE_BEGIN, null, true);
+    var event = StateChangeScriptEvent.get(STATE_CHANGE_BEGIN, null, true);
 
-    dispatchEvent(event);
+    dispatchEvent(event, false);
 
     if (event.eventCanceled)
     {
+      event.finish();
       return;
     }
-    else
-    {
-      FunkinSound.stopAllAudio();
 
-      onComplete();
-    }
+    FunkinSound.stopAllAudio();
+    onComplete();
+    event.finish();
   }
 
   override public function openSubState(targetSubState:FlxSubState):Void
   {
-    var event = new SubStateScriptEvent(SUBSTATE_OPEN_BEGIN, targetSubState, true);
+    var event = SubStateScriptEvent.get(SUBSTATE_OPEN_BEGIN, targetSubState, true);
 
-    dispatchEvent(event);
+    dispatchEvent(event, false);
 
-    if (event.eventCanceled) return;
+    if (event.eventCanceled)
+    {
+      event.finish();
+      return;
+    }
 
     super.openSubState(targetSubState);
+    event.finish();
   }
 
   function onOpenSubStateComplete(targetState:FlxSubState):Void
   {
-    dispatchEvent(new SubStateScriptEvent(SUBSTATE_OPEN_END, targetState, true));
+    var event:SubStateScriptEvent = SubStateScriptEvent.get(SUBSTATE_OPEN_END, targetState, true);
+    dispatchEvent(event);
   }
 
   override public function closeSubState():Void
   {
-    var event = new SubStateScriptEvent(SUBSTATE_CLOSE_BEGIN, this.subState, true);
+    var event = SubStateScriptEvent.get(SUBSTATE_CLOSE_BEGIN, this.subState, true);
 
-    dispatchEvent(event);
+    dispatchEvent(event, false);
 
-    if (event.eventCanceled) return;
+    if (event.eventCanceled)
+    {
+      event.finish();
+      return;
+    }
 
     super.closeSubState();
+    event.finish();
   }
 
   function onCloseSubStateComplete(targetState:FlxSubState):Void
   {
-    dispatchEvent(new SubStateScriptEvent(SUBSTATE_CLOSE_END, targetState, true));
+    var event:SubStateScriptEvent = SubStateScriptEvent.get(SUBSTATE_CLOSE_END, targetState, true);
+    dispatchEvent(event);
   }
 }

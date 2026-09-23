@@ -3,6 +3,8 @@ package funkin.play.cutscene.dialogue;
 import flixel.FlxSprite;
 import funkin.data.IRegistryEntry;
 import flixel.group.FlxSpriteGroup;
+import funkin.group.FunkinGroup;
+import funkin.group.FunkinGroup.FunkinSpriteGroup;
 import flixel.graphics.frames.FlxFramesCollection;
 import funkin.graphics.FunkinSprite;
 import funkin.util.assets.FlxAnimationUtil;
@@ -13,7 +15,7 @@ import flixel.util.FlxColor;
 import funkin.data.dialogue.DialogueBoxData;
 import funkin.data.dialogue.DialogueBoxRegistry;
 
-class DialogueBox extends FlxSpriteGroup implements IDialogueScriptedClass implements IRegistryEntry<DialogueBoxData>
+class DialogueBox extends FunkinSpriteGroup implements IDialogueScriptedClass implements IRegistryEntry<DialogueBoxData>
 {
   public var dialogueBoxName(get, never):String;
 
@@ -64,7 +66,9 @@ class DialogueBox extends FlxSpriteGroup implements IDialogueScriptedClass imple
     originalPosition[1] = this.y;
 
     this.x = value[0] + originalPosition[0] + animOffsets[0];
+    this.localX = value[0] + originalPosition[0] + animOffsets[0];
     this.y = value[1] + originalPosition[1] + animOffsets[1];
+    this.localY = value[1] + originalPosition[1] + animOffsets[1];
 
     return globalOffsets = value;
   }
@@ -187,14 +191,18 @@ class DialogueBox extends FlxSpriteGroup implements IDialogueScriptedClass imple
 
   /**
    * Set the sprite scale to the appropriate value.
-   * @param scale
+   *
+   * @param scale The desired scale.
    */
   public function setScale(scale:Null<Float>):Void
   {
     if (scale == null) scale = 1.0;
 
     this.boxSprite.scale.x = scale;
+    this.boxSprite.localScale.x = scale;
     this.boxSprite.scale.y = scale;
+    this.boxSprite.localScale.y = scale;
+
     this.boxSprite.updateHitbox();
   }
 
@@ -284,18 +292,25 @@ class DialogueBox extends FlxSpriteGroup implements IDialogueScriptedClass imple
   {
     textDisplay = new FunkinTypeText(0, 0, 300, '', 32);
     textDisplay.fieldWidth = _data.text.width;
-    textDisplay.setFormat(_data.text.fontFamily, _data.text.size, FlxColor.fromString(_data.text.color), LEFT, SHADOW,
-      FlxColor.fromString(_data.text.shadowColor ?? '#00000000'), false);
+    textDisplay.setFormat(
+      _data.text.fontFamily,
+      _data.text.size,
+      FlxColor.fromString(_data.text.color),
+      LEFT,
+      SHADOW,
+      FlxColor.fromString(_data.text.shadowColor ?? '#00000000'),
+      false
+    );
     textDisplay.borderSize = _data.text.shadowWidth ?? 2;
     // TODO: Add an option to configure this.
-    textDisplay.sounds = [
-      FunkinSound.load(Paths.sound('pixelText'), 0.6)
-    ];
+    textDisplay.sounds = [FunkinSound.load(Paths.sound('gameplay/dialogue/boxes/roses/click'), 0.6)];
 
     textDisplay.completeCallback = onTypingComplete;
 
     textDisplay.x += _data.text.offsets[0];
+    textDisplay.localX = textDisplay.x;
     textDisplay.y += _data.text.offsets[1];
+    textDisplay.localY = textDisplay.y;
 
     add(textDisplay);
   }

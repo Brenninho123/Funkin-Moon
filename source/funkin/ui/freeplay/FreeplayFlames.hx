@@ -23,7 +23,7 @@ class FreeplayFlames extends FlxSpriteGroup
     for (i in 0...5)
     {
       var flame:FlxSprite = new FlxSprite(flameX + (flameSpreadX * i), flameY + (flameSpreadY * i));
-      flame.frames = Paths.getSparrowAtlas("freeplay/freeplayFlame");
+      flame.frames = Paths.getSparrowAtlas("ui/freeplay/difficulty/freeplay-flame");
       flame.animation.addByPrefix("flame", "fire loop full instance 1", FlxG.random.int(23, 25), false);
       flame.animation.play("flame");
       flame.visible = false;
@@ -65,7 +65,6 @@ class FreeplayFlames extends FlxSpriteGroup
       timers.remove(timer);
     }
 
-    this.properPositions = false;
     this.flameCount = value;
     var visibleCount:Int = 0;
     for (i in 0...5)

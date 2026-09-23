@@ -5,10 +5,9 @@ import funkin.ui.transition.LoadingState;
 import funkin.ui.TextMenuList;
 import funkin.ui.TextMenuList.TextMenuItem;
 import flixel.math.FlxPoint;
-import funkin.ui.TextMenuList;
-import funkin.ui.TextMenuList.TextMenuItem;
 import flixel.FlxSprite;
 import flixel.FlxObject;
+import flixel.FlxState;
 import flixel.FlxSubState;
 import flixel.group.FlxGroup;
 import flixel.util.FlxSignal;
@@ -20,12 +19,11 @@ import funkin.input.Controls;
 #if FEATURE_NEWGROUNDS
 import funkin.api.newgrounds.NewgroundsClient;
 #end
-#if mobile
+#if FEATURE_TOUCH_CONTROLS
 import funkin.util.TouchUtil;
 import funkin.mobile.ui.FunkinBackButton;
 import funkin.mobile.input.ControlsHandler;
 import funkin.mobile.ui.options.ControlsSchemeMenu;
-import funkin.ui.debug.DebugMenuSubState;
 #end
 #if FEATURE_MOBILE_IAP
 import funkin.mobile.util.InAppPurchasesUtil;
@@ -41,6 +39,7 @@ class OptionsState extends MusicBeatState
   public var drumsBG:FunkinSound;
 
   public static var rememberedSelectedIndex:Int = 0;
+  public static var backState:Null<String> = null;
 
   override function create():Void
   {
@@ -48,9 +47,9 @@ class OptionsState extends MusicBeatState
 
     persistentUpdate = true;
 
-    drumsBG = FunkinSound.load(Paths.music('offsetsLoop/drumsLoop'), 0, true, false, false, false);
+    drumsBG = FunkinSound.load(Paths.music('ui/input-offsets/drums-loop/drums-loop'), 0, true, false, false, false);
 
-    var menuBG = new FlxSprite().loadGraphic(Paths.image('menuBG'));
+    var menuBG = new FlxSprite().loadGraphic(Paths.image('ui/main-menu/menu-bg'));
     var hsv = new HSVShader(-0.6, 0.9, 3.6);
     menuBG.shader = hsv;
     menuBG.setGraphicSize(Std.int(FlxG.width * 1.1));
@@ -85,7 +84,7 @@ class OptionsState extends MusicBeatState
     }
     else
     {
-      #if mobile
+      #if FEATURE_TOUCH_CONTROLS
       preferences.onExit.add(exitToMainMenu);
       optionsCodex.setPage(Preferences);
       #else
@@ -95,7 +94,7 @@ class OptionsState extends MusicBeatState
     }
 
     super.create();
-    #if mobile
+    #if FEATURE_TOUCH_CONTROLS
     addHitbox();
     hitbox.visible = false;
     #end
@@ -109,7 +108,7 @@ class OptionsState extends MusicBeatState
     }
     FlxG.sound.music.fadeOut(0.5, 0, function(tw)
     {
-      FunkinSound.playMusic('freakyMenu', {
+      FunkinSound.playMusic('ui/main-menu/freaky-menu/freaky-menu', {
         startingVolume: 0,
         overrideExisting: true,
         restartTrack: true,
@@ -131,8 +130,18 @@ class OptionsState extends MusicBeatState
   function exitToMainMenu():Void
   {
     optionsCodex.currentPage.enabled = false;
-    FlxG.keys.enabled = false;
-    FlxG.switchState(() -> new MainMenuState());
+
+    var state:MusicBeatState = (backState != null) ? MusicBeatState.scriptInit(backState) : null;
+
+    if (state != null)
+    {
+      FlxG.switchState(state);
+    }
+    else
+    {
+      FlxG.keys.enabled = false;
+      FlxG.switchState(() -> new MainMenuState());
+    }
   }
 }
 
@@ -154,7 +163,7 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     add(items = new TextMenuList());
 
     createItem('PREFERENCES', function() codex.switchPage(Preferences));
-    #if mobile
+    #if FEATURE_TOUCH_CONTROLS
     if (ControlsHandler.hasExternalInputDevice)
     #end
     createItem('CONTROLS', function() codex.switchPage(Controls));
@@ -163,7 +172,7 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     {
       var switchToOffsets = function()
       {
-        FunkinSound.playMusic('offsetsLoop', {
+        FunkinSound.playMusic('ui/input-offsets/offsets-loop/offsets-loop', {
           startingVolume: 0,
           overrideExisting: true,
           restartTrack: true,
@@ -193,14 +202,15 @@ class OptionsMenu extends Page<OptionsMenuPageName>
       InAppPurchasesUtil.restorePurchases();
     });
     #end
-    #if android
-    if (funkin.Preferences.storageType == 'data')
+    #if FEATURE_TOUCH_CONTROLS
+    createItem('OPEN MOD MENU', function()
     {
-      createItem('OPEN DATA FOLDER', function()
-      {
-        funkin.external.android.ExternalFolderUtil.openFolder();
-      });
-    }
+      FlxG.switchState(() -> new funkin.ui.modmenu.ModMenuState());
+    });
+    createItem('OPEN DEBUG MENU', function()
+    {
+      FlxG.state.openSubState(new funkin.ui.debug.DebugMenuSubState());
+    });
     #end
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
@@ -250,13 +260,6 @@ class OptionsMenu extends Page<OptionsMenuPageName>
 
   public function addSaveDataOptionsItem(saveDataMenu:SaveDataMenu):Void
   {
-    #if (mobile && FEATURE_DEBUG_MENU)
-    createItem('DEBUG MENU', function()
-    {
-      FlxG.state.openSubState(new DebugMenuSubState());
-    });
-    #end
-
     if (saveDataMenu.hasMultipleOptions())
     {
       createItem('SAVE DATA OPTIONS', function()
@@ -275,7 +278,7 @@ class OptionsMenu extends Page<OptionsMenuPageName>
     #if NO_FEATURE_TOUCH_CONTROLS
     createItem('EXIT', exit);
     #else
-    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, exit, 1.0);
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exit);
     backButton.onConfirmStart.add(function()
     {
       items.busy = true;

@@ -6,6 +6,8 @@ import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
 import flixel.util.FlxSort;
 import funkin.audio.FunkinSound;
+import funkin.group.FunkinGroup;
+import funkin.group.FunkinGroup.FunkinSpriteGroup;
 import funkin.data.dialogue.ConversationData;
 import funkin.data.dialogue.ConversationData.DialogueEntryData;
 import funkin.data.dialogue.ConversationRegistry;
@@ -26,7 +28,7 @@ import funkin.util.EaseUtil;
  * This shit is great for modders but it's pretty elaborate for how much it'll actually be used, lolol. -Eric
  */
 @:nullSafety
-class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass implements IRegistryEntry<ConversationData>
+class Conversation extends FunkinSpriteGroup implements IDialogueScriptedClass implements IEventHandler implements IRegistryEntry<ConversationData>
 {
   /**
    * The current state of the conversation.
@@ -109,7 +111,7 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     this.state = ConversationState.Start;
 
     // Start the dialogue.
-    dispatchEvent(new DialogueScriptEvent(DIALOGUE_START, this, false));
+    startConversation();
   }
 
   function setupMusic():Void
@@ -123,7 +125,11 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
 
     if (fadeTime > 0.0)
     {
-      FlxTween.tween(music, {volume: 1.0}, fadeTime, {ease: FlxEase.linear});
+      FlxTween.tween(music, {
+        volume: 1.0
+      }, fadeTime, {
+        ease: FlxEase.linear
+      });
     }
     else
     {
@@ -134,24 +140,12 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     }
   }
 
-  public function pause():Void
-  {
-    if (outroTween != null) outroTween.active = false;
-    pauseMusic();
-  }
-
   public function pauseMusic():Void
   {
     if (music != null)
     {
       music.pause();
     }
-  }
-
-  public function resume():Void
-  {
-    if (outroTween != null) outroTween.active = true;
-    resumeMusic();
   }
 
   public function resumeMusic():Void
@@ -187,7 +181,11 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
         if (fadeTime > 0.0)
         {
           backdrop.alpha = 0.0;
-          FlxTween.tween(backdrop, {alpha: 1.0}, fadeTime, {ease: EaseUtil.stepped(10)});
+          FlxTween.tween(backdrop, {
+            alpha: 1.0
+          }, fadeTime, {
+            ease: EaseUtil.stepped(10)
+          });
         }
         else
         {
@@ -206,7 +204,8 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
   {
     super.update(elapsed);
 
-    dispatchEvent(new UpdateScriptEvent(elapsed));
+    var event:UpdateScriptEvent = UpdateScriptEvent.get(elapsed);
+    dispatchEvent(event);
   }
 
   function showCurrentSpeaker():Void
@@ -239,7 +238,9 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     }
     if (!nextSpeaker.alive) nextSpeaker.revive();
 
-    ScriptEventDispatcher.callEvent(nextSpeaker, new ScriptEvent(CREATE, true));
+    var event:ScriptEvent = ScriptEvent.get(CREATE);
+    ScriptEventDispatcher.callEvent(nextSpeaker, event);
+    event.finish();
 
     currentSpeaker = nextSpeaker;
     currentSpeaker.zIndex = 200;
@@ -254,11 +255,6 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     if (nextSpeakerAnimation == null) return;
 
     if (currentSpeaker != null) currentSpeaker.playAnimation(nextSpeakerAnimation);
-  }
-
-  public function refresh():Void
-  {
-    sort(SortUtil.byZIndex, FlxSort.ASCENDING);
   }
 
   function showCurrentDialogueBox():Void
@@ -284,7 +280,9 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     }
     if (!nextDialogueBox.alive) nextDialogueBox.revive();
 
-    ScriptEventDispatcher.callEvent(nextDialogueBox, new ScriptEvent(CREATE, true));
+    var event:ScriptEvent = ScriptEvent.get(CREATE);
+    ScriptEventDispatcher.callEvent(nextDialogueBox, event);
+    event.finish();
 
     currentDialogueBox = nextDialogueBox;
     currentDialogueBox.zIndex = 300;
@@ -319,7 +317,14 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
 
   public function startConversation():Void
   {
-    dispatchEvent(new DialogueScriptEvent(DIALOGUE_START, this, true));
+    var event:DialogueScriptEvent = DialogueScriptEvent.get(DIALOGUE_START, this, true);
+    dispatchEvent(event);
+  }
+
+  public function endConversation():Void
+  {
+    var event:DialogueScriptEvent = DialogueScriptEvent.get(DIALOGUE_END, this, true);
+    dispatchEvent(event);
   }
 
   /**
@@ -331,28 +336,35 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
    */
   public function advanceConversation():Void
   {
+    var event:Null<DialogueScriptEvent> = null;
+
     switch (state)
     {
       case ConversationState.Start:
-        dispatchEvent(new DialogueScriptEvent(DIALOGUE_START, this, true));
-      case ConversationState.Opening:
-        dispatchEvent(new DialogueScriptEvent(DIALOGUE_COMPLETE_LINE, this, true));
-      case ConversationState.Speaking:
-        dispatchEvent(new DialogueScriptEvent(DIALOGUE_COMPLETE_LINE, this, true));
+        startConversation();
+        return;
+      case ConversationState.Opening | ConversationState.Speaking:
+        event = DialogueScriptEvent.get(DIALOGUE_COMPLETE_LINE, this, true);
       case ConversationState.Idle:
-        dispatchEvent(new DialogueScriptEvent(DIALOGUE_LINE, this, true));
+        event = DialogueScriptEvent.get(DIALOGUE_LINE, this, true);
       case ConversationState.Ending:
         // Skip the outro.
         endOutro();
+        return;
       default:
         // Do nothing.
     }
+
+    if (event != null)
+    {
+      dispatchEvent(event);
+    }
   }
 
-  public function dispatchEvent(event:ScriptEvent):Void
+  public function dispatchEvent(event:ScriptEvent, finish:Bool = true):Void
   {
     var currentState:IEventHandler = cast FlxG.state;
-    currentState.dispatchEvent(event);
+    currentState.dispatchEvent(event, finish);
   }
 
   /**
@@ -408,7 +420,8 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
    */
   public function skipConversation():Void
   {
-    dispatchEvent(new DialogueScriptEvent(DIALOGUE_SKIP, this, true));
+    var event:DialogueScriptEvent = DialogueScriptEvent.get(DIALOGUE_SKIP, this, true);
+    dispatchEvent(event);
   }
 
   var outroTween:Null<FlxTween> = null;
@@ -418,14 +431,18 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     switch (_data?.outro)
     {
       case FADE(outroData):
-        outroTween = FlxTween.tween(this, {alpha: 0.0}, outroData.fadeTime, {
+        outroTween = FlxTween.tween(this, {
+          alpha: 0.0
+        }, outroData.fadeTime, {
           type: ONESHOT, // holy shit like the game no way
           startDelay: 0,
           onComplete: (_) -> endOutro(),
           ease: EaseUtil.stepped(8)
         });
 
-        if (this.music != null) FlxTween.tween(this.music, {volume: 0.0}, outroData.fadeTime);
+        if (this.music != null) FlxTween.tween(this.music, {
+          volume: 0.0
+        }, outroData.fadeTime);
       case NONE(_):
         // Immediately clean up.
         endOutro();
@@ -439,7 +456,9 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
 
   public function endOutro():Void
   {
-    ScriptEventDispatcher.callEvent(this, new ScriptEvent(DESTROY, false));
+    var event:ScriptEvent = ScriptEvent.get(DESTROY);
+    ScriptEventDispatcher.callEvent(this, event);
+    event.finish();
   }
 
   /**
@@ -478,7 +497,7 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
 
       if (currentDialogueEntry >= currentDialogueEntryCount)
       {
-        dispatchEvent(new DialogueScriptEvent(DIALOGUE_END, this, false));
+        endConversation();
       }
       else
       {
@@ -518,7 +537,7 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
     propagateEvent(event);
     if (event.eventCanceled) return;
 
-    dispatchEvent(new DialogueScriptEvent(DIALOGUE_END, this, false));
+    endConversation();
   }
 
   public function onDialogueEnd(event:DialogueScriptEvent):Void
@@ -544,9 +563,10 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
       case ConversationState.Opening:
         // Backdrop animation should have started.
         // Box animations should have started.
-        if (currentDialogueBox != null
-          && (currentDialogueBox.isAnimationFinished()
-            || currentDialogueBox.getCurrentAnimation() != currentDialogueEntryData?.boxAnimation))
+        if (
+          currentDialogueBox != null
+          && (currentDialogueBox.isAnimationFinished() || currentDialogueBox.getCurrentAnimation() != currentDialogueEntryData?.boxAnimation)
+        )
         {
           // Box animations have finished.
 
@@ -646,17 +666,16 @@ class Conversation extends FlxSpriteGroup implements IDialogueScriptedClass impl
    */
   override public function kill():Void
   {
-    _skipTransformChildren = true;
     alive = false;
     exists = false;
-    _skipTransformChildren = false;
-    if (group != null) group.kill();
 
     if (outroTween != null)
     {
       outroTween.cancel();
       outroTween = null;
     }
+
+    super.kill();
   }
 }
 

@@ -26,6 +26,7 @@ import haxe.ui.containers.menus.MenuOptionBox;
 import haxe.ui.containers.menus.MenuCheckBox;
 import funkin.util.FileUtil;
 import funkin.ui.mainmenu.MainMenuState;
+import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 import funkin.ui.debug.stageeditor.handlers.AssetDataHandler;
 import funkin.ui.debug.stageeditor.handlers.AssetDataHandler.StageEditorObjectData;
 import funkin.ui.debug.stageeditor.handlers.StageDataHandler;
@@ -53,16 +54,15 @@ import funkin.graphics.shaders.Grayscale;
 import funkin.data.stage.StageRegistry;
 import funkin.graphics.FunkinCamera;
 import haxe.io.Bytes;
+#if FEATURE_TOUCH_CONTROLS
+import funkin.mobile.ui.FunkinBackButton;
+import funkin.mobile.input.ControlsHandler;
+import flixel.input.touch.FlxTouch;
+#end
 
-/**
- * Da Stage Editor woo!!
- * made by Kolo NEVER FORGET
- */
-@:build(haxe.ui.ComponentBuilder.build('assets/exclude/data/ui/stage-editor/main-view.xml'))
+@:build(haxe.ui.ComponentBuilder.build('assets/exclude/ui/editors/stage-editor/main-view.xml'))
 class StageEditorState extends UIState
 {
-  // i aint documenting allat
-  // the uh finals
   public static final BACKUPS_PATH:String = './backups/stages/';
   public static final LIGHT_MODE_COLORS:Array<FlxColor> = [0xFFE7E6E6, 0xFFF8F8F8];
   public static final DARK_MODE_COLORS:Array<FlxColor> = [0xFF181919, 0xFF202020];
@@ -77,38 +77,37 @@ class StageEditorState extends UIState
     CharacterType.DAD => [150, -100]
   ];
   public static final MAX_Z_INDEX:Int = 10000;
-  public static final CHARACTER_COLORS:Array<FlxColor> = [FlxColor.RED, FlxColor.PURPLE, FlxColor.CYAN]; // FCUK IVE TURNED INTO AN AMERICAN
+  public static final CHARACTER_COLORS:Array<FlxColor> = [FlxColor.RED, FlxColor.PURPLE, FlxColor.CYAN];
   public static final TIME_BEFORE_ANIM_STOP:Float = 3.0;
 
-  // the other shit:tm:
   var menubar:MenuBar;
   var menubarMenuFile:Menu;
-  var menubarItemNewStage:MenuItem; // new
-  var menubarItemOpenStage:MenuItem; // open
-  var menubarItemOpenRecent:Menu; // open recent submenu
-  var menubarItemSaveStage:MenuItem; // save
-  var menubarItemSaveStageAs:MenuItem; // save as
-  var menubarItemClearAssets:MenuItem; // clear assets
-  var menubarItemExit:MenuItem; // exit
+  var menubarItemNewStage:MenuItem;
+  var menubarItemOpenStage:MenuItem;
+  var menubarItemOpenRecent:Menu;
+  var menubarItemSaveStage:MenuItem;
+  var menubarItemSaveStageAs:MenuItem;
+  var menubarItemClearAssets:MenuItem;
+  var menubarItemExit:MenuItem;
   var menubarMenuEdit:Menu;
-  var menubarItemUndo:MenuItem; // undo
-  var menubarItemRedo:MenuItem; // redo
-  var menubarItemCopy:MenuItem; // copy
-  var menubarItemCut:MenuItem; // cut
-  var menubarItemPaste:MenuItem; // paste
-  var menubarItemDelete:MenuItem; // delete
-  var menubarItemNewObj:MenuItem; // new
-  var menubarItemFindObj:MenuItem; // find
-  var menubarItemSelectNone:MenuItem; // access none
-  var menubarItemMoveStep:Menu; // move step submenu
+  var menubarItemUndo:MenuItem;
+  var menubarItemRedo:MenuItem;
+  var menubarItemCopy:MenuItem;
+  var menubarItemCut:MenuItem;
+  var menubarItemPaste:MenuItem;
+  var menubarItemDelete:MenuItem;
+  var menubarItemNewObj:MenuItem;
+  var menubarItemFindObj:MenuItem;
+  var menubarItemSelectNone:MenuItem;
+  var menubarItemMoveStep:Menu;
   var menubarMenuView:Menu;
-  var menubarItemThemeLight:MenuOptionBox; // light mode option
-  var menubarItemThemeDark:MenuOptionBox; // dark mode option
-  var menubarItemViewChars:MenuCheckBox; // view chars check
-  var menubarItemViewNameText:MenuCheckBox; // view name text check
-  var menubarItemViewFloorLines:MenuCheckBox; // view floor lines check
-  var menubarItemViewPosMarkers:MenuCheckBox; // view pos markers check
-  var menubarItemViewCamBounds:MenuCheckBox; // view cam bounds check
+  var menubarItemThemeLight:MenuOptionBox;
+  var menubarItemThemeDark:MenuOptionBox;
+  var menubarItemViewChars:MenuCheckBox;
+  var menubarItemViewNameText:MenuCheckBox;
+  var menubarItemViewFloorLines:MenuCheckBox;
+  var menubarItemViewPosMarkers:MenuCheckBox;
+  var menubarItemViewCamBounds:MenuCheckBox;
   var menubarMenuWindow:Menu;
   var menubarItemWindowObjectGraphic:MenuCheckBox;
   var menubarItemWindowObjectAnims:MenuCheckBox;
@@ -119,7 +118,7 @@ class StageEditorState extends UIState
   var menubarItemUserGuide:MenuItem;
   var menubarItemGoToBackupsFolder:MenuItem;
   var menubarItemAbout:MenuItem;
-  var menubarButtonText:Button; // test stage button
+  var menubarButtonText:Button;
   var windowList:WindowList;
   var bottomBarModeText:Label;
   var bottomBarSelectText:Label;
@@ -137,12 +136,6 @@ class StageEditorState extends UIState
     updateDialog(StageEditorDialogType.OBJECT_GRAPHIC);
     updateDialog(StageEditorDialogType.OBJECT_ANIMS);
     updateDialog(StageEditorDialogType.OBJECT_PROPERTIES);
-
-    if (selectedSprite != null)
-    {
-      // spriteMarker.setGraphicSize(Std.int(selectedSprite.width), Std.int(selectedSprite.height));
-      // spriteMarker.updateHitbox();
-    }
 
     selectedSprite?.selectedShader.setAmount(1);
 
@@ -229,9 +222,6 @@ class StageEditorState extends UIState
   public var charCamOffsets:Map<CharacterType, Array<Float>> = DEFAULT_CAMERA_OFFSETS.copy();
   public var charPos:Map<CharacterType, Array<Float>> = DEFAULT_POSITIONS.copy();
 
-  /**
-   * An array of files used by the sprites.
-   */
   public var allFiles(get, never):Array<StageEditorAssetFile>;
 
   function get_allFiles()
@@ -282,10 +272,15 @@ class StageEditorState extends UIState
     return value;
   }
 
-  /**
-   * The params which were passed in when the Stage Editor was initialized.
-   */
   var params:Null<StageEditorParams>;
+
+  #if FEATURE_TOUCH_CONTROLS
+  var backButton:FunkinBackButton;
+  var pinchActive:Bool = false;
+  var pinchStartDistance:Float = 0;
+  var touchPanLastX:Float = 0;
+  var touchPanLastY:Float = 0;
+  #end
 
   public function new(?params:StageEditorParams)
   {
@@ -297,7 +292,7 @@ class StageEditorState extends UIState
   {
     WindowManager.instance.reset();
     FlxG.sound.music?.stop();
-    WindowUtil.setWindowTitle("Friday Night Funkin\' Stage Editor");
+    WindowUtil.setWindowTitle('Friday Night Funkin\' Stage Editor');
 
     camGame = new FunkinCamera();
     camHUD = new FlxCamera();
@@ -325,7 +320,6 @@ class StageEditorState extends UIState
     WindowManager.instance.container = root;
     Screen.instance.addComponent(root);
 
-    // Characters setup.
     var gf = CharacterDataParser.fetchCharacter(params?.targetGfChar ?? Save.instance.stageGirlfriendChar, true);
     if (gf != null) gf.characterType = CharacterType.GF;
     var dad = CharacterDataParser.fetchCharacter(params?.targetDadChar ?? Save.instance.stageDadChar, true);
@@ -341,7 +335,6 @@ class StageEditorState extends UIState
     dad?.updateHitbox();
     bf?.updateHitbox();
 
-    // Only one character per group allowed.
     charGroups = [
       CharacterType.BF => new FlxTypedGroup<BaseCharacter>(1),
       CharacterType.GF => new FlxTypedGroup<BaseCharacter>(1),
@@ -374,7 +367,6 @@ class StageEditorState extends UIState
     add(charGroups[CharacterType.DAD]);
     add(charGroups[CharacterType.BF]);
 
-    // UI Sprites setup.
     camFields = new FlxTypedGroup<FlxSprite>();
     camFields.visible = false;
     camFields.zIndex = MAX_Z_INDEX + CHARACTER_COLORS.length + 1;
@@ -384,7 +376,10 @@ class StageEditorState extends UIState
       var floorLine = new FlxSprite().makeGraphic(FlxG.width * 10, 15, CHARACTER_COLORS[i]);
       floorLine.screenCenter(X);
 
-      var pointer = new FlxShapeCircle(0, 0, 30, cast {thickness: 2, color: CHARACTER_COLORS[i]}, CHARACTER_COLORS[i]);
+      var pointer = new FlxShapeCircle(0, 0, 30, cast {
+        thickness: 2,
+        color: CHARACTER_COLORS[i]
+      }, CHARACTER_COLORS[i]);
 
       var field = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, CHARACTER_COLORS[i]);
 
@@ -414,7 +409,7 @@ class StageEditorState extends UIState
     add(camMarker);
 
     nameTxt = new FlxText(0, 0, 0, '', 24);
-    nameTxt.setFormat(Paths.font('vcr.ttf'), 24, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+    nameTxt.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 24, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
     nameTxt.cameras = [camHUD];
     add(nameTxt);
 
@@ -426,7 +421,6 @@ class StageEditorState extends UIState
 
     addUI();
 
-    // Some callbacks.
     findObjDialog = new FindObjDialog(this, selectedSprite == null ? '' : selectedSprite.name);
 
     FlxG.stage.window.onDropFile.add(function(path:String, state:String, x:Float, y:Float):Void
@@ -456,13 +450,11 @@ class StageEditorState extends UIState
 
       if (stageData != null)
       {
-        // Load the stage data.
         currentFile = '';
         this.loadFromDataRaw(stageData);
       }
       else
       {
-        // Notify the error and create a new stage.
         notifyChange('Problem Loading the Stage', 'The Stage File could not be loaded.', true);
         onMenuItemClick('new stage');
       }
@@ -473,13 +465,11 @@ class StageEditorState extends UIState
 
       if (bytes != null)
       {
-        // Open the stage file.
         currentFile = params.fnfsTargetPath;
         this.unpackShitFromZip(bytes);
       }
       else
       {
-        // Notify the error and create a new stage.
         notifyChange('Problem Loading the Stage', 'The Stage File could not be loaded.', true);
         onMenuItemClick('new stage');
       }
@@ -498,8 +488,7 @@ class StageEditorState extends UIState
         var filestats:Array<sys.FileStat> = [];
         if (files.length > 0)
         {
-          while (!files[files.length - 1].endsWith(FileUtil.FILE_FILTER_FNFS.extension)
-            || !files[files.length - 1].startsWith('stage-editor-'))
+          while (!files[files.length - 1].endsWith('.fnfs') || !files[files.length - 1].startsWith('stage-editor-'))
           {
             if (files.length == 0) break;
             files.pop();
@@ -535,10 +524,16 @@ class StageEditorState extends UIState
     Save.instance.stageEditorHasBackup.value = false;
 
     Cursor.show();
-    FunkinSound.playMusic('chartEditorLoop', {
+    FunkinSound.playMusic('ui/editors/chart-editor/artistic-expression/artistic-expression', {
       startingVolume: 0.0
     });
     FlxG.sound.music.fadeIn(10, 0, 1);
+
+    #if FEATURE_TOUCH_CONTROLS
+    backButton = new FunkinBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, () -> onMenuItemClick('exit'));
+    backButton.cameras = [camHUD];
+    add(backButton);
+    #end
   }
 
   var curTestChar:Int = 0;
@@ -553,20 +548,21 @@ class StageEditorState extends UIState
     return super.beatHit();
   }
 
-  override public function dispatchEvent(event:funkin.modding.events.ScriptEvent)
+  override public function dispatchEvent(event:funkin.modding.events.ScriptEvent,
+    finish:Bool = true)
   {
-    super.dispatchEvent(event);
+    super.dispatchEvent(event, false);
 
-    // Dispatch the Conductor events to the stage props and characters to make them dance on beat in the testing mode.
     if (!testingMode || !(event is funkin.modding.events.ScriptEvent.SongTimeScriptEvent)) return;
 
     for (prop in spriteArray) ScriptEventDispatcher.callEvent(prop, event);
     for (char in getCharacters()) ScriptEventDispatcher.callEvent(char, event);
+
+    if (finish) event.finish();
   }
 
   override public function update(elapsed:Float):Void
   {
-    // Save the stage if exiting through the F4 keybind, as it moves you to the Main Menu.
     if (FlxG.keys.justPressed.F4)
     {
       @:privateAccess
@@ -587,10 +583,11 @@ class StageEditorState extends UIState
 
     super.update(elapsed);
 
-    if (FlxG.mouse.justPressed || FlxG.mouse.justPressedRight) FunkinSound.playOnce(Paths.sound('chartingSounds/ClickDown'));
-    if (FlxG.mouse.justReleased || FlxG.mouse.justReleasedRight) FunkinSound.playOnce(Paths.sound('chartingSounds/ClickUp'));
+    Preferences.debugDisplay == DebugDisplayMode.Off ? menubar.paddingLeft = null : menubar.paddingLeft = 256;
 
-    // testmode
+    if (FlxG.mouse.justPressed || FlxG.mouse.justPressedRight) FunkinSound.playOnce(Paths.sound("ui/editors/chart-editor/charting-sounds/click-down"));
+    if (FlxG.mouse.justReleased || FlxG.mouse.justReleasedRight) FunkinSound.playOnce(Paths.sound("ui/editors/chart-editor/charting-sounds/click-up"));
+
     menubarMenuFile.disabled = menubarMenuEdit.disabled = bottomBarModeText.disabled = menubarMenuWindow.disabled = testingMode;
 
     if (testingMode)
@@ -601,10 +598,8 @@ class StageEditorState extends UIState
         char.shader = null;
       }
 
-      // spriteMarker.visible = camMarker.visible = false;
       findObjDialog.hideDialog(DialogButton.CANCEL);
 
-      // cam
       camGame.follow(camFollow, LOCKON, 0.04);
       FlxG.camera.zoom = stageZoom;
 
@@ -623,28 +618,23 @@ class StageEditorState extends UIState
         camFollow.y = char.cameraFocusPoint.y + charCamOffsets.get(char.characterType)[1];
       }
 
-      // EXIT
-      if (FlxG.keys.justPressed.ENTER) // so we dont accidentally get stuck (happened to me once, terrible experience)
+      if (FlxG.keys.justPressed.ENTER)
         onMenuItemClick('test stage');
 
       return;
     }
 
-    // some misc
     nameTxt.text = '';
     bottomBarModeText.text = (moveMode == 'assets' ? 'Objects' : 'Characters');
 
     camGame.follow(camFollow);
-    // camera movement
 
-    if ((FlxG.mouse.deltaWheel.y > 0 || (FlxG.mouse.deltaWheel.y < 0 && camGame.zoom > 0.11))
-      && !isCursorOverHaxeUI) // include the floating poing error thing
-    {
-      camGame.zoom += FlxG.mouse.deltaWheel.y / 10;
-      updateBGSize();
-    }
+    if (!isCursorOverHaxeUI) handleTrackpadScroll();
 
-    // key shortcuts and inputs
+    #if FEATURE_TOUCH_CONTROLS
+    if (ControlsHandler.lastInputTouch) handleTouchInput();
+    #end
+
     if (pressingControl() && FlxG.keys.justPressed.Q) onMenuItemClick('exit');
 
     if (allowInput && welcomeDialog == null && userGuideDialog == null)
@@ -665,7 +655,11 @@ class StageEditorState extends UIState
 
       if (FlxG.keys.justPressed.TAB) onMenuItemClick('switch mode');
       if (FlxG.keys.justPressed.DELETE) onMenuItemClick('delete object');
-      if (FlxG.keys.justPressed.ENTER) onMenuItemClick('test stage');
+      if (FlxG.keys.justPressed.ENTER)
+      {
+        haxe.ui.focus.FocusManager.instance.focus = null;
+        onMenuItemClick('test stage');
+      }
       if (FlxG.keys.justPressed.F1) onMenuItemClick('user guide');
 
       if (FlxG.keys.justPressed.T)
@@ -696,15 +690,16 @@ class StageEditorState extends UIState
       camFollow.velocity.set();
     }
 
-    // movement handling
     if (FlxG.mouse.justReleased && moveOffset.length > 0) moveOffset = [];
 
     if (moveMode == 'assets')
     {
-      if (selectedSprite != null
+      if (
+        selectedSprite != null
         && (!FlxG.mouse.overlaps(selectedSprite) || (FlxG.mouse.overlaps(selectedSprite) && pressingControl()))
         && FlxG.mouse.justPressed
-        && !isCursorOverHaxeUI)
+        && !isCursorOverHaxeUI
+      )
       {
         selectedSprite = null;
       }
@@ -779,7 +774,7 @@ class StageEditorState extends UIState
           if (char == null) continue;
           if (char != selectedChar) char.shader = charDeselectShader;
 
-          if (char != null && checkCharOverlaps(char)) // flxg.mouse.overlaps crashes the game
+          if (char != null && checkCharOverlaps(char))
           {
             if (char.visible && !FlxG.keys.pressed.SHIFT) nameTxt.text = Std.string(char.characterType);
 
@@ -819,7 +814,6 @@ class StageEditorState extends UIState
     }
     bottomBarSelectText.text = infoSelection;
 
-    // ui stuff
     nameTxt.x = FlxG.mouse.getViewPosition(camHUD).x;
     nameTxt.y = FlxG.mouse.getViewPosition(camHUD).y - nameTxt.height;
 
@@ -836,11 +830,6 @@ class StageEditorState extends UIState
     menubarItemRedo.disabled = redoArray.length == 0;
   }
 
-  /**
-   * Small helper for MacOS, "WINDOWS" is keycode 15, which maps to "COMMAND" on Mac, which is more often used than "CONTROL"
-   * Everywhere else, it just returns `FlxG.keys.pressed.CONTROL`
-   * @return Bool
-   */
   function pressingControl():Bool
   {
     #if mac
@@ -857,22 +846,16 @@ class StageEditorState extends UIState
 
   function autosavePerCrash(message:String)
   {
-    trace('Crashed the game for the reason: ' + message);
-
     if (!saved)
     {
-      trace("You haven't saved recently, so a backup will be made.");
       saveBackup(true);
     }
   }
 
   function windowClose(exitCode:Int)
   {
-    trace('Closing the game window.');
-
     if (!saved)
     {
-      trace("You haven't saved recently, so a backup will be made.");
       saveBackup(true);
     }
   }
@@ -922,9 +905,6 @@ class StageEditorState extends UIState
     }
   }
 
-  // made because characters have shitty hitboxes and often cause the game to straight up crash
-  // it comes from some flxobject/polymod error apparently and I have no idea why
-
   function checkCharOverlaps(char:BaseCharacter)
   {
     if (char == null) return false;
@@ -936,26 +916,21 @@ class StageEditorState extends UIState
 
   var moveUndoed:Bool = false;
 
-  // i wish there was a better way to do this this looks like an eyesore
-  // yanderedev fr
-
   function arrowMovement(obj:FlxSprite)
   {
     if (obj == null) return;
-    if (FlxG.keys.pressed.R) return; // rotations
+    if (FlxG.keys.pressed.R) return;
 
     if (allowInput && welcomeDialog == null)
     {
-      if ((FlxG.keys.justPressed.UP || FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.RIGHT)
-        && !moveUndoed)
+      if ((FlxG.keys.justPressed.UP || FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.RIGHT) && !moveUndoed)
       {
         saved = false;
         moveUndoed = true;
         this.createAndPushAction(moveMode == 'assets' ? OBJECT_MOVED : CHARACTER_MOVED);
       }
 
-      if ((FlxG.keys.justReleased.UP || FlxG.keys.justReleased.DOWN || FlxG.keys.justReleased.LEFT || FlxG.keys.justReleased.RIGHT)
-        && moveUndoed)
+      if ((FlxG.keys.justReleased.UP || FlxG.keys.justReleased.DOWN || FlxG.keys.justReleased.LEFT || FlxG.keys.justReleased.RIGHT) && moveUndoed)
       {
         moveUndoed = false;
       }
@@ -977,6 +952,64 @@ class StageEditorState extends UIState
     }
   }
 
+  #if FEATURE_TOUCH_CONTROLS
+  function handleTouchInput():Void
+  {
+    var activeTouches:Array<FlxTouch> = [];
+    for (touch in FlxG.touches.list)
+    {
+      if (touch.pressed) activeTouches.push(touch);
+    }
+
+    if (activeTouches.length < 2)
+    {
+      pinchActive = false;
+      return;
+    }
+
+    var posA:FlxPoint = activeTouches[0].getViewPosition(camHUD);
+    var posB:FlxPoint = activeTouches[1].getViewPosition(camHUD);
+
+    if (Screen.instance.hasSolidComponentUnderPoint(posA.x, posA.y) || Screen.instance.hasSolidComponentUnderPoint(posB.x, posB.y))
+    {
+      pinchActive = false;
+      return;
+    }
+
+    var dx:Float = posB.x - posA.x;
+    var dy:Float = posB.y - posA.y;
+    var distance:Float = Math.sqrt(dx * dx + dy * dy);
+
+    var midX:Float = (posA.x + posB.x) / 2;
+    var midY:Float = (posA.y + posB.y) / 2;
+
+    if (!pinchActive)
+    {
+      pinchActive = true;
+      pinchStartDistance = distance;
+      touchPanLastX = midX;
+      touchPanLastY = midY;
+      return;
+    }
+
+    if (pinchStartDistance > 0)
+    {
+      var rawScale:Float = distance / pinchStartDistance;
+      camGame.zoom *= rawScale;
+      if (camGame.zoom < 0.11) camGame.zoom = 0.11;
+      if (camGame.zoom > 10.0) camGame.zoom = 10.0;
+      updateBGSize();
+      pinchStartDistance = distance;
+    }
+
+    camFollow.x -= (midX - touchPanLastX) / camGame.zoom;
+    camFollow.y -= (midY - touchPanLastY) / camGame.zoom;
+
+    touchPanLastX = midX;
+    touchPanLastY = midY;
+  }
+  #end
+
   public function updateArray()
   {
     sortAssets();
@@ -984,7 +1017,7 @@ class StageEditorState extends UIState
 
     for (thing in members)
     {
-      if (Std.isOfType(thing, StageEditorObject)) spriteArray.push(cast thing); // characters do not extend stageeditorobject so we ball
+      if (Std.isOfType(thing, StageEditorObject)) spriteArray.push(cast thing);
     }
 
     findObjDialog.updateIndicator();
@@ -1011,7 +1044,7 @@ class StageEditorState extends UIState
 
   public function updateWindowTitle()
   {
-    var defaultTitle = "Friday Night Funkin\' Stage Editor";
+    var defaultTitle = 'Friday Night Funkin\' Stage Editor';
 
     if (currentFile == '') defaultTitle += ' - New File'
     else
@@ -1046,6 +1079,31 @@ class StageEditorState extends UIState
     bg.scale.set(1 / FlxG.camera.zoom, 1 / FlxG.camera.zoom);
     bg.updateHitbox();
     bg.screenCenter();
+  }
+
+  static final TRACKPAD_PAN_SCALE:Float = 25.0;
+
+  function handleTrackpadScroll():Void
+  {
+    var dx:Float = FlxG.mouse.deltaWheel.x;
+    var dy:Float = FlxG.mouse.deltaWheel.y;
+    if (dx == 0 && dy == 0) return;
+
+    if (FlxG.keys.pressed.CONTROL)
+    {
+      if (dy == 0) return;
+      var scaledDelta:Float = dy * 10.0;
+      var rawScale:Float = Math.exp(scaledDelta / 100.0);
+      rawScale = Math.min(1.25, Math.max(0.75, rawScale));
+      camGame.zoom *= rawScale;
+      if (camGame.zoom < 0.11) camGame.zoom = 0.11;
+      if (camGame.zoom > 10.0) camGame.zoom = 10.0;
+      updateBGSize();
+      return;
+    }
+
+    camFollow.x += (dx * TRACKPAD_PAN_SCALE) / camGame.zoom;
+    camFollow.y -= (dy * TRACKPAD_PAN_SCALE) / camGame.zoom;
   }
 
   var sprDependant:Array<MenuItem> = [];
@@ -1141,7 +1199,7 @@ class StageEditorState extends UIState
     bottomBarMoveStepText.onClick = function(_) changeStep(1);
     bottomBarMoveStepText.onRightClick = function(_) changeStep(-1);
 
-    changeStep(); // update
+    changeStep();
 
     var angleOptions = [
       0.5,
@@ -1174,7 +1232,7 @@ class StageEditorState extends UIState
     bottomBarAngleStepText.onClick = function(_) changeAngle(1);
     bottomBarAngleStepText.onRightClick = function(_) changeAngle(-1);
 
-    changeAngle(); // update
+    changeAngle();
 
     dialogs.set(StageEditorDialogType.OBJECT_GRAPHIC, new StageEditorObjectGraphicToolbox(this));
     dialogs.set(StageEditorDialogType.OBJECT_ANIMS, new StageEditorObjectAnimsToolbox(this));
@@ -1205,7 +1263,7 @@ class StageEditorState extends UIState
 
     menubarItemViewChars.onChange = function(_) showChars = menubarItemViewChars.selected;
     menubarItemViewNameText.onChange = function(_) nameTxt.visible = menubarItemViewNameText.selected;
-    menubarItemViewNameText.selected = true; // TODO: Remove this when this haxeUI bug is fixed (it starts as false in the code)?
+    menubarItemViewNameText.selected = true;
     menubarItemViewCamBounds.onChange = function(_) camFields.visible = menubarItemViewCamBounds.selected;
 
     menubarItemViewFloorLines.onChange = function(_)
@@ -1246,15 +1304,20 @@ class StageEditorState extends UIState
       {
         if (!saved)
         {
-          Dialogs.messageBox('Opening a new Stage will reset all your progress for this Stage.\n\nAre you sure you want to proceed?', 'Open Stage',
-            MessageBoxType.TYPE_YESNO, true, function(btn:DialogButton)
-          {
-            if (btn == DialogButton.YES)
+          Dialogs.messageBox(
+            'Opening a new Stage will reset all your progress for this Stage.\n\nAre you sure you want to proceed?',
+            'Open Stage',
+            MessageBoxType.TYPE_YESNO,
+            true,
+            function(btn:DialogButton)
             {
-              saved = true;
-              load(file);
+              if (btn == DialogButton.YES)
+              {
+                saved = true;
+                load(file);
+              }
             }
-          });
+          );
         }
         else
         {
@@ -1294,12 +1357,12 @@ class StageEditorState extends UIState
         {
           saved = true;
           currentFile = path;
-        }, null, stageName + '.' + FileUtil.FILE_FILTER_FNFS.extension);
+        }, null, stageName + '.' + Constants.EXT_STAGE);
 
       case 'save stage':
         if (currentFile == '')
         {
-          onMenuItemClick('save stage as'); // ah I love coding shortcuts
+          onMenuItemClick('save stage as');
           return;
         }
 
@@ -1311,7 +1374,7 @@ class StageEditorState extends UIState
           return;
         }
 
-        FileUtil.writeBytesToPath(currentFile, bytes, Force); // mhm
+        FileUtil.writeBytesToPath(currentFile, bytes, Force);
 
         saved = true;
 
@@ -1320,15 +1383,20 @@ class StageEditorState extends UIState
       case 'open stage':
         if (!saved)
         {
-          Dialogs.messageBox('Opening a new Stage will reset all your progress for this Stage.\n\nAre you sure you want to proceed?', 'Open Stage',
-            MessageBoxType.TYPE_YESNO, true, function(btn:DialogButton)
-          {
-            if (btn == DialogButton.YES)
+          Dialogs.messageBox(
+            'Opening a new Stage will reset all your progress for this Stage.\n\nAre you sure you want to proceed?',
+            'Open Stage',
+            MessageBoxType.TYPE_YESNO,
+            true,
+            function(btn:DialogButton)
             {
-              saved = true;
-              onMenuItemClick('open stage'); // ough
+              if (btn == DialogButton.YES)
+              {
+                saved = true;
+                onMenuItemClick('open stage');
+              }
             }
-          });
+          );
 
           return;
         }
@@ -1345,7 +1413,6 @@ class StageEditorState extends UIState
           reloadRecentFiles();
         }, function()
         {
-          // This function does nothing, it's there for crash prevention.
         });
 
       case 'exit':
@@ -1353,16 +1420,21 @@ class StageEditorState extends UIState
         {
           if (exitConfirmDialog == null)
           {
-            exitConfirmDialog = Dialogs.messageBox('You are about to leave the editor without saving.\n\nAre you sure? ', 'Leave Editor',
-              MessageBoxType.TYPE_YESNO, true, function(btn:DialogButton)
-            {
-              exitConfirmDialog = null;
-              if (btn == DialogButton.YES)
+            exitConfirmDialog = Dialogs.messageBox(
+              'You are about to leave the editor without saving.\n\nAre you sure? ',
+              'Leave Editor',
+              MessageBoxType.TYPE_YESNO,
+              true,
+              function(btn:DialogButton)
               {
-                saveBackup();
-                onMenuItemClick('exit');
+                exitConfirmDialog = null;
+                if (btn == DialogButton.YES)
+                {
+                  saveBackup();
+                  onMenuItemClick('exit');
+                }
               }
-            });
+            );
           }
 
           return;
@@ -1382,7 +1454,9 @@ class StageEditorState extends UIState
         if (testingMode) return;
         moveMode = (moveMode == 'assets' ? 'chars' : 'assets');
 
-        infoSelection = (moveMode == 'chars') ? (Std.string(selectedChar?.characterType) ?? 'None') : (moveMode == 'assets') ? (selectedSprite?.name ?? 'None') : 'Wut';
+        infoSelection = (moveMode == 'chars') ? (Std.string(
+          selectedChar?.characterType
+        ) ?? 'None') : (moveMode == 'assets') ? (selectedSprite?.name ?? 'None') : 'Wut';
 
         selectedSprite?.selectedShader.setAmount((moveMode == 'assets' ? 1 : 0));
 
@@ -1417,8 +1491,6 @@ class StageEditorState extends UIState
 
       case 'new object':
         findObjDialog.hideDialog(DialogButton.CANCEL);
-
-        trace('aignt we making a new object baby');
 
         objNameDialog = new NewObjDialog(this);
         objNameDialog.showDialog();
@@ -1456,7 +1528,7 @@ class StageEditorState extends UIState
         #end
 
       case 'test stage':
-        if (!allowInput) return;
+        haxe.ui.focus.FocusManager.instance.focus = null;
 
         camFollow.velocity.set();
 
@@ -1477,19 +1549,24 @@ class StageEditorState extends UIState
         testingMode = !testingMode;
 
       case 'clear assets':
-        Dialogs.messageBox('This will destroy all Objects in this Stage.\n\nAre you sure? This cannot be undone.', 'Clear Assets', MessageBoxType.TYPE_YESNO,
-          true, function(btn:DialogButton)
-        {
-          if (btn == DialogButton.YES)
+        Dialogs.messageBox(
+          'This will destroy all Objects in this Stage.\n\nAre you sure? This cannot be undone.',
+          'Clear Assets',
+          MessageBoxType.TYPE_YESNO,
+          true,
+          function(btn:DialogButton)
           {
-            clearAssets();
-            saved = false;
+            if (btn == DialogButton.YES)
+            {
+              clearAssets();
+              saved = false;
 
-            updateDialog(StageEditorDialogType.OBJECT_GRAPHIC);
-            updateDialog(StageEditorDialogType.OBJECT_ANIMS);
-            updateDialog(StageEditorDialogType.OBJECT_PROPERTIES);
+              updateDialog(StageEditorDialogType.OBJECT_GRAPHIC);
+              updateDialog(StageEditorDialogType.OBJECT_ANIMS);
+              updateDialog(StageEditorDialogType.OBJECT_PROPERTIES);
+            }
           }
-        });
+        );
 
       case 'center on screen':
         if (selectedSprite != null && moveMode == 'assets')
@@ -1529,7 +1606,6 @@ class StageEditorState extends UIState
 
         saved = false;
 
-        // Change the sprite name here instead of later since the texture atlas frame collections are saved by the prop name.
         var dataCopy:Dynamic = Reflect.copy(copiedSprite);
         var objNames:Array<String> = [for (a in spriteArray) a.name];
         if (objNames.contains(dataCopy.name))
@@ -1547,9 +1623,9 @@ class StageEditorState extends UIState
         selectedSprite = spr;
         updateArray();
 
-      case 'cut object': // rofl
+      case 'cut object':
         onMenuItemClick('copy object');
-        onMenuItemClick('delete object'); // already changes the saved var
+        onMenuItemClick('delete object');
 
       case 'new stage':
         if (menubarItemWindowObjectGraphic.selected) menubarItemWindowObjectGraphic.selected = false;
@@ -1582,7 +1658,7 @@ class StageEditorState extends UIState
     var data = this.packShitToZip();
     var path = haxe.io.Path.join([
       BACKUPS_PATH,
-      'stage-editor-${stageName}-${funkin.util.DateUtil.generateTimestamp()}.${FileUtil.FILE_FILTER_FNFS.extension}'
+      'stage-editor-${stageName}-${funkin.util.DateUtil.generateTimestamp()}.fnfs'
     ]);
 
     FileUtil.writeBytesToPath(path, data);
@@ -1617,9 +1693,6 @@ class StageEditorState extends UIState
     allFiles.resize(0);
   }
 
-  /**
-   * Get a stored file based on the name or the data.
-   */
   public function getFile(?name:String, ?data:Bytes)
   {
     for (file in allFiles)
@@ -1631,20 +1704,19 @@ class StageEditorState extends UIState
     return null;
   }
 
-  /**
-   * Creates a file to be used for the assets.
-   */
   public function createFile(name:String, data:Bytes)
   {
     if (getFile(name, data) != null) return getFile(name, data);
-    return {name: name, data: data};
+    return {
+      name: name,
+      data: data
+    };
   }
 
   override function destroy():Void
   {
     super.destroy();
 
-    // Reset the sounds used by some playables.
     funkin.play.GameOverSubState.reset();
     funkin.play.PauseSubState.reset();
     funkin.play.Countdown.reset();
@@ -1659,7 +1731,8 @@ class StageEditorState extends UIState
     });
   }
 
-  public function createURLDialog(onComplete:lime.utils.Bytes->Void = null, onFail:String->Void = null)
+  public function createURLDialog(onComplete:lime.utils.Bytes->Void = null,
+    onFail:String->Void = null)
   {
     loadUrlDialog = new LoadFromUrlDialog(onComplete, onFail);
     loadUrlDialog.onDialogClosed = function(_)
@@ -1673,86 +1746,37 @@ class StageEditorState extends UIState
 
 enum StageEditorDialogType
 {
-  /**
-   * The Stage Options Dialog.
-   */
   STAGE;
-
-  /**
-   * The Character Options Dialog.
-   */
   CHARACTER;
-
-  /**
-   * The Object Graphic Options Dialog.
-   */
   OBJECT_GRAPHIC;
-
-  /**
-   * The Object Animations Options Dialog.
-   */
   OBJECT_ANIMS;
-
-  /**
-   * The Object Properties Options Dialog.
-   */
   OBJECT_PROPERTIES;
 }
 
 typedef StageEditorParams =
 {
-  /**
-   * If non-null, load this stage immediately instead of the welcome screen.
-   */
   var ?fnfsTargetPath:String;
 
-  /**
-   * If non-null, load this stage immediately instead of the welcome screen.
-   */
   var ?targetStageId:String;
 
-  /**
-   * If non-null, load this character as Boyfriend.
-   */
   var ?targetBfChar:String;
 
-  /**
-   * If non-null, load this character as Girlfriend.
-   */
   var ?targetGfChar:String;
 
-  /**
-   * If non-null, load this character as Dad.
-   */
   var ?targetDadChar:String;
 };
 
 typedef StageEditorAssetFile =
 {
-  /**
-   * The name of the file.
-   */
   var name:String;
 
-  /**
-   * The content of the file, decoded into bytes.
-   */
   var data:Bytes;
 }
 #end
 
-/**
- * Available themes for the stage editor state.
- */
 enum abstract StageEditorTheme(String)
 {
-  /**
-   * The default theme for the stage editor.
-   */
   var Light;
 
-  /**
-   * A theme which introduces stage colors.
-   */
   var Dark;
 }

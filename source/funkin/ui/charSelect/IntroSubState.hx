@@ -15,12 +15,7 @@ import funkin.save.Save;
 @:nullSafety
 class IntroSubState extends MusicBeatSubState
 {
-  #if html5
-  static final LIGHTS_VIDEO_PATH:String = Paths.stripLibrary(Paths.videos('introSelect'));
-  #end
-  #if hxvlc
-  static final LIGHTS_VIDEO_PATH:String = Paths.videos('introSelect');
-  #end
+  static final LIGHTS_VIDEO_PATH:String = funkin.assets.Paths.video('ui/character-select/intro').toString();
 
   override public function create():Void
   {

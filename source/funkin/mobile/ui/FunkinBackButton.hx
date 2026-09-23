@@ -12,7 +12,7 @@ class FunkinBackButton extends FunkinButton
 {
   public var onConfirmStart(default, null):FlxSignal = new FlxSignal();
   public var onConfirmEnd(default, null):FlxSignal = new FlxSignal();
-  public var enabled:Bool = true;
+  public var enabled(default, set):Bool = true;
   public var confirming(get, never):Bool;
 
   function get_confirming():Bool
@@ -27,22 +27,11 @@ class FunkinBackButton extends FunkinButton
   var instant:Bool = false;
   var held:Bool = false;
 
-  /**
-   * Creates a new FunkinBackButton instance.
-   *
-   * @param x The x position of the object.
-   * @param y The y position of the object.
-   * @param color Button's optional color.
-   * @param confirmCallback An optional callback function that will be triggered when the object is clicked.
-   * @param restingOpacity An optional float that is the alpha the button will be when not selected/hovered over.
-   * @param instant An optional flag that makes the button not play the full animation before calling the callback.
-   */
-  public function new(?x:Float = 0, ?y:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void, ?restingOpacity:Float = 0.3,
-      instant:Bool = false):Void
+  public function new(?x:Float = 0, ?y:Float = 0, ?color:FlxColor = FlxColor.WHITE, ?confirmCallback:Void->Void, ?restingOpacity:Float = 0.3, instant:Bool = false):Void
   {
     super(x, y);
 
-    frames = Paths.getSparrowAtlas('backButton');
+    frames = Paths.getSparrowAtlas('ui/back-button');
     animation.addByIndices('idle', 'back', [0], '', 24, false);
     animation.addByIndices('hold', 'back', [5], '', 24, false);
     animation.addByIndices('confirm', 'back', [
@@ -82,6 +71,26 @@ class FunkinBackButton extends FunkinButton
     onConfirmEnd.add(confirmCallback);
   }
 
+  function set_enabled(value:Bool):Bool
+  {
+    enabled = value;
+
+    if (!enabled)
+    {
+      FlxTween.cancelTweensOf(this);
+      animation.play('idle');
+      alpha = restingOpacity * 0.5;
+      held = false;
+      _confirming = false;
+    }
+    else
+    {
+      alpha = restingOpacity;
+    }
+
+    return enabled;
+  }
+
   function playHoldAnim():Void
   {
     if (confirming || held || !enabled) return;
@@ -115,7 +124,7 @@ class FunkinBackButton extends FunkinButton
     HapticUtil.vibrate(0, 0.05, 0.5);
     animation.play('confirm');
 
-    FunkinSound.playOnce(Paths.sound('cancelMenu'));
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
 
     onConfirmStart.dispatch();
 
@@ -136,7 +145,9 @@ class FunkinBackButton extends FunkinButton
     HapticUtil.vibrate(0, 0.01, 0.2);
     animation.play('idle');
 
-    FlxTween.tween(this, {alpha: restingOpacity}, 0.5, {
+    FlxTween.tween(this, {
+      alpha: restingOpacity
+    }, 0.5, {
       ease: FlxEase.expoOut,
       onComplete: function(tween:FlxTween):Void
       {
@@ -151,6 +162,10 @@ class FunkinBackButton extends FunkinButton
     onDown.removeAll();
     onOut.removeAll();
 
+    FlxTween.cancelTweensOf(this);
+    animation.play('idle');
+    alpha = restingOpacity;
+
     _confirming = false;
     held = false;
 
@@ -162,7 +177,7 @@ class FunkinBackButton extends FunkinButton
   override public function update(elapsed:Float):Void
   {
     #if android
-    if (FlxG.android.justReleased.BACK) onConfirmEnd.dispatch();
+    if (FlxG.android.justReleased.BACK && enabled && !confirming) playConfirmAnim();
     #end
 
     super.update(elapsed);

@@ -1,59 +1,30 @@
 package funkin;
 
-#if mobile
+#if FEATURE_TOUCH_CONTROLS
 import funkin.mobile.ui.FunkinHitbox;
+#end
+#if FEATURE_MOBILE_IAP
 import funkin.mobile.util.InAppPurchasesUtil;
 #end
 import funkin.save.Save;
 import funkin.util.WindowUtil;
 import funkin.util.HapticUtil.HapticsMode;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
-import flixel.util.FlxSignal.FlxTypedSignal;
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
 
+/**
+ * A core class which provides a store of user-configurable, globally relevant values.
+ */
 @:nullSafety
 class Preferences
 {
-  public static var onPreferenceChanged(default, null):FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
-  static var batchDepth:Int = 0;
-  static var batchedChanges:Array<String> = [];
-
-  public static function beginBatch():Void
-  {
-    batchDepth++;
-  }
-
-  public static function endBatch():Void
-  {
-    if (batchDepth <= 0) return;
-
-    batchDepth--;
-
-    if (batchDepth == 0 && batchedChanges.length > 0)
-    {
-      Save.system.flush();
-
-      var changes:Array<String> = batchedChanges;
-      batchedChanges = [];
-
-      for (name in changes) onPreferenceChanged.dispatch(name);
-    }
-  }
-
-  static function commit(name:String):Void
-  {
-    if (batchDepth > 0)
-    {
-      if (batchedChanges.indexOf(name) == -1) batchedChanges.push(name);
-      return;
-    }
-
-    Save.system.flush();
-    onPreferenceChanged.dispatch(name);
-  }
-
+  /**
+   * FPS
+   * Always the refresh rate of the display on mobile, or 60 on web.
+   * @default `60`
+   */
   public static var framerate(get, set):Int;
 
   static function get_framerate():Int
@@ -84,7 +55,7 @@ class Preferences
     #else
     var save:Save = Save.instance;
     save.options.framerate = value;
-    commit('framerate');
+    Save.system.flush();
 
     if (!unlockedFramerate)
     {
@@ -96,6 +67,10 @@ class Preferences
     #end
   }
 
+  /**
+   * Whether some particularly foul language is displayed.
+   * @default `true`
+   */
   public static var naughtyness(get, set):Bool;
 
   static function get_naughtyness():Bool
@@ -114,56 +89,35 @@ class Preferences
     #else
     var save:Save = Save.instance;
     save.options.naughtyness = value;
-    commit('naughtyness');
+    Save.system.flush();
     return value;
     #end
   }
 
+  /**
+   * If enabled, the strumline is at the bottom of the screen rather than the top.
+   * @default `false`
+   */
   public static var downscroll(get, set):Bool;
 
   static function get_downscroll():Bool
   {
-    return Save?.instance?.options?.downscroll #if mobile ?? true #else ?? false #end;
+    final defaultValue:Bool = #if FEATURE_TOUCH_CONTROLS true #else false #end;
+    return Save?.instance?.options?.downscroll ?? defaultValue;
   }
 
   static function set_downscroll(value:Bool):Bool
   {
     var save:Save = Save.instance;
     save.options.downscroll = value;
-    commit('downscroll');
+    Save.system.flush();
     return value;
   }
 
-  public static var middlescroll(get, set):Bool;
-
-  static function get_middlescroll():Bool
-  {
-    return Save?.instance?.options?.middlescroll ?? false;
-  }
-
-  static function set_middlescroll(value:Bool):Bool
-  {
-    var save:Save = Save.instance;
-    save.options.middlescroll = value;
-    commit('middlescroll');
-    return value;
-  }
-
-  public static var invisibleHitbox(get, set):Bool;
-
-  static function get_invisibleHitbox():Bool
-  {
-    return Save?.instance?.options?.invisibleHitbox ?? false;
-  }
-
-  static function set_invisibleHitbox(value:Bool):Bool
-  {
-    var save:Save = Save.instance;
-    save.options.invisibleHitbox = value;
-    commit('invisibleHitbox');
-    return value;
-  }
-
+  /**
+   * If disabled, flashing lights in the main menu and other areas will be less intense.
+   * @default `true`
+   */
   public static var flashingLights(get, set):Bool;
 
   static function get_flashingLights():Bool
@@ -175,55 +129,14 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.flashingLights = value;
-    commit('flashingLights');
+    Save.system.flush();
     return value;
   }
 
-  public static var cameraMovement(get, set):Bool;
-
-  static function get_cameraMovement():Bool
-  {
-    return Save?.instance?.options?.cameraMovement ?? true;
-  }
-
-  static function set_cameraMovement(value:Bool):Bool
-  {
-    var save:Save = Save.instance;
-    save.options.cameraMovement = value;
-    commit('cameraMovement');
-    return value;
-  }
-
-  public static var mode3D(get, set):Bool;
-
-  static function get_mode3D():Bool
-  {
-    return Save?.instance?.options?.mode3D ?? false;
-  }
-
-  static function set_mode3D(value:Bool):Bool
-  {
-    var save:Save = Save.instance;
-    save.options.mode3D = value;
-    commit('mode3D');
-    return value;
-  }
-
-  public static var storageType(get, set):String;
-
-  static function get_storageType():String
-  {
-    return Save?.instance?.options?.storageType ?? 'data';
-  }
-
-  static function set_storageType(value:String):String
-  {
-    var save:Save = Save.instance;
-    save.options.storageType = value;
-    commit('storageType');
-    return value;
-  }
-
+  /**
+   * If disabled, the camera bump synchronized to the beat.
+   * @default `false`
+   */
   public static var zoomCamera(get, set):Bool;
 
   static function get_zoomCamera():Bool
@@ -235,10 +148,15 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.zoomCamera = value;
-    commit('zoomCamera');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * If enabled, an FPS and memory counter will be displayed even if this is not a debug build.
+   * Always disabled on release mobile builds.
+   * @default `Off`
+   */
   public static var debugDisplay(get, set):DebugDisplayMode;
 
   static function get_debugDisplay():DebugDisplayMode
@@ -259,11 +177,15 @@ class Preferences
 
     var save = Save.instance;
     save.options.debugDisplay = value;
-    commit('debugDisplay');
+    Save.system.flush();
     return value;
     #end
   }
 
+  /**
+   * Opacity of the debug display's background.
+   * @default `50`
+   */
   public static var debugDisplayBGOpacity(get, set):Int;
 
   static function get_debugDisplayBGOpacity():Int
@@ -277,27 +199,14 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.debugDisplayBGOpacity = value;
-    commit('debugDisplayBGOpacity');
+    Save.system.flush();
     return value;
   }
 
-  public static var debugDisplayOffsetX(get, set):Int;
-
-  static function get_debugDisplayOffsetX():Int
-  {
-    return Save?.instance?.options?.debugDisplayOffsetX ?? 10;
-  }
-
-  static function set_debugDisplayOffsetX(value:Int):Int
-  {
-    setDebugDisplayOffsetX(value);
-
-    var save:Save = Save.instance;
-    save.options.debugDisplayOffsetX = value;
-    commit('debugDisplayOffsetX');
-    return value;
-  }
-
+  /**
+   * If enabled, haptic feedback will be enabled.
+   * @default `All`
+   */
   public static var hapticsMode(get, set):HapticsMode;
 
   static function get_hapticsMode():HapticsMode
@@ -331,10 +240,14 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.hapticsMode = string;
-    commit('hapticsMode');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * Multiplier of intensity for all the haptic feedback effects.
+   * @default `2.5`
+   */
   public static var hapticsIntensityMultiplier(get, set):Float;
 
   static function get_hapticsIntensityMultiplier():Float
@@ -346,29 +259,15 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.hapticsIntensityMultiplier = value;
-    commit('hapticsIntensityMultiplier');
+    Save.system.flush();
     return value;
   }
 
-  #if mobile
-  public static var fullscreenMode(get, set):Bool;
-
-  static function get_fullscreenMode():Bool
-  {
-    return Save?.instance?.mobileOptions?.fullscreenMode ?? true;
-  }
-
-  static function set_fullscreenMode(value:Bool):Bool
-  {
-    if (value != Save.instance.mobileOptions.fullscreenMode) funkin.ui.FullScreenScaleMode.enabled = value;
-
-    var save:Save = Save.instance;
-    save.mobileOptions.fullscreenMode = value;
-    commit('fullscreenMode');
-    return value;
-  }
-  #end
-
+  /**
+   * If enabled, the game will automatically pause when tabbing out.
+   * Always enabled on mobile.
+   * @default `true`
+   */
   public static var autoPause(get, set):Bool;
 
   static function get_autoPause():Bool
@@ -389,11 +288,15 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.autoPause = value;
-    commit('autoPause');
+    Save.system.flush();
     return value;
     #end
   }
 
+  /**
+   * If enabled, the game will automatically launch in fullscreen on startup.
+   * @default `true`
+   */
   public static var autoFullscreen(get, set):Bool;
 
   static function get_autoFullscreen():Bool
@@ -405,10 +308,15 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.autoFullscreen = value;
-    commit('autoFullscreen');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * A global audio offset in milliseconds.
+   * This is used to sync the audio.
+   * @default `0`
+   */
   public static var globalOffset(get, set):Int;
 
   static function get_globalOffset():Int
@@ -420,10 +328,14 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.globalOffset = value;
-    commit('globalOffset');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * If enabled, the game will utilize VSync (or adaptive VSync) on startup.
+   * @default `OFF`
+   */
   public static var vsyncMode(get, set):lime.ui.WindowVSyncMode;
 
   static function get_vsyncMode():lime.ui.WindowVSyncMode
@@ -470,7 +382,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.vsyncMode = string;
-    commit('vsyncMode');
+    Save.system.flush();
     return value;
     #end
   }
@@ -498,7 +410,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.unlockedFramerate = value;
-    commit('unlockedFramerate');
+    Save.system.flush();
     return value;
     #end
   }
@@ -518,7 +430,7 @@ class Preferences
 
     var save:Save = Save.instance;
     save.options.enabledDiscordRPC = value;
-    commit('enabledDiscordRPC');
+    Save.system.flush();
     return value;
   }
 
@@ -543,6 +455,11 @@ class Preferences
   }
   #end
 
+  /**
+   * If >0, the game will display a semi-opaque background under the notes.
+   * `0` for no background, `100` for solid black if you're freaky like that
+   * @default `0`
+   */
   public static var strumlineBackgroundOpacity(get, set):Int;
 
   static function get_strumlineBackgroundOpacity():Int
@@ -554,10 +471,14 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.strumlineBackgroundOpacity = value;
-    commit('strumlineBackgroundOpacity');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * If enabled, the game will hide the mouse when taking a screenshot.
+   * @default `true`
+   */
   public static var shouldHideMouse(get, set):Bool;
 
   static function get_shouldHideMouse():Bool
@@ -569,10 +490,14 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.shouldHideMouse = value;
-    commit('shouldHideMouse');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * If enabled, the game will show a preview after taking a screenshot.
+   * @default `true`
+   */
   public static var fancyPreview(get, set):Bool;
 
   static function get_fancyPreview():Bool
@@ -584,10 +509,14 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.fancyPreview = value;
-    commit('fancyPreview');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * If enabled, the game will show the preview only after a screenshot is saved.
+   * @default `true`
+   */
   public static var previewOnSave(get, set):Bool;
 
   static function get_previewOnSave():Bool
@@ -599,30 +528,27 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.screenshot.previewOnSave = value;
-    commit('previewOnSave');
+    Save.system.flush();
     return value;
   }
 
+  /**
+   * Loads the user's preferences from the save data and apply them.
+   */
   public static function init():Void
   {
+    // Apply the autoPause setting (enables automatic pausing on focus lost).
     FlxG.autoPause = Preferences.autoPause;
 
+    // Apply the debugDisplay setting (enables the FPS and RAM display).
     setDebugDisplayMode(Preferences.debugDisplay);
     setDebugDisplayBGOpacity(Preferences.debugDisplayBGOpacity / 100);
-    setDebugDisplayOffsetX(Preferences.debugDisplayOffsetX);
 
     toggleFramerateCap(Preferences.unlockedFramerate);
 
     #if mobile
+    // Apply the allowScreenTimeout setting.
     lime.system.System.allowScreenTimeout = Preferences.screenTimeout;
-    #end
-
-    #if FEATURE_DEBUG_FUNCTIONS
-    FlxG.console.registerFunction('prefGet', getPreference);
-    FlxG.console.registerFunction('prefSet', setPreference);
-    FlxG.console.registerFunction('prefToggle', togglePreference);
-    FlxG.console.registerFunction('prefReset', resetToDefaults);
-    FlxG.console.registerFunction('prefExport', exportPreferences);
     #end
   }
 
@@ -652,13 +578,10 @@ class Preferences
     Main.debugDisplay.backgroundOpacity = value;
   }
 
-  static function setDebugDisplayOffsetX(value:Int):Void
-  {
-    if (Main.debugDisplay == null) return;
-
-    Main.debugDisplay.setOffsetX(value);
-  }
-
+  /**
+   * If enabled, subtitles will appear during some songs and cutscenes.
+   * @default `true`
+   */
   public static var subtitles(get, set):Bool;
 
   static function get_subtitles():Bool
@@ -670,11 +593,34 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.options.subtitles = value;
-    commit('subtitles');
+    Save.system.flush();
+    return value;
+  }
+
+  /**
+   * Controls Scheme for the hitbox.
+   * @default `4 Lanes`
+   */
+  public static var controlsScheme(get, set):String;
+
+  static function get_controlsScheme():String
+  {
+    return Save?.instance?.options?.controlsScheme ?? "Arrows";
+  }
+
+  static function set_controlsScheme(value:String):String
+  {
+    var save:Save = Save.instance;
+    save.options.controlsScheme = value;
+    Save.system.flush();
     return value;
   }
 
   #if mobile
+  /**
+   * If enabled, device will be able to sleep on its own.
+   * @default `false`
+   */
   public static var screenTimeout(get, set):Bool;
 
   static function get_screenTimeout():Bool
@@ -688,34 +634,16 @@ class Preferences
 
     var save:Save = Save.instance;
     save.mobileOptions.screenTimeout = value;
-    commit('screenTimeout');
+    Save.system.flush();
     return value;
   }
-
-  public static var controlsScheme(get, set):String;
-
-  static function get_controlsScheme():String
-  {
-    var value:String = Save?.instance?.mobileOptions?.controlsScheme ?? FunkinHitboxControlSchemes.Arrows;
-
-    return switch (value)
-    {
-      case FunkinHitboxControlSchemes.Arrows, FunkinHitboxControlSchemes.FourLanes, FunkinHitboxControlSchemes.DoubleThumbTriangle, FunkinHitboxControlSchemes.DoubleThumbSquare, FunkinHitboxControlSchemes.DoubleThumbDPad:
-        value;
-      default:
-        FunkinHitboxControlSchemes.Arrows;
-    }
-  }
-
-  static function set_controlsScheme(value:String):String
-  {
-    var save:Save = Save.instance;
-    save.mobileOptions.controlsScheme = value;
-    commit('controlsScheme');
-    return value;
-  }
+  #end
 
   #if FEATURE_MOBILE_IAP
+  /**
+   * If bought, the game will not show any ads.
+   * @default `false`
+   */
   @:unreflective
   public static var noAds(get, set):Bool;
 
@@ -732,135 +660,8 @@ class Preferences
   {
     var save:Save = Save.instance;
     save.mobileOptions.noAds = value;
-    commit('noAds');
+    Save.system.flush();
     return value;
   }
   #end
-  #end
-
-  /**
-   * Resets the main user-facing preferences back to their documented default
-   * values, in a single batched write (one flush, one set of change signals).
-   * Does not touch platform-purchase state (`noAds`) or anything not meant
-   * to be casually reset.
-   */
-  public static function resetToDefaults():Void
-  {
-    beginBatch();
-
-    naughtyness = true;
-    downscroll = #if mobile true #else false #end;
-    middlescroll = false;
-    invisibleHitbox = false;
-    flashingLights = true;
-    cameraMovement = true;
-    mode3D = false;
-    storageType = 'data';
-    zoomCamera = true;
-    debugDisplay = DebugDisplayMode.Off;
-    debugDisplayBGOpacity = 50;
-    debugDisplayOffsetX = 10;
-    hapticsMode = HapticsMode.ALL;
-    hapticsIntensityMultiplier = 1;
-    autoPause = true;
-    autoFullscreen = true;
-    globalOffset = 0;
-    vsyncMode = lime.ui.WindowVSyncMode.OFF;
-    unlockedFramerate = false;
-    enabledDiscordRPC = true;
-    strumlineBackgroundOpacity = 0;
-    shouldHideMouse = true;
-    fancyPreview = true;
-    previewOnSave = true;
-    subtitles = true;
-
-    #if mobile
-    fullscreenMode = true;
-    screenTimeout = false;
-    controlsScheme = FunkinHitboxControlSchemes.Arrows;
-    #end
-
-    endBatch();
-  }
-
-  /**
-   * Serializes every current preference value to a JSON string. This is a
-   * dump of the raw save data structure (`Save.instance.options`), so it
-   * includes any platform-specific fields present on this build.
-   */
-  public static function exportPreferences():String
-  {
-    return haxe.Json.stringify(Save.instance.options);
-  }
-
-  /**
-   * Merges a JSON string (as produced by `exportPreferences`) into the
-   * current save data, then flushes and notifies listeners for every field
-   * that was present in the import. Fields the JSON doesn't mention are left
-   * untouched. Returns false (and changes nothing) if the JSON is invalid.
-   */
-  public static function importPreferences(json:String):Bool
-  {
-    var parsed:Dynamic = null;
-
-    try
-    {
-      parsed = haxe.Json.parse(json);
-    }
-    catch (e:Dynamic)
-    {
-      FlxG.log.warn('[Preferences] Failed to parse imported preferences JSON: $e');
-      return false;
-    }
-
-    if (parsed == null) return false;
-
-    beginBatch();
-
-    var options:Dynamic = Save.instance.options;
-
-    for (field in Reflect.fields(parsed))
-    {
-      Reflect.setField(options, field, Reflect.field(parsed, field));
-
-      if (batchedChanges.indexOf(field) == -1) batchedChanges.push(field);
-    }
-
-    endBatch();
-
-    return true;
-  }
-
-  /**
-   * Reads a preference's raw saved value by name, via reflection on the
-   * underlying save data. Note this bypasses any "live apply" side effects
-   * that a named property's setter would normally trigger (e.g. `debugDisplay`
-   * toggling the on-screen overlay) - it only reads/writes the stored value.
-   * Prefer the named static property directly when one exists and side
-   * effects matter.
-   */
-  public static function getPreference(name:String):Dynamic
-  {
-    return Reflect.field(Save.instance.options, name);
-  }
-
-  /**
-   * Writes a preference's raw saved value by name, via reflection. See the
-   * caveat on `getPreference` about live-apply side effects.
-   */
-  public static function setPreference(name:String, value:Dynamic):Void
-  {
-    Reflect.setField(Save.instance.options, name, value);
-    commit(name);
-  }
-
-  /**
-   * Flips a boolean preference by name, via reflection. See the caveat on
-   * `getPreference` about live-apply side effects.
-   */
-  public static function togglePreference(name:String):Void
-  {
-    var current:Dynamic = getPreference(name);
-    setPreference(name, !(current == true));
-  }
 }

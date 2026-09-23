@@ -5,6 +5,7 @@ import flixel.tweens.FlxTween;
 import funkin.graphics.FunkinSprite;
 import funkin.util.EaseUtil;
 import funkin.play.notes.notestyle.NoteStyle;
+import funkin.play.PlayState;
 
 @:nullSafety
 class PopUpStuff extends FlxTypedGroup<FunkinSprite>
@@ -58,7 +59,9 @@ class PopUpStuff extends FlxTypedGroup<FunkinSprite>
 
     var fadeEase = noteStyle.isJudgementSpritePixel(daRating) ? EaseUtil.stepped(2) : null;
 
-    FlxTween.tween(rating, {alpha: 0}, 0.2, {
+    FlxTween.tween(rating, {
+      alpha: 0
+    }, 0.2, {
       onComplete: function(tween:FlxTween)
       {
         remove(rating, true);
@@ -109,7 +112,9 @@ class PopUpStuff extends FlxTypedGroup<FunkinSprite>
 
       var fadeEase = noteStyle.isComboNumSpritePixel(digit) ? EaseUtil.stepped(2) : null;
 
-      FlxTween.tween(numScore, {alpha: 0}, 0.2, {
+      FlxTween.tween(numScore, {
+        alpha: 0
+      }, 0.2, {
         onComplete: function(tween:FlxTween)
         {
           remove(numScore, true);

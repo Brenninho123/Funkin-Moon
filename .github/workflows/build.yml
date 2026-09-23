@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HAXE_VERSION: 4.3.7
+
 jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -29,8 +37,21 @@ jobs:
 
       - name: Setup Android
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Cache Android SDK packages
+        id: cache-android-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_SDK_ROOT }}/ndk
+            ${{ env.ANDROID_SDK_ROOT }}/platforms
+            ${{ env.ANDROID_SDK_ROOT }}/build-tools
+          key: android-sdk-ndk27.2.12479018-platform35-buildtools35.0.0
 
       - name: Install Android SDK
+        if: steps.cache-android-sdk.outputs.cache-hit != 'true'
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
@@ -39,6 +60,7 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.2.12479018"
+
       - name: Configure Android
         shell: bash
         run: |
@@ -47,6 +69,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "CXXFLAGS=-std=c++20" >> "$GITHUB_ENV"
+
       - name: Install Linux dependencies
         shell: bash
         run: |
@@ -71,30 +94,42 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             pkg-config
+
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Cache haxelib
+        id: cache-haxelib
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-android-${{ hashFiles('hmm.json') }}
+          restore-keys: |
+            haxelib-android-
 
       - name: Install HMM
         shell: bash
-        run: |
-          haxelib install hmm --quiet
+        run: haxelib install hmm --quiet
+
       - name: Install dependencies
         shell: bash
-        run: |
-          rm -rf .haxelib
-          haxelib run hmm install
+        run: haxelib run hmm install
+
       - name: Build hxcpp
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
         run: |
           HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
           cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
+
       - name: Rebuild Lime
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild cpp
+        run: haxelib run lime rebuild cpp
+
       - name: Setup Lime Android
         shell: bash
         run: |
@@ -103,25 +138,29 @@ jobs:
           $ANDROID_NDK_ROOT
           $JAVA_HOME
           EOF
+
       - name: Rebuild Lime Android
+        if: steps.cache-haxelib.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          haxelib run lime rebuild android
+        run: haxelib run lime rebuild android
+
       - name: Build Android
         shell: bash
-        run: |
-          haxelib run lime build android -release -DGITHUB_BUILD
+        run: haxelib run lime build android -arm64 -debug -DGITHUB_BUILD
+
       - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-android
-          path: export/release/android/**/*.apk
+          name: Funkin (PlayTest) (Android)
+          path: export/debug/android/**/*.apk
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14
 
-  windows:
-    name: Windows
-    runs-on: windows-latest
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -131,39 +170,89 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
+        uses: krdlab/setup-haxe@v2
         with:
-          haxe-version: 4.3.7
+          haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install HMM
-        shell: pwsh
-        run: |
-          haxelib install hmm --quiet
+        shell: bash
+        run: haxelib install hmm --quiet
+
       - name: Install dependencies
-        shell: pwsh
+        shell: bash
         run: |
-          if (Test-Path ".haxelib") {
-            Remove-Item ".haxelib" -Recurse -Force
-          }
+          rm -rf .haxelib
           haxelib run hmm install
+
       - name: Build hxcpp
-        shell: pwsh
+        shell: bash
         run: |
-          $HXCPP_PATH = (haxelib libpath hxcpp).Trim()
-          Set-Location "$HXCPP_PATH\tools\hxcpp"
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
           haxe compile.hxml
-      - name: Rebuild Lime Windows
-        shell: pwsh
+
+      - name: Rebuild Lime
+        shell: bash
+        run: haxelib run lime rebuild cpp
+
+      - name: Rebuild Lime iOS
+        shell: bash
+        run: haxelib run lime rebuild ios
+
+      - name: Generate Xcode project
+        shell: bash
+        run: haxelib run lime update ios -debug -DGITHUB_BUILD -DNO_FEATURE_CPPIA
+
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: xcode-derived-data-ios-${{ hashFiles('hmm.json') }}
+          restore-keys: |
+            xcode-derived-data-ios-
+
+      - name: Build iOS (unsigned)
+        shell: bash
         run: |
-          haxelib run lime rebuild cpp
-      - name: Build Windows
-        shell: pwsh
+          set -euo pipefail
+
+          cd export/debug/ios
+
+          xcodebuild build \
+            -project Funkin.xcodeproj \
+            -target Funkin \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR=build/Debug-iphoneos
+
+      - name: Package iOS app
+        shell: bash
         run: |
-          haxelib run lime build windows -release -64 -DGITHUB_BUILD
-      - name: Upload Windows
+          set -euo pipefail
+          BUILD_DIR=export/debug/ios/build/Debug-iphoneos
+
+          cd "$BUILD_DIR"
+          APP_PATH=$(find . -maxdepth 1 -name "*.app")
+
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not find .app bundle in $BUILD_DIR"
+            exit 1
+          fi
+
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r Funkin_PlayTest_iOS.ipa Payload
+          echo "IPA_PATH=$BUILD_DIR/Funkin_PlayTest_iOS.ipa" >> "$GITHUB_ENV"
+
+      - name: Upload iOS
         uses: actions/upload-artifact@v4
         with:
-          name: funkin-moon-windows
-          path: export/release/windows/bin
+          name: Funkin (PlayTest) (iOS)
+          path: ${{ env.IPA_PATH }}
           if-no-files-found: error
-          compression-level: 6
+          compression-level: 0
+          retention-days: 14

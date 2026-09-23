@@ -1,7 +1,6 @@
 package funkin.data.dialogue;
 
 import funkin.play.cutscene.dialogue.Speaker;
-import funkin.play.cutscene.dialogue.ScriptedSpeaker;
 import funkin.util.tools.ISingleton;
 import funkin.data.DefaultRegistryImpl;
 
@@ -19,7 +18,12 @@ class SpeakerRegistry extends BaseRegistry<Speaker, SpeakerData, SpeakerEntryPar
 
   public function new()
   {
-    super('SPEAKER', 'dialogue/speakers', SPEAKER_DATA_VERSION_RULE);
+    super({
+      registryId: 'SPEAKER',
+      dataFilePath: 'gameplay/dialogue/speakers/',
+      nestedEntries: true,
+      versionRule: SPEAKER_DATA_VERSION_RULE
+    });
   }
 }
 

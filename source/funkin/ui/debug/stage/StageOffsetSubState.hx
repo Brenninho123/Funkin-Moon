@@ -35,7 +35,7 @@ class StageOffsetSubState extends HaxeUISubState
   var uiStuff:Component;
   var outlineShader:StrokeShader;
 
-  static final STAGE_EDITOR_LAYOUT = Paths.ui('stage-editor/stage-editor-view');
+  static final STAGE_EDITOR_LAYOUT = Paths.ui('editors/stage-editor/stage-editor-view');
 
   public function new()
   {
@@ -55,7 +55,7 @@ class StageOffsetSubState extends HaxeUISubState
 
     setupUIListeners();
 
-    // var str = Paths.xml('ui/stage-editor-view');
+    // var str = Paths.xml('ui/editors/stage-editor-view');
     // uiStuff = RuntimeComponentBuilder.fromAsset(str);
 
     // uiStuff.findComponent("lol").onClick = saveCharacterCompile;
@@ -70,7 +70,7 @@ class StageOffsetSubState extends HaxeUISubState
 
     outlineShader = new StrokeShader(0xFFFFFFFF, 4, 4);
 
-    var layerList:ListView = findComponent("prop-layers");
+    var layerList:ListView = findComponent('prop-layers');
 
     for (thing in playState.currentStage)
     {
@@ -120,7 +120,7 @@ class StageOffsetSubState extends HaxeUISubState
           spr.ID = 0;
           spr.alpha = 1;
         }
-      });
+      }, false, true, false);
     }
   }
 

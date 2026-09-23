@@ -59,6 +59,7 @@
   "haxe.displayPort": "auto",
   "haxe.enableCompilationServer": true,
   "haxe.enableServerView": true,
+  "haxe.exclude": ["polymod"],
   "haxe.displayServer": { "arguments": ["-v"] },
   "files.associations": {
     "*.hxp": "haxe",
@@ -167,12 +168,33 @@
       "args": ["-debug", "-DUNLOCK_EVERYTHING"]
     },
     {
+      "label": "Debug (Verbose Asset Cache)",
+      "args": ["-debug", "-DVERBOSE_ASSET_CACHE"]
+    },
+    {
+      "label": "Debug (Tracy + Unlock Everything)",
+      "args": [
+        "-debug",
+        "-DFEATURE_DEBUG_TRACY",
+        "-DUNLOCK_EVERYTHING",
+        "-DFEATURE_DEBUG_FUNCTIONS"
+      ]
+    },
+    {
       "label": "Debug (Tracy)",
       "args": ["-debug", "-DFEATURE_DEBUG_TRACY", "-DFEATURE_DEBUG_FUNCTIONS"]
     },
     {
+      "label": "Release (Tracy)",
+      "args": ["-debug", "-DFEATURE_DEBUG_TRACY", "-DGITHUB_BUILD"]
+    },
+    {
       "label": "Debug (Straight to Chart Editor)",
       "args": ["-debug", "-DCHARTING", "-DFEATURE_DEBUG_FUNCTIONS"]
+    },
+    {
+      "label": "Debug (Straight to Camera Editor)",
+      "args": ["-debug", "-DEYESOFGOD", "-DFEATURE_DEBUG_FUNCTIONS"]
     },
     { "label": "Release", "args": ["-release"] },
     {
