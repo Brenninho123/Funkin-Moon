@@ -348,7 +348,10 @@ class Main extends Sprite
 
     stage.addEventListener(Event.DEACTIVATE, onStageDeactivate);
     stage.addEventListener(Event.ACTIVATE, onStageActivate);
+
+    #if mobile
     stage.addEventListener(Event.RESIZE, onStageResize);
+    #end
   }
 
   #if mobile
