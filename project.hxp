@@ -100,6 +100,8 @@ class Project extends HXProject
 
   static final BUILD_INFO_DIR:String = "assets/preload/data";
 
+  static final NATIVE_CPP_DIR:String = "source/funkin/native";
+
   static final BUILD_INFO_FILE:String = "build-info.json";
 
   static final FNFC_PATTERN_DEPTH:Int = 5;
@@ -250,6 +252,8 @@ class Project extends HXProject
 
   static final FEATURE_AWAY3D:FeatureFlag = "FEATURE_AWAY3D";
 
+  static final FEATURE_NATIVE_CPP:FeatureFlag = "FEATURE_NATIVE_CPP";
+
   static var envConfig:Null<Map<String, Dynamic>> = null;
 
   static var astcExcludes:Array<String> = [];
@@ -293,6 +297,7 @@ class Project extends HXProject
     configureCompileDefines();
     configureIncludeMacros();
     configureCustomMacros();
+    configureNativeCpp();
     configurePolymod();
     configureHaxelibs();
     configureASTCTextures();
@@ -611,7 +616,8 @@ class Project extends HXProject
       flagRule(FEATURE_DEBUG_DISPLAY, p -> !p.isMobile() || FEATURE_DEBUG_FUNCTIONS.isEnabled(p)),
       flagRule(FEATURE_ONLINE, _ -> false),
       flagRule(FEATURE_3D_RENDERING, _ -> false),
-      flagRule(FEATURE_AWAY3D, _ -> false)
+      flagRule(FEATURE_AWAY3D, _ -> false),
+      flagRule(FEATURE_NATIVE_CPP, _ -> false)
     ];
   }
 
@@ -829,6 +835,27 @@ class Project extends HXProject
   {
     addHaxeMacro("addMetadata('@:build(funkin.util.macro.FlxMacro.buildFlxBasic())', 'flixel.FlxBasic')");
     addHaxeMacro("addMetadata('@:build(funkin.util.macro.FlxMacro.buildFlxSprite())', 'flixel.FlxSprite')");
+  }
+
+  function configureNativeCpp():Void
+  {
+    if (!FEATURE_NATIVE_CPP.isEnabled(this)) return;
+
+    if (!isCPP())
+    {
+      warn('FEATURE_NATIVE_CPP is enabled but the current target does not compile to C++; skipping native bridge inclusion.');
+      return;
+    }
+
+    if (!FileSystem.exists(NATIVE_CPP_DIR))
+    {
+      FileSystem.createDirectory(NATIVE_CPP_DIR);
+      info('Created native C++ bridge directory at $NATIVE_CPP_DIR.');
+    }
+
+    addHaxeMacro("include('funkin.native')");
+
+    info('Native C++ support enabled. Place extern classes under $NATIVE_CPP_DIR using @:buildXml and @:include metadata to compile custom .cpp/.h sources into the build.');
   }
 
   function configureOutputDir():Void
