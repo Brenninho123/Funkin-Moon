@@ -292,7 +292,6 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
       function(value:Bool):Void
       {
         Preferences.boostFramerate = value;
-        FunkinDebugDisplay.setAutoBoostEnabled(value);
       },
       Preferences.boostFramerate
     );
@@ -450,8 +449,10 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
   function createPrefItemEnum<T>(prefName:String, prefDesc:String, values:Map<String, T>, onChange:String->T->Void, defaultKey:String,
       available:Bool = true):Void
   {
-    var item = new EnumPreferenceItem<T>(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, values, defaultKey, onChange,
-      available);
+    var item = new EnumPreferenceItem<T>(funkin.ui.FullScreenScaleMode.gameNotchSize.x, (120 * items.length) + 30, prefName, values, defaultKey, onChange);
+
+    if (Reflect.hasField(item, 'available')) Reflect.setField(item, 'available', available);
+
     items.addItem(prefName, item);
     preferenceItems.add(item.lefthandText);
     preferenceDesc.push(prefDesc);
