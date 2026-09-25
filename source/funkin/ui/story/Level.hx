@@ -22,7 +22,6 @@ class Level implements IRegistryEntry<LevelData>
   {
     this.id = id;
     _data = _fetchData(id);
-
     if (_data == null)
     {
       throw 'Could not parse level data for id: $id';
@@ -66,20 +65,6 @@ class Level implements IRegistryEntry<LevelData>
   }
 
   /**
-   * Retrieve the title of the level for display on a capsule.
-   * @return Title of the capsule as a string
-   */
-  public function getCapsuleTitle():String
-  {
-    return _data.capsule?.name ?? null;
-  }
-
-  public function getCapsuleTitleOffsets():Array<Float>
-  {
-    return _data.capsule?.offsets ?? [0.0, 0.0];
-  }
-
-  /**
    * Construct the title graphic for the level.
    *
    * @return The constructed graphic as a sprite.
@@ -92,7 +77,6 @@ class Level implements IRegistryEntry<LevelData>
       return new FunkinSprite().makeSolidColor(0, 0, FlxColor.TRANSPARENT);
     }
     var result:FunkinSprite = new FunkinSprite().loadTexture(titleAsset);
-
     return result;
   }
 
@@ -117,7 +101,6 @@ class Level implements IRegistryEntry<LevelData>
       variation: Constants.DEFAULT_VARIATION
     });
     if (song == null) return 'Unknown';
-
     return song.songName;
   }
 
@@ -197,7 +180,6 @@ class Level implements IRegistryEntry<LevelData>
   public function getDifficulties():Array<String>
   {
     var difficulties:Array<String> = [];
-
     var songList:Array<String> = getSongs();
 
     var firstSongId:String = songList[0];
@@ -237,7 +219,6 @@ class Level implements IRegistryEntry<LevelData>
     }
 
     if (difficulties.length == 0) difficulties = ['normal'];
-
     return difficulties;
   }
 
@@ -270,15 +251,18 @@ class Level implements IRegistryEntry<LevelData>
       if (propData == null) continue;
 
       propData.offsets ??= [0.0, 0.0];
+
       var xOffset:Float = propData?.offsets[0] ?? 0.0;
       var yOffset:Float = propData?.offsets[1] ?? 0.0;
 
       // Attempt to reuse the `LevelProp` object.
       // This prevents animations from resetting.
       var existingProp:Null<LevelProp> = props[propIndex];
+
       if (existingProp != null)
       {
         existingProp.propData = propData;
+
         if (existingProp.propData == null)
         {
           existingProp.visible = false;

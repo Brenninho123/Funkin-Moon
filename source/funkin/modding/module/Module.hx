@@ -5,6 +5,10 @@ import funkin.modding.IScriptedClass.IStateChangingScriptedClass;
 import funkin.modding.IScriptedClass.IFreeplayScriptedClass;
 import funkin.modding.IScriptedClass.ICharacterSelectScriptedClass;
 import funkin.modding.events.ScriptEvent;
+import flixel.FlxG;
+import funkin.graphics.FunkinCamera;
+import funkin.play.PlayState;
+import funkin.play.notes.Strumline;
 
 /**
  * Parameters used to initialize a module.
@@ -25,6 +29,8 @@ typedef ModuleParams =
 @:nullSafety
 class Module implements IPlayStateScriptedClass implements IStateChangingScriptedClass implements IFreeplayScriptedClass implements ICharacterSelectScriptedClass
 {
+  var elapsedTime:Float = 0.0;
+
   /**
    * Whether the module is currently active.
    */
@@ -32,7 +38,111 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
 
   function set_active(value:Bool):Bool
   {
-    return this.active = value;
+    if (this.active != value)
+    {
+      if (value) onEnabled();
+      else
+        onDisabled();
+    }
+    this.active = value;
+    return value;
+  }
+
+  public function onEnabled():Void
+  {
+  }
+
+  public function onDisabled():Void
+  {
+  }
+
+  public function resetElapsedTime():Void
+  {
+    elapsedTime = 0.0;
+  }
+
+  public function getGameCamera():Null<FunkinCamera>
+  {
+    return PlayState.instance?.camGame;
+  }
+
+  public function getPlayerStrumline():Null<Strumline>
+  {
+    return PlayState.instance?.playerStrumline;
+  }
+
+  public function getOpponentStrumline():Null<Strumline>
+  {
+    return PlayState.instance?.opponentStrumline;
+  }
+
+  public function isCurrentlyActive():Bool
+  {
+    return active && PlayState.instance != null;
+  }
+
+  public function swayCameraAngle(amplitude:Float, frequency:Float):Void
+  {
+    var camera:Null<FunkinCamera> = getGameCamera();
+    if (camera == null) return;
+    camera.angle = Math.sin(elapsedTime * frequency * Math.PI * 2.0) * amplitude;
+  }
+
+  public function swayCameraZoom(baseZoom:Float, amplitude:Float, frequency:Float, phase:Float = 0.0):Void
+  {
+    var camera:Null<FunkinCamera> = getGameCamera();
+    if (camera == null) return;
+    camera.zoom = baseZoom + Math.sin(elapsedTime * frequency * Math.PI * 2.0 + phase) * amplitude;
+  }
+
+  public function swayStrumlineX(strumline:Null<Strumline>, baseX:Float, amplitude:Float, frequency:Float, phase:Float = 0.0):Void
+  {
+    if (strumline == null) return;
+    strumline.x = baseX + Math.sin(elapsedTime * frequency * Math.PI * 2.0 + phase) * amplitude;
+  }
+
+  public function wobbleNoteAngles(strumline:Null<Strumline>, amplitude:Float, frequency:Float, phase:Float = 0.0):Void
+  {
+    if (strumline == null) return;
+    for (note in strumline.notes.members)
+    {
+      if (note == null) continue;
+      note.angle = Math.sin(elapsedTime * frequency * Math.PI * 2.0 + phase + note.x * 0.01) * amplitude;
+    }
+    for (note in strumline.strumlineNotes.members)
+    {
+      if (note == null) continue;
+      note.angle = Math.sin(elapsedTime * frequency * Math.PI * 2.0 + phase + note.x * 0.01) * amplitude;
+    }
+  }
+
+  public function wobblePitch(basePitch:Float, amplitude:Float, frequency:Float):Void
+  {
+    if (FlxG.sound.music != null)
+    {
+      FlxG.sound.music.pitch = basePitch + Math.sin(elapsedTime * frequency * Math.PI * 2.0) * amplitude;
+    }
+  }
+
+  public function resetCameraTransform(baseZoom:Float):Void
+  {
+    var camera:Null<FunkinCamera> = getGameCamera();
+    if (camera == null) return;
+    camera.angle = 0.0;
+    camera.zoom = baseZoom;
+  }
+
+  public function resetStrumlineTransform(strumline:Null<Strumline>, baseX:Float):Void
+  {
+    if (strumline == null) return;
+    strumline.x = baseX;
+    for (note in strumline.notes.members) if (note != null) note.angle = 0.0;
+    for (note in strumline.strumlineNotes.members) if (note != null) note.angle = 0.0;
+  }
+
+  public function resetPitch(basePitch:Float):Void
+  {
+    if (FlxG.sound.music != null) FlxG.sound.music.pitch = basePitch;
   }
 
   public var moduleId(default, null):String = 'UNKNOWN';
@@ -111,6 +221,7 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
    */
   public function onUpdate(event:UpdateScriptEvent)
   {
+    elapsedTime += event.elapsed;
   }
 
   /**

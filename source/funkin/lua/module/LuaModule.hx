@@ -1,12 +1,15 @@
 package funkin.lua.module;
 
 import funkin.modding.module.Module;
+#if FEATURE_LUA_SCRIPTS
 import funkin.modding.module.Module.ModuleParams;
 import funkin.modding.events.ScriptEvent;
 import funkin.lua.FunkinLua;
+#end
 
 class LuaModule extends Module
 {
+  #if FEATURE_LUA_SCRIPTS
   public var scriptPath(default, null):String;
 
   var script:Null<FunkinLua>;
@@ -307,4 +310,5 @@ class LuaModule extends Module
     trace('[LuaModule] onCharacterConfirm -> $scriptPath');
     callLua('onCharacterConfirm');
   }
+  #end
 }

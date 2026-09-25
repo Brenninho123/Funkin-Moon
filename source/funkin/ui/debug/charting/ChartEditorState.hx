@@ -141,7 +141,6 @@ using Lambda;
 class ChartEditorState extends UIState
 {
   public static final CHART_EDITOR_TOOLBOX_DIFFICULTY_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/difficulty');
-
   public static final CHART_EDITOR_TOOLBOX_PLAYER_PREVIEW_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/player-preview');
   public static final CHART_EDITOR_TOOLBOX_OPPONENT_PREVIEW_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/opponent-preview');
   public static final CHART_EDITOR_TOOLBOX_METADATA_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/metadata');
@@ -151,29 +150,17 @@ class ChartEditorState extends UIState
   public static final CHART_EDITOR_TOOLBOX_FREEPLAY_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/freeplay');
   public static final CHART_EDITOR_TOOLBOX_PLAYTEST_PROPERTIES_LAYOUT:String = Paths.ui('editors/chart-editor/toolbox/playtest-properties');
   public static final SUPPORTED_MUSIC_FORMATS:Array<String> = ['ogg'];
-
   public static final GRID_SIZE:Int = 40;
-
   public static final PLAYHEAD_SCROLL_AREA_WIDTH:Int = Std.int(GRID_SIZE);
-
   public static final PLAYHEAD_HEIGHT:Int = Std.int(GRID_SIZE / 8);
-
   public static final GRID_SELECTION_BORDER_WIDTH:Int = 6;
-
   public static final MENU_BAR_HEIGHT:Int = 32;
-
   public static final PLAYBAR_HEIGHT:Int = 48;
-
   public static final NOTE_SELECT_BUTTON_HEIGHT:Int = 32;
-
   public static final GRID_TOP_PAD:Int = NOTE_SELECT_BUTTON_HEIGHT + 4;
-
   public static final GRID_INITIAL_Y_POS:Int = MENU_BAR_HEIGHT + GRID_TOP_PAD;
-
   public static final NOTE_PREVIEW_X_POS:Int = 320;
-
   public static final NOTE_PREVIEW_Y_POS:Int = GRID_INITIAL_Y_POS - NOTE_SELECT_BUTTON_HEIGHT + 4;
-
   public static var GRID_X_POS(get, never):Float;
 
   static function get_GRID_X_POS():Float
@@ -186,13 +173,9 @@ class ChartEditorState extends UIState
   public static final PLAYHEAD_SCROLL_AREA_COLOR:FlxColor = 0xFF682B2F;
   public static final SPECTROGRAM_COLOR:FlxColor = 0xFFFF0000;
   public static final PLAYHEAD_COLOR:FlxColor = 0xC0BD0231;
-
   public static final SCROLL_EASE_DURATION:Float = 0.4;
-
   public static final STRUMLINE_SIZE:Int = 4;
-
   public static final DRAG_THRESHOLD:Float = 16.0;
-
   public static final SNAP_QUANTS:Array<Int> = [
     4,
     8,
@@ -206,11 +189,8 @@ class ChartEditorState extends UIState
     96,
     192
   ];
-
   public static final BASE_QUANT:Int = 16;
-
   public static final BASE_QUANT_INDEX:Int = 3;
-
   public static final LIVE_INPUT_KEYS:Map<ChartEditorLiveInputStyle, Array<FlxKey>> = [
     NumberKeys => [
       FIVE, SIX, SEVEN, EIGHT,
@@ -401,23 +381,14 @@ class ChartEditorState extends UIState
   }
 
   var playbarButtonPressed:Null<String> = null;
-
   var playbarHeadDragging:Bool = false;
-
   var playbarHeadDraggingWasPlaying:Bool = false;
-
   var noteKindToPlace:Null<String> = null;
-
   var noteParamsToPlace:Array<NoteParamData> = [];
-
   var eventKindToPlace:String = 'FocusCamera';
-
   var eventDataToPlace:DynamicAccess<Dynamic> = {};
-
   var commentColorToPlace:String = '#0000BB';
-
   var noteSnapQuantIndex:Int = BASE_QUANT_INDEX;
-
   var noteSnapQuant(get, never):Int;
 
   function get_noteSnapQuant():Int
@@ -433,21 +404,13 @@ class ChartEditorState extends UIState
   }
 
   var currentLiveInputStyle:ChartEditorLiveInputStyle = None;
-
   var currentWaveformPos:ChartEditorWaveformPos = Adjacent;
-
   var playtestStartTime:Bool = false;
-
   var playtestPracticeMode:Bool = false;
-
   var playtestBotPlayMode:Bool = false;
-
   var playtestShowResults:Bool = false;
-
   var playtestAudioSettings:Bool = false;
-
   var playtestSongScripts:Bool = true;
-
   var isPlaytesting(get, never):Bool;
 
   function get_isPlaytesting():Bool
@@ -472,7 +435,6 @@ class ChartEditorState extends UIState
   }
 
   var showNoteKindIndicators:Bool = false;
-
   var showSubtitles(default, set):Bool = false;
 
   function set_showSubtitles(value:Bool):Bool
@@ -500,9 +462,7 @@ class ChartEditorState extends UIState
   }
 
   var currentPlayerCharacterPlayer:Null<CharacterPlayer> = null;
-
   var currentOpponentCharacterPlayer:Null<CharacterPlayer> = null;
-
   var isHaxeUIFocused(get, never):Bool;
 
   function get_isHaxeUIFocused():Bool
@@ -518,33 +478,23 @@ class ChartEditorState extends UIState
   }
 
   var wasCursorOverHaxeUI:Bool = false;
-
   var isHaxeUIDialogOpen:Bool = false;
-
   var wasHaxeUIDialogOpen:Bool = false;
-
   var activeToolboxes:Map<String, CollapsibleDialog> = new Map<String, CollapsibleDialog>();
-
   var uiCamera:FlxCamera;
-
   #if FEATURE_TOUCH_CONTROLS
   var backButton:FunkinBackButton;
   var touchScrollLastY:Float = 0;
   var touchScrollActive:Bool = false;
   #end
-
   var shouldPlayWelcomeMusic:Bool = false;
 
   public static final WELCOME_MUSIC_FADE_IN_DELAY:Float = 10;
-
   public static final WELCOME_MUSIC_FADE_IN_DURATION:Float = 20;
 
   var metronomeVolume:Float = 1.0;
-
   var hitsoundVolumePlayer:Float = 1.0;
-
   var hitsoundVolumeOpponent:Float = 1.0;
-
   var previousAudioVolumes:Array<Float> = [
     1.0,
     1.0,
@@ -553,7 +503,6 @@ class ChartEditorState extends UIState
     1.0,
     1.0
   ];
-
   var hitsoundsEnabled(get, never):Bool;
 
   function get_hitsoundsEnabled():Bool
@@ -563,17 +512,11 @@ class ChartEditorState extends UIState
 
   var stretchySound1:Null<FunkinSound> = null;
   var stretchySound2:Null<FunkinSound> = null;
-
   var autoSaveTimer:Null<FlxTimer> = null;
-
   var gridPlayheadScrollAreaPressed:Bool = false;
-
   var notePreviewScrollAreaStartPos:Null<FlxPoint> = null;
-
   var currentScrollEase:Null<Float>;
-
   var scrollAnchorScreenPos:Null<FlxPoint> = null;
-
   var currentPlaceNoteData(default, set):Null<SongNoteData> = null;
 
   function set_currentPlaceNoteData(value:Null<SongNoteData>):Null<SongNoteData>
@@ -586,23 +529,15 @@ class ChartEditorState extends UIState
   var currentLiveInputPlaceNoteData:Array<SongNoteData> = [];
 
   public static var stackedNoteThreshold:Float = 0;
-
   static var wasPlaytesting:Bool = false;
 
   var dragTargetNote:Null<ChartEditorNoteSprite> = null;
-
   var dragTargetEvent:Null<ChartEditorEventSprite> = null;
-
   var dragTargetCurrentStep:Float = 0;
-
   var dragTargetCurrentColumn:Int = 0;
-
   var dragLengthCurrent:Float = 0;
-
   var playheadDragLengthCurrent:Array<Float> = [];
-
   var stretchySounds:Bool = false;
-
   var currentNoteSelection(default, set):Array<SongNoteData> = [];
 
   function set_currentNoteSelection(value:Array<SongNoteData>):Array<SongNoteData>
@@ -652,27 +587,16 @@ class ChartEditorState extends UIState
   }
 
   var currentEventSelection:Array<SongEventData> = [];
-
   var selectionBoxStartPos:Null<FlxPoint> = null;
-
   var undoHistory:Array<ChartEditorCommand> = [];
-
   var redoHistory:Array<ChartEditorCommand> = [];
-
   var noteDisplayDirty:Bool = true;
-
   var commentDisplayDirty:Bool = true;
-
   var noteTooltipsDirty:Bool = true;
-
   var healthIconsDirty:Bool = true;
-
   var waveformsDirty:Bool = false;
-
   var notePreviewDirty:Bool = true;
-
   var notePreviewViewportBoundsDirty:Bool = true;
-
   var saveDataDirty(default, set):Bool = false;
 
   function set_saveDataDirty(value:Bool):Bool
@@ -762,75 +686,40 @@ class ChartEditorState extends UIState
   }
 
   var difficultySelectDirty:Bool = true;
-
   var playerPreviewDirty:Bool = true;
-
   var opponentPreviewDirty:Bool = true;
-
   var commandHistoryDirty:Bool = true;
-
   var editButtonsDirty:Bool = true;
-
   var clipboardDirty:Bool = true;
-
   var clipboardValid:Bool = true;
-
   var criticalFailure:Bool = false;
-
   var undoKeyHandler:TurboKeyHandler = TurboKeyHandler.build([FlxKey.CONTROL, FlxKey.Z]);
-
   var redoKeyHandler:TurboKeyHandler = TurboKeyHandler.build([FlxKey.CONTROL, FlxKey.Y]);
-
   var upKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.UP);
-
   var downKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.DOWN);
-
   var wKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.W);
-
   var sKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.S);
-
   var pageUpKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.PAGEUP);
-
   var pageDownKeyHandler:TurboKeyHandler = TurboKeyHandler.build(FlxKey.PAGEDOWN);
-
   var dpadUpGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.DPAD_UP);
-
   var dpadDownGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.DPAD_DOWN);
-
   var dpadLeftGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.DPAD_LEFT);
-
   var dpadRightGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.DPAD_RIGHT);
-
   var leftStickUpGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.LEFT_STICK_DIGITAL_UP);
-
   var leftStickDownGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.LEFT_STICK_DIGITAL_DOWN);
-
   var leftStickLeftGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.LEFT_STICK_DIGITAL_LEFT);
-
   var leftStickRightGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.LEFT_STICK_DIGITAL_RIGHT);
-
   var rightStickUpGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.RIGHT_STICK_DIGITAL_UP);
-
   var rightStickDownGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.RIGHT_STICK_DIGITAL_DOWN);
-
   var rightStickLeftGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.RIGHT_STICK_DIGITAL_LEFT);
-
   var rightStickRightGamepadHandler:TurboButtonHandler = TurboButtonHandler.build(FlxGamepadInputID.RIGHT_STICK_DIGITAL_RIGHT);
-
   var welcomeMusic:FunkinSound = new FunkinSound();
-
   var audioInstTrack:Null<FunkinSound> = null;
-
   var audioInstTrackData:Map<String, Bytes> = [];
-
   var audioVocalTrackGroup:VoicesGroup = new VoicesGroup();
-
   var audioWaveforms:FlxTypedSpriteGroup<WaveformSprite> = new FlxTypedSpriteGroup<WaveformSprite>();
-
   var audioVocalTrackData:Map<String, Bytes> = [];
-
   var _songManifestData:Null<ChartManifestData> = null;
-
   var songManifestData(get, set):ChartManifestData;
 
   function get_songManifestData():ChartManifestData
@@ -899,7 +788,6 @@ class ChartEditorState extends UIState
   }
 
   var songChartData:Map<String, SongChartData> = [];
-
   var currentSongMetadata(get, set):SongMetadata;
 
   function get_currentSongMetadata():SongMetadata
@@ -1362,199 +1250,102 @@ class ChartEditorState extends UIState
   }
 
   var playbarHeadLayout:Null<ChartEditorPlaybarHead> = null;
-
   var menubar:MenuBar;
-
   var commentPanel:Null<ChartEditorCommentPanel> = null;
-
   var menubarItemNewChart:MenuItem;
-
   var menubarItemOpenChart:MenuItem;
-
   var menubarOpenRecent:Menu;
-
   var menubarItemSaveChart:MenuItem;
-
   var menubarItemSaveChartAs:MenuItem;
-
   var menubarItemPreferences:MenuItem;
-
   var menubarItemExit:MenuItem;
-
   var menubarItemUndo:MenuItem;
-
   var menubarItemRedo:MenuItem;
-
   var menubarItemCut:MenuItem;
-
   var menubarItemCopy:MenuItem;
-
   var menubarItemPaste:MenuItem;
-
   var menubarItemPasteUnsnapped:MenuItem;
-
   var menubarItemDelete:MenuItem;
-
   var menubarItemDeleteStacked:MenuItem;
-
   var menubarItemFlipNotes:MenuItem;
-
   var menubarItemMirrorX:MenuItem;
-
   var menubarItemMirrorY:MenuItem;
-
   var menubarItemMirrorXY:MenuItem;
-
   var menubarItemMirrorFlipWithinStrumline:MenuCheckBox;
-
   var menubarItemSelectAll:MenuItem;
-
   var menubarItemSelectInverse:MenuItem;
-
   var menubarItemSelectNone:MenuItem;
-
   var menubarItemSelectRegion:MenuItem;
-
   var menubarItemSelectBeforePlayhead:MenuItem;
-
   var menubarItemSelectAfterPlayhead:MenuItem;
-
   var menuBarItemNoteSnapDecrease:MenuItem;
-
   var menuBarItemNoteSnapIncrease:MenuItem;
-
   var menuBarStackedNoteThreshold:DropDown;
-
   var menubarItemDownscroll:MenuCheckBox;
-
   var menubarItemViewIndicators:MenuCheckBox;
-
   var menubarItemViewSubtitles:MenuCheckBox;
-
   var menubarItemViewWaveforms:MenuCheckBox;
-
   var menubarItemDifficultyUp:MenuItem;
-
   var menubarItemDifficultyDown:MenuItem;
-
   var menubarItemPlayPause:MenuItem;
-
   var menubarItemLoadInstrumental:MenuItem;
-
   var menubarItemLoadVocals:MenuItem;
-
   var menubarLabelVolumeMetronome:Label;
-
   var menubarItemVolumeMetronome:Slider;
-
   var menubarItemThemeMusic:MenuCheckBox;
-
   var menubarLabelVolumeHitsoundPlayer:Label;
-
   var menubarLabelVolumeHitsoundOpponent:Label;
-
   var menubarItemVolumeHitsoundPlayer:Slider;
-
   var menubarItemVolumeHitsoundOpponent:Slider;
-
   var menubarLabelVolumeInstrumental:Label;
-
   var menubarItemVolumeInstrumental:Slider;
-
   var menubarLabelVolumeVocalsPlayer:Label;
-
   var menubarLabelVolumeVocalsOpponent:Label;
-
   var menubarItemVolumeVocalsPlayer:Slider;
-
   var menubarItemVolumeVocalsOpponent:Slider;
-
   var menubarLabelPlaybackSpeed:Label;
-
   var menubarItemPlaybackSpeed:Slider;
-
   var menubarItemCameraEditor:MenuItem;
-
   var playbarSongPos:Label;
-
   var playbarBeatNum:Label;
-
   var playbarStepNum:Label;
-
   var playbarSongRemaining:Label;
-
   var playbarNoteSnap:Label;
-
   var playbarStart:Button;
-
   var playbarBack:Button;
-
   var playbarPlay:Button;
-
   var playbarForward:Button;
-
   var playbarEnd:Button;
-
   var buttonSelectDummy:Button;
-
   var buttonSelectOpponent:Button;
-
   var buttonSelectPlayer:Button;
-
   var buttonSelectEvent:Button;
-
   var gridBitmap:Null<BitmapData> = null;
-
   var selectionSquareBitmap:Null<BitmapData> = null;
-
   var notePreviewViewportBitmap:Null<BitmapData> = null;
-
   var offsetTickBitmap:Null<BitmapData> = null;
-
   var gridTiledSprite:Null<FlxSprite> = null;
-
   var measureTicks:Null<ChartEditorMeasureTicks> = null;
-
   var gridPlayhead:FlxSpriteGroup = new FlxSpriteGroup();
-
   var gridGhostNote:Null<ChartEditorNoteSprite> = null;
-
   var gridGhostHoldNote:Null<ChartEditorHoldNoteSprite> = null;
-
   var gridPlayheadGhostHoldNotes:Array<ChartEditorHoldNoteSprite> = [];
-
   var gridGhostEvent:Null<ChartEditorEventSprite> = null;
-
   var notePreview:Null<ChartEditorNotePreview> = null;
-
   var notePreviewViewport:Null<FlxSliceSprite> = null;
-
   var notePreviewPlayhead:Null<FlxSprite> = null;
-
   var notePreviewPlayHeadDragging:Bool = false;
-
   var selectionBoxSprite:Null<FlxSliceSprite> = null;
-
   var healthIconDad:Null<HealthIcon> = null;
-
   var healthIconBF:Null<HealthIcon> = null;
-
   var txtCopyNotif:Null<FlxText> = null;
-
   var menuBG:Null<FlxSprite> = null;
-
   var subtitles:Null<Subtitles> = null;
-
   var renderedNotes:FlxTypedSpriteGroup<ChartEditorNoteSprite> = new FlxTypedSpriteGroup<ChartEditorNoteSprite>();
-
   var renderedHoldNotes:FlxTypedSpriteGroup<ChartEditorHoldNoteSprite> = new FlxTypedSpriteGroup<ChartEditorHoldNoteSprite>();
-
   var renderedEvents:FlxTypedSpriteGroup<ChartEditorEventSprite> = new FlxTypedSpriteGroup<ChartEditorEventSprite>();
-
   var renderedSelectionSquares:FlxTypedSpriteGroup<ChartEditorSelectionSquareSprite> = new FlxTypedSpriteGroup<ChartEditorSelectionSquareSprite>();
-
   var renderedPins:FlxTypedSpriteGroup<ChartEditorCommentPinSprite> = new FlxTypedSpriteGroup<ChartEditorCommentPinSprite>();
-
   var params:Null<ChartEditorParams>;
 
   public function new(?params:ChartEditorParams)
@@ -3246,11 +3037,15 @@ class ChartEditorState extends UIState
 
         var isSelectedAndDragged = currentNoteSelection.fastContains(holdNoteSprite.noteData) && (dragTargetCurrentStep != 0);
 
-        if (!isSelectedAndDragged && (holdNoteSprite.noteData == currentPlaceNoteData
-          || !holdNoteSprite.isHoldNoteVisible(viewAreaBottomPixels, viewAreaTopPixels)
-          || !currentSongChartNoteData.fastContains(holdNoteSprite.noteData)
-          || holdNoteSprite.noteData.length == 0
-        ))
+        if (
+          !isSelectedAndDragged
+          && (
+            holdNoteSprite.noteData == currentPlaceNoteData
+            || !holdNoteSprite.isHoldNoteVisible(viewAreaBottomPixels, viewAreaTopPixels)
+            || !currentSongChartNoteData.fastContains(holdNoteSprite.noteData)
+            || holdNoteSprite.noteData.length == 0
+          )
+        )
         {
           holdNoteSprite.kill();
         }
@@ -3301,12 +3096,7 @@ class ChartEditorState extends UIState
           continue;
         }
 
-        if (!ChartEditorNoteSprite.wouldNoteBeVisible(
-          viewAreaBottomPixels,
-          viewAreaTopPixels,
-          noteData,
-          renderedNotes
-        )) continue;
+        if (!ChartEditorNoteSprite.wouldNoteBeVisible(viewAreaBottomPixels, viewAreaTopPixels, noteData, renderedNotes)) continue;
 
         var noteSprite:ChartEditorNoteSprite = renderedNotes.recycle(() -> new ChartEditorNoteSprite(this));
         noteSprite.parentState = this;
@@ -6282,7 +6072,6 @@ class ChartEditorState extends UIState
   }
 
   var _scriptNoteObj:NoteSprite = null;
-
   var _currentEvents = null;
   var _allowedEvents = null;
   var _eventTarget:Null<CharacterPlayer> = null;
@@ -6624,40 +6413,31 @@ class ChartEditorState extends UIState
 
 typedef ChartEditorParams =
 {
+  var ?targetSongId:String;
   var ?loadFromPath:String;
-
   var ?loadFromTemplate:String;
-
   var ?loadFromFNFCData:FNFCData;
-
   var ?targetSongDifficulty:String;
-
   var ?targetSongVariation:String;
-
   var ?targetSongPosition:Float;
 };
 
 #end
-
 enum abstract ChartEditorLiveInputStyle(String)
 {
   public var None;
-
   public var NumberKeys;
-
   public var WASDKeys;
 }
 
 enum abstract ChartEditorWaveformPos(String)
 {
   public var Adjacent;
-
   public var Overlay;
 }
 
 enum abstract ChartEditorTheme(String)
 {
   public var Light;
-
   public var Dark;
 }

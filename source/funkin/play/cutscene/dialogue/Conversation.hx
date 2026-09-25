@@ -156,6 +156,16 @@ class Conversation extends FunkinSpriteGroup implements IDialogueScriptedClass i
     }
   }
 
+  public function pause():Void
+  {
+    pauseMusic();
+  }
+
+  public function resume():Void
+  {
+    resumeMusic();
+  }
+
   function setupBackdrop():Void
   {
     if (_data == null) return;

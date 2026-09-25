@@ -6,6 +6,15 @@ package funkin;
 @:nullSafety
 class Highscore
 {
+  public static function calculateAccuracy(tallies:Tallies):Float
+  {
+    if (tallies.totalNotes <= 0) return 0.0;
+
+    var weightedScore:Float = tallies.sick * 1.0 + tallies.good * 0.7 + tallies.bad * 0.4 + tallies.shit * 0.2;
+
+    return Math.max(0.0, Math.min(100.0, weightedScore / tallies.totalNotes * 100.0));
+  }
+
   /**
    * Keeps track of notes hit for the current song
    * and how accurate you were with each note (bad, missed, shit, etc.)

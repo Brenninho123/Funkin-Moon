@@ -18,7 +18,6 @@ import funkin.util.macro.SaveMacro;
 import funkin.util.SerializerUtil;
 import funkin.mobile.ui.FunkinHitbox;
 import thx.semver.Version;
-import funkin.util.tools.ISerializable;
 #if FEATURE_NEWGROUNDS
 import funkin.api.newgrounds.Medals;
 import funkin.api.newgrounds.Leaderboards;
@@ -130,10 +129,16 @@ class Save implements ConsoleClass implements ISerializable
         framerate: #if mobile refreshRate #else 60 #end,
         naughtyness: true,
         downscroll: false,
+        middlescroll: false,
+        invisibleHitbox: false,
         flashingLights: true,
+        cameraMovement: false,
+        mode3D: false,
+        storageType: 'data',
         zoomCamera: true,
         debugDisplay: 'Off',
         debugDisplayBGOpacity: 50,
+        debugDisplayOffsetX: 10,
         subtitles: true,
         hapticsMode: 'All',
         hapticsIntensityMultiplier: 1,
@@ -145,6 +150,8 @@ class Save implements ConsoleClass implements ISerializable
         globalOffset: 0,
         audioVisualOffset: 0,
         unlockedFramerate: false,
+        boostFramerate: false,
+        boostSensitivity: 'Normal',
         enabledDiscordRPC: true,
         screenshot: {
           shouldHideMouse: true,
@@ -171,6 +178,7 @@ class Save implements ConsoleClass implements ISerializable
       mobileOptions: {
         // Reasonable defaults.
         screenTimeout: false,
+        fullscreenMode: true,
         noAds: false
       },
       #end
@@ -598,6 +606,60 @@ class Save implements ConsoleClass implements ISerializable
     difficultyId ??= Constants.DEFAULT_DIFFICULTY;
 
     return Scoring.calculateRank(getSongScore(songId, difficultyId, variation));
+  }
+
+  /**
+   * Returns the number of songs completed with zero misses.
+   */
+  public function getFullComboSongCount():Int
+  {
+    var count:Int = 0;
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score > 0 && score.tallies.missed == 0) count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Returns the number of songs completed with no misses, bads, or shits.
+   */
+  public function getPerfectSongCount():Int
+  {
+    var count:Int = 0;
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score > 0 && score.tallies.missed == 0 && score.tallies.bad == 0 && score.tallies.shit == 0) count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Returns the average score across completed songs.
+   */
+  public function getAverageScorePerSong():Float
+  {
+    var total:Int = 0;
+    var count:Int = 0;
+
+    for (song in data.scores.songs)
+    {
+      for (score in song)
+      {
+        if (score.score <= 0) continue;
+
+        total += score.score;
+        count++;
+      }
+    }
+
+    return count == 0 ? 0.0 : total / count;
   }
 
   /**
@@ -1361,10 +1423,40 @@ typedef SaveDataOptions =
   var downscroll:Bool;
 
   /**
+   * If enabled, the strumline is centered on the screen.
+   * @default `false`
+   */
+  var middlescroll:Bool;
+
+  /**
+   * If enabled, the hitbox will be invisible.
+   * @default `false`
+   */
+  var invisibleHitbox:Bool;
+
+  /**
    * If disabled, flashing lights in the main menu and other areas will be less intense.
    * @default `true`
    */
   var flashingLights:Bool;
+
+  /**
+   * If disabled, camera movement is reduced.
+   * @default `false`
+   */
+  var cameraMovement:Bool;
+
+  /**
+   * If enabled, 3D mode is used.
+   * @default `false`
+   */
+  var mode3D:Bool;
+
+  /**
+   * Storage backend used by the game.
+   * @default `data`
+   */
+  var storageType:String;
 
   /**
    * If disabled, the camera bump synchronized to the beat.
@@ -1383,6 +1475,12 @@ typedef SaveDataOptions =
    * @default `50`
    */
   var debugDisplayBGOpacity:Int;
+
+  /**
+   * Horizontal offset of the debug display.
+   * @default `10`
+   */
+  var debugDisplayOffsetX:Int;
 
   /**
    * If enabled, subtitles will appear.
@@ -1452,6 +1550,9 @@ typedef SaveDataOptions =
    */
   var unlockedFramerate:Bool;
 
+  var boostFramerate:Bool;
+  var boostSensitivity:String;
+
   /**
    * Indicates if the discord RPC is enabled.
    * @default `true`
@@ -1498,6 +1599,12 @@ typedef SaveDataMobileOptions =
    * @default `false`
    */
   var screenTimeout:Bool;
+
+  /**
+   * If enabled, mobile starts in fullscreen mode.
+   * @default `true`
+   */
+  var fullscreenMode:Bool;
 
   /**
    * If bought, the game will not show any ads.

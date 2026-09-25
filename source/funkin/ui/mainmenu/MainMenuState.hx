@@ -38,6 +38,11 @@ import funkin.api.newgrounds.Referral;
 import funkin.ui.mainmenu.UpgradeSparkle;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 import funkin.ui.quickpanel.QuickPanelState;
+import flixel.text.FlxText;
+#if FEATURE_ONLINE
+import funkin.online.FunkinOnline;
+import funkin.online.FunkinUser;
+#end
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
 #end
@@ -54,14 +59,14 @@ import funkin.assets.Assets as Assets;
 @:nullSafety
 class MainMenuState extends MusicBeatState
 {
-  static inline final BUILD_VERSION:String = "v0.8.5.1";
-  static inline final BUILD_NUMBER:String = "67";
-  static inline final TAGGED_BUILD_NUMBER:String = "67";
-
   var menuItems:Null<MenuTypedList<AtlasMenuItem>>;
   var bg:Null<FlxSprite>;
   var magenta:FlxSprite;
   var camFollow:FlxObject;
+  var mainMenuCam:Null<FunkinCamera> = null;
+  #if FEATURE_3D_RENDERING
+  var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
+  #end
   #if mobile
   var gyroPan:Null<FlxPoint>;
   #end
@@ -78,6 +83,13 @@ class MainMenuState extends MusicBeatState
 
   var hasUpgraded:Bool = false;
   var upgradeSparkles:FlxTypedSpriteGroup<UpgradeSparkle>;
+  #if FEATURE_ONLINE
+  var onlineBarBg:Null<FlxSprite> = null;
+  var onlineStatusText:Null<FlxText> = null;
+
+  static final ONLINE_SERVER_HOST:String = "your-server-address.example.com";
+  static final ONLINE_SERVER_PORT:Int = 7777;
+  #end
 
   public function new(_overrideMusic:Bool = false)
   {
@@ -96,10 +108,17 @@ class MainMenuState extends MusicBeatState
   override function create():Void
   {
     #if FEATURE_DISCORD_RPC
-    DiscordClient.instance.setPresence({state: "In the Menus", details: null});
+    DiscordClient.instance.setPresence({
+      state: "In the Menus",
+      details: null
+    });
     #end
 
     FlxG.cameras.reset(new FunkinCamera('mainMenu'));
+
+    #if FEATURE_3D_RENDERING
+    init3DBackground();
+    #end
 
     transIn = FlxTransitionableState.defaultTransIn;
     transOut = FlxTransitionableState.defaultTransOut;
@@ -189,6 +208,14 @@ class MainMenuState extends MusicBeatState
       }));
     });
 
+    #if FEATURE_ONLINE
+    createMenuItem('online', 'ui/main-menu/items/online', function()
+    {
+      startExitState(() -> new funkin.ui.online.OnlineMenuState());
+    });
+    #end
+
+    #if !debug
     if (hasUpgraded)
     {
       #if FEATURE_OPEN_URL
@@ -208,6 +235,7 @@ class MainMenuState extends MusicBeatState
         #end
       });
     }
+    #end
 
     if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end)
     {
@@ -237,6 +265,7 @@ class MainMenuState extends MusicBeatState
 
     menuItems.selectItem(rememberedSelectedIndex);
 
+    #if !debug
     if (!hasUpgraded)
     {
       var targetItem = menuItems.members[2];
@@ -263,6 +292,7 @@ class MainMenuState extends MusicBeatState
         }
       });
     }
+    #end
 
     resetCamStuff();
 
@@ -305,15 +335,145 @@ class MainMenuState extends MusicBeatState
     super.create();
 
     initLeftWatermarkText();
+
+    #if FEATURE_ONLINE
+    initOnlineStatusBar();
+    initOnlineSystem();
+    #end
+
+    checkModConversions();
+  }
+
+  #if FEATURE_ONLINE
+  function initOnlineStatusBar():Void
+  {
+    var barWidth:Int = 170;
+    var barHeight:Int = 46;
+    var barX:Float = FlxG.width - barWidth - 10;
+    var barY:Float = 10;
+
+    onlineBarBg = new FlxSprite(barX, barY);
+    onlineBarBg.makeGraphic(barWidth, barHeight, 0xCC000000);
+    onlineBarBg.scrollFactor.set(0, 0);
+    onlineBarBg.zIndex = 100000;
+    add(onlineBarBg);
+
+    onlineStatusText = new FlxText(barX + 8, barY + 6, barWidth - 16, '', 14);
+    onlineStatusText.setFormat('VCR OSD Mono', 14, FlxColor.WHITE, LEFT);
+    onlineStatusText.scrollFactor.set(0, 0);
+    onlineStatusText.zIndex = 100001;
+    add(onlineStatusText);
+
+    updateOnlineStatusBar();
+  }
+
+  function initOnlineSystem():Void
+  {
+    FunkinUser.instance.init(generateGuestId(), generateGuestName());
+    FunkinUser.instance.setActivity('In Menu');
+
+    FunkinOnline.instance.onConnected.add(updateOnlineStatusBar);
+    FunkinOnline.instance.onDisconnected.add(updateOnlineStatusBar);
+    FunkinUser.instance.onActiveUsersChanged.add(updateOnlineStatusBar);
+
+    if (FunkinOnline.instance.state == Disconnected)
+    {
+      FunkinOnline.instance.connect(ONLINE_SERVER_HOST, ONLINE_SERVER_PORT);
+    }
+  }
+
+  function generateGuestId():String
+  {
+    return 'guest-${Std.int(Math.abs(Date.now().getTime()))}-${FlxG.random.int(1000, 9999)}';
+  }
+
+  function generateGuestName():String
+  {
+    return 'Guest${FlxG.random.int(1000, 9999)}';
+  }
+
+  function updateOnlineStatusBar():Void
+  {
+    if (onlineStatusText == null) return;
+
+    var status:String = FunkinOnline.instance.isConnected() ? 'Online' : 'Offline';
+    var userCount:Int = FunkinUser.instance.getActiveUserCount();
+
+    onlineStatusText.text = 'Status: $status\nUsers: $userCount';
+  }
+  #end
+
+  #if FEATURE_3D_RENDERING
+  static final MENU_3D_MODEL_PATH:String = 'assets/models/menuBackground.gltf';
+
+  function init3DBackground():Void
+  {
+    if (!Preferences.mode3D) return;
+
+    if (!Paths.exists(MENU_3D_MODEL_PATH, BINARY))
+    {
+      FlxG.log.warn('[MainMenuState] 3D background model not found at $MENU_3D_MODEL_PATH, skipping.');
+      return;
+    }
+
+    scene3D = mainMenuCam?.attach3DScene(FlxG.width, FlxG.height);
+    scene3D.loadGLTFModel(MENU_3D_MODEL_PATH);
+    scene3D.setCameraPosition(0, 1.4, -6);
+
+    add(scene3D.scene);
+  }
+
+  function destroy3DBackground():Void
+  {
+    if (scene3D == null) return;
+
+    remove(scene3D.scene);
+    mainMenuCam?.detach3DScene();
+    scene3D = null;
+  }
+  #end
+
+  var modConversionText:Null<FlxText> = null;
+
+  function checkModConversions():Void
+  {
+    var totalConverted:Int = 0;
+    var totalErrors:Int = 0;
+    var modNames:Array<String> = [];
+
+    for (dirName => report in funkin.modding.PolymodHandler.conversionReports)
+    {
+      totalConverted++;
+      totalErrors += report.errors.length;
+      modNames.push(dirName);
+    }
+
+    if (totalConverted == 0) return;
+
+    FlxG.log.add('[MainMenuState] $totalConverted mod(s) auto-converted from Psych Engine format this session: ${modNames.join(", ")}');
+
+    if (totalErrors > 0)
+    {
+      FlxG.log.warn('[MainMenuState] $totalErrors conversion issue(s) reported across those mods ÔÇö see PolymodHandler.conversionReports for details.');
+    }
+
+    var message:String = totalConverted == 1 ? '1 mod converted from Psych Engine format' : '$totalConverted mods converted from Psych Engine format';
+    if (totalErrors > 0) message += ' ($totalErrors issue${totalErrors == 1 ? '' : 's'}, see log)';
+
+    modConversionText = new FlxText(10, FlxG.height - 40, FlxG.width - 20, message, 12);
+    modConversionText.scrollFactor.set(0, 0);
+    modConversionText.setFormat('VCR OSD Mono', 12, totalErrors > 0 ? FlxColor.YELLOW : FlxColor.LIME, LEFT);
+    modConversionText.zIndex = 100000;
+    add(modConversionText);
   }
 
   function initLeftWatermarkText():Void
   {
     if (leftWatermarkText == null) return;
 
-    final prefix:String = '${BUILD_VERSION} - Build: ';
-
-    leftWatermarkText.text = prefix + BUILD_NUMBER;
+    // se vc for dev ative isso.
+    leftWatermarkText.text += 'Friday Night Funkin: v0.8.8 | Moon Engine v${Constants.MOON_VERSION} (DEV-TEST - ${Constants.GIT_BRANCH}) - [Build ${Constants.BUILD_NUMBER}]';
+    // leftWatermarkText.text += 'Friday Night Funkin: v0.8.8 | Moon Engine v${Constants.MOON_VERSION} - ${Constants.BUILD_NUMBER}';
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
@@ -322,24 +482,9 @@ class MainMenuState extends MusicBeatState
     }
     #end
 
-    if (BUILD_NUMBER == TAGGED_BUILD_NUMBER)
-    {
-      final startIndex:Int = prefix.length;
-      final endIndex:Int = startIndex + BUILD_NUMBER.length;
-
-      FlxTween.num(0, 1, 0.5, {type: PINGPONG, ease: FlxEase.quadInOut}, (value:Float) ->
-      {
-        if (leftWatermarkText == null) return;
-
-        final blendedColor:FlxColor = FlxColor.interpolate(FlxColor.YELLOW, FlxColor.WHITE, value);
-
-        leftWatermarkText.addFormat(new FlxTextFormat(blendedColor), startIndex, endIndex);
-      });
-    }
-
     if (rightWatermarkText == null) return;
 
-    rightWatermarkText.text += 'Mod Menu Playtest Build (v0.9 Feature Preview #3)';
+    rightWatermarkText.text += '(Dev Build)';
   }
 
   function playMenuMusic():Void
@@ -446,14 +591,26 @@ class MainMenuState extends MusicBeatState
     var fadeOutDuration:Float = 0.4;
     menuItems.forEach(item ->
     {
-      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
+      if (rememberedSelectedIndex != item.ID) FlxTween.tween(item, {
+        alpha: 0
+      }, fadeOutDuration, {
+        ease: FlxEase.quadOut
+      });
       else
         item.visible = false;
     });
 
     #if mobile
-    if (optionsButton != null) FlxTween.tween(optionsButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
-    if (backButton != null) FlxTween.tween(backButton, {alpha: 0}, fadeOutDuration, {ease: FlxEase.quadOut});
+    if (optionsButton != null) FlxTween.tween(optionsButton, {
+      alpha: 0
+    }, fadeOutDuration, {
+      ease: FlxEase.quadOut
+    });
+    if (backButton != null) FlxTween.tween(backButton, {
+      alpha: 0
+    }, fadeOutDuration, {
+      ease: FlxEase.quadOut
+    });
     #end
 
     FlxTimer.wait(fadeOutDuration, () ->
@@ -595,6 +752,21 @@ class MainMenuState extends MusicBeatState
     #end
 
     if (controls.BACK_P) goBack();
+  }
+
+  override public function destroy():Void
+  {
+    #if FEATURE_3D_RENDERING
+    destroy3DBackground();
+    #end
+
+    #if FEATURE_ONLINE
+    FunkinOnline.instance.onConnected.remove(updateOnlineStatusBar);
+    FunkinOnline.instance.onDisconnected.remove(updateOnlineStatusBar);
+    FunkinUser.instance.onActiveUsersChanged.remove(updateOnlineStatusBar);
+    #end
+
+    super.destroy();
   }
 
   function goOptions():Void

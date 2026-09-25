@@ -9,14 +9,31 @@ import funkin.ui.FullScreenScaleMode;
 import funkin.audio.FunkinSound;
 import funkin.ui.TextMenuList;
 import funkin.ui.debug.charting.ChartEditorState;
+#if FEATURE_MUSIC_EDITOR
+import funkin.ui.debug.music.MusicEditorState;
+#end
 import funkin.util.logging.CrashHandler;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.util.FileUtil;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
+import flixel.text.FlxText;
+#if mobile
+import funkin.mobile.input.ControlsHandler;
+import funkin.util.TouchUtil;
+import funkin.util.SwipeUtil;
+import funkin.util.HapticUtil;
+#end
 
 class DebugMenuSubState extends MusicBeatSubState
 {
   var items:TextMenuList;
   var camFocusPoint:FlxObject;
+  #if mobile
+  var touchableItems:Array<
+    {item:TextMenuItem, callback:Void->Void}> = [];
+  var mobileHint:Null<FlxText> = null;
+  #end
 
   override function create():Void
   {
@@ -59,6 +76,9 @@ class DebugMenuSubState extends MusicBeatSubState
     #if FEATURE_STAGE_EDITOR
     createItem("STAGE EDITOR", openStageEditor);
     #end
+    #if FEATURE_MUSIC_EDITOR
+    createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
+    #end
     #if FEATURE_RESULTS_DEBUG
     createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
     #end
@@ -72,8 +92,19 @@ class DebugMenuSubState extends MusicBeatSubState
     haxe.ui.Toolkit.styleSheet.clear("user");
     #end
 
-    #if FEATURE_TOUCH_CONTROLS
+    #if mobile
     addBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitDebugMenu, 1.0);
+
+    backButton?.onConfirmStart.add(() ->
+    {
+      FunkinSound.playOnce(Paths.sound('cancelMenu'));
+    });
+
+    mobileHint = new FlxText(0, FlxG.height - 40, FlxG.width, 'Tap an option to select it - swipe down to go back', 16);
+    mobileHint.alignment = CENTER;
+    mobileHint.color = 0xFFAAAAAA;
+    mobileHint.scrollFactor.set(0, 0);
+    add(mobileHint);
     #end
   }
 
@@ -84,7 +115,29 @@ class DebugMenuSubState extends MusicBeatSubState
 
   override function update(elapsed:Float):Void
   {
+    try
+    {
+      updateDebugMenu(elapsed);
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('DebugMenuSubState encountered an error and had to close: $e');
+      exitDebugMenu();
+    }
+  }
+
+  function updateDebugMenu(elapsed:Float):Void
+  {
     super.update(elapsed);
+    #if mobile
+    if (backButton != null)
+    {
+      backButton.active = true;
+      backButton.enabled = true;
+    }
+
+    handleTouchInput();
+    #end
 
     if (controls.BACK_P)
     {
@@ -93,12 +146,76 @@ class DebugMenuSubState extends MusicBeatSubState
     }
   }
 
+  #if mobile
+  function handleTouchInput():Void
+  {
+    if (TouchUtil.justPressed && !ControlsHandler.usingExternalInputDevice)
+    {
+      for (entry in touchableItems)
+      {
+        if (TouchUtil.overlaps(entry.item, FlxG.camera))
+        {
+          activateTouchedItem(entry.item, entry.callback);
+          break;
+        }
+      }
+    }
+
+    if (SwipeUtil.swipeDown && !ControlsHandler.usingExternalInputDevice)
+    {
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
+      exitDebugMenu();
+    }
+  }
+
+  function activateTouchedItem(item:TextMenuItem, callback:Void->Void):Void
+  {
+    onMenuChange(item);
+
+    HapticUtil.vibrate(0, 0.01, 0.5);
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu'));
+
+    FlxTween.cancelTweensOf(item);
+    FlxTween.tween(item, {
+      "scale.x": 0.92,
+      "scale.y": 0.92
+    }, 0.08, {
+      ease: FlxEase.quadOut,
+      onComplete: (_) ->
+      {
+        FlxTween.tween(item, {
+          "scale.x": 1,
+          "scale.y": 1
+        }, 0.12, {
+          ease: FlxEase.quadOut
+        });
+        callback();
+      }
+    });
+  }
+  #end
+
   function createItem(name:String, callback:Void->Void, fireInstantly = false):TextMenuItem
   {
     var item = items.createItem(0, 100 + items.length * 100, name, BOLD, callback);
     item.fireInstantly = fireInstantly;
     item.screenCenter(X);
+
+    #if mobile
+    touchableItems.push({
+      item: item,
+      callback: callback
+    });
+    #end
+
     return item;
+  }
+
+  function switchToState(stateFactory:Void->flixel.FlxState):Void
+  {
+    FlxTransitionableState.skipNextTransIn = true;
+    this.close();
+    FlxG.switchState(stateFactory);
   }
 
   #if FEATURE_CHART_EDITOR
@@ -149,6 +266,13 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
+  #if FEATURE_MUSIC_EDITOR
+  function openMusicEditor():Void
+  {
+    switchToState(() -> new MusicEditorState('tutorial'));
+  }
+  #end
+
   #if FEATURE_RESULTS_DEBUG
   function openTestResultsScreen():Void
   {
@@ -166,5 +290,10 @@ class DebugMenuSubState extends MusicBeatSubState
   function exitDebugMenu()
   {
     this.close();
+  }
+
+  override public function destroy():Void
+  {
+    super.destroy();
   }
 }

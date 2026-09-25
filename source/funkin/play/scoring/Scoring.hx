@@ -9,12 +9,14 @@ import funkin.save.Save.SaveScoreTallyData;
  */
 class Scoring
 {
+  public static final PBOT1:String = 'PBOT1';
+
   /**
    * Determine the score a note receives under a given scoring system.
    * @param msTiming The difference between the note's time and when it was hit.
    * @return The score the note receives.
    */
-  public static function scoreNote(msTiming:Float):Int
+  public static function scoreNote(msTiming:Float, ?scoringSystem:Dynamic):Int
   {
     // Absolute value because otherwise late hits are always given the max score.
     var absTiming:Float = Math.abs(msTiming);
@@ -40,7 +42,7 @@ class Scoring
    * @param msTiming The difference between the note's time and when it was hit.
    * @return The judgement the note receives.
    */
-  public static function judgeNote(msTiming:Float):String
+  public static function judgeNote(msTiming:Float, ?scoringSystem:Dynamic):String
   {
     var absTiming:Float = Math.abs(msTiming);
 

@@ -15,18 +15,36 @@ using tools.AnsiUtil;
 @:nullSafety
 class Project extends HXProject
 {
-  static final VERSION:String = "0.8.5.1";
-  static final BUILD_NUMBER:Int = 67;
-  static final TITLE:String = "Friday Night Funkin'";
-  static final TITLE_MOBILE:String = "FNF: PlayTest";
-  static final PACKAGE_NAME:String = "me.funkintest.fnf";
-  static final EXECUTABLE_NAME:String = "Funkin";
+  static final VERSION:String = "0.8.8";
+
+  static final BUILD_NUMBER:Int = 239;
+
+  static final MOON_VERSION:String = '0.1.0';
+
+  static final TITLE:String = "Friday Night Funkin': Moon Engine";
+
+  static final TITLE_MOBILE:String = "FNF: Moon Engine";
+
+  static final ICON_DESKTOP:String = "docs/icons/iconMoonDesktop.png";
+
+  static final ICON_MOBILE:String = "docs/icons/iconMoon.png";
+
+  static final PACKAGE_NAME:String = "me.funkin.moon";
+
+  static final EXECUTABLE_NAME:String = "MoonEngine";
+
   static final SOURCE_DIR:String = "source";
+
   static final TEMPLATES_DIR:String = "templates";
+
   static final PRELOADER:String = "funkin.ui.transition.preload.FunkinPreloader";
+
   static final MAIN_CLASS:String = "Main";
-  static final COMPANY:String = "The Funkin' Crew";
+
+  static final COMPANY:String = "The Squere' Team";
+
   static final LANGUAGES:Array<String> = ["en"];
+
   static var envConfig:Null<Map<String, Dynamic>> = null;
 
   static final ANDROID_EXTENSIONS:Array<String> = [
@@ -86,6 +104,8 @@ class Project extends HXProject
   static final FEATURE_DEBUG_TRACY:FeatureFlag = "FEATURE_DEBUG_TRACY";
   static final FEATURE_DISCORD_RPC:FeatureFlag = "FEATURE_DISCORD_RPC";
   static final FEATURE_MOBILE_RPC:FeatureFlag = "FEATURE_MOBILE_RPC";
+
+  static final FEATURE_HXRPC:FeatureFlag = "FEATURE_HXRPC";
   static final FEATURE_LOST_FOCUS_VOLUME:FeatureFlag = "FEATURE_LOST_FOCUS_VOLUME";
   static final FEATURE_FILE_DROP:FeatureFlag = "FEATURE_FILE_DROP";
   static final FEATURE_FUNKVIS:FeatureFlag = "FEATURE_FUNKVIS";
@@ -122,12 +142,22 @@ class Project extends HXProject
   static final FEATURE_STAGE_EDITOR:FeatureFlag = "FEATURE_STAGE_EDITOR";
   static final FEATURE_STRICT_ASSET_CACHING:FeatureFlag = "FEATURE_STRICT_ASSET_CACHING";
   static final FEATURE_CAMERA_EDITOR:FeatureFlag = "FEATURE_CAMERA_EDITOR";
+
+    static final FEATURE_MUSIC_EDITOR:FeatureFlag = "FEATURE_MUSIC_EDITOR";
   static final FEATURE_TOUCH_CONTROLS:FeatureFlag = "FEATURE_TOUCH_CONTROLS";
   static final FEATURE_TOUCH_HERE_TO_PLAY:FeatureFlag = "FEATURE_TOUCH_HERE_TO_PLAY";
   static final FEATURE_MACOS_GESTURES:FeatureFlag = "FEATURE_MACOS_GESTURES";
   static final FEATURE_VIDEO_PLAYBACK:FeatureFlag = "FEATURE_VIDEO_PLAYBACK";
   static final FEATURE_VIDEO_SUBTITLES:FeatureFlag = "FEATURE_VIDEO_SUBTITLES";
   static final FEATURE_DEBUG_DISPLAY:FeatureFlag = "FEATURE_DEBUG_DISPLAY";
+
+  static final FEATURE_ONLINE:FeatureFlag = "FEATURE_ONLINE";
+
+  static final FEATURE_3D_RENDERING:FeatureFlag = "FEATURE_3D_RENDERING";
+
+  static final FEATURE_AWAY3D:FeatureFlag = "FEATURE_AWAY3D";
+
+  static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
 
   static final FEATURE_MOBILE_BATTERY_SAVER:FeatureFlag = "FEATURE_MOBILE_BATTERY_SAVER";
   static final FEATURE_MOBILE_SAFE_AREA:FeatureFlag = "FEATURE_MOBILE_SAFE_AREA";
@@ -169,6 +199,7 @@ class Project extends HXProject
     configureHaxelibs();
     configureASTCTextures();
     configureAssets();
+    configureBuildInfo();
 
     if (!isLinux())
     {
@@ -249,6 +280,8 @@ class Project extends HXProject
   function flair()
   {
     info("Friday Night Funkin' - " + VERSION);
+    info("Moon Engine:    " + MOON_VERSION);
+    info("Build Number:   " + BUILD_NUMBER);
     info("Initializing build...");
     info("Git Branch:     " + getGitBranch());
     info("Git Commit:     " + getGitCommit());
@@ -272,6 +305,8 @@ class Project extends HXProject
 
     this.preBuildCallbacks.push(buildHaxeCLICommand(PREBUILD_HX));
     this.postBuildCallbacks.push(buildHaxeCLICommand(POSTBUILD_HX));
+
+    this.preBuildCallbacks.push(buildCLICommand("python scripts/bump_build.py"));
 
     this.languages = LANGUAGES;
     this.meta.buildNumber = Std.string(BUILD_NUMBER);
@@ -438,6 +473,8 @@ class Project extends HXProject
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_MULTITHREADING.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
+    FEATURE_LUA_SCRIPTS.apply(this, false);
+
 
     FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this) && !isIOS());
 
@@ -449,6 +486,8 @@ class Project extends HXProject
 
     FEATURE_DISCORD_RPC.apply(this, isDesktop() && !FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
     FEATURE_MOBILE_RPC.apply(this, isMobile());
+    FEATURE_HXRPC.apply(this, isDesktop() || isMobile());
+
     FEATURE_LOST_FOCUS_VOLUME.apply(this, isDesktop());
 
     FEATURE_NEWGROUNDS.apply(this, true);
@@ -464,6 +503,7 @@ class Project extends HXProject
     FEATURE_CHART_EDITOR.apply(this, editorsEnabled);
     FEATURE_STAGE_EDITOR.apply(this, editorsEnabled);
     FEATURE_CAMERA_EDITOR.apply(this, editorsEnabled);
+    FEATURE_MUSIC_EDITOR.apply(this, editorsEnabled);
     FEATURE_HAXEUI.apply(
       this, FEATURE_ANIMATION_EDITOR.isEnabled(
         this
@@ -509,6 +549,24 @@ class Project extends HXProject
     {
       return;
     }
+
+
+    // Nem adianta ativar isso, o servidor ta offline.
+    // Don't enable this, the server is offline.
+    FEATURE_ONLINE.apply(this, false);
+    // FEATURE_ONLINE.apply(this, !isWeb());
+
+    // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
+    // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
+    // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
+    FEATURE_3D_RENDERING.apply(this, false);
+
+    // Disabled by default: Away3D 5.0.9 (published years ago) still assumes Lib.getTimer()
+    // returns Int/UInt, but current OpenFL returns Float there - a known, unresolved
+    // upstream incompatibility (see HaxeFlixel/flixel#3561 for the same root cause hitting
+    // other libraries). Causes build errors in View3D.hx, ParserBase.hx, AnimatorBase.hx.
+    // Re-enable once Away3D publishes a fix, or after patching the installed haxelib locally.
+    FEATURE_AWAY3D.apply(this, false);
 
     renderFlagsTable();
   }
@@ -869,6 +927,22 @@ class Project extends HXProject
 
     addHaxelib('polymod');
     addHaxelib('flixel-animate');
+
+        if (FEATURE_3D_RENDERING.isEnabled(this))
+    {
+      addHaxelib('foxlite');
+    }
+
+    if (FEATURE_AWAY3D.isEnabled(this))
+    {
+      addHaxelib('away3d');
+    }
+
+    if (FEATURE_LUA_SCRIPTS.isEnabled(this))
+    {
+      addHaxelib('hxlua');
+    }
+
     addHaxelib('json2object');
     addHaxelib('jsonpath');
     addHaxelib('jsonpatch');
@@ -898,6 +972,11 @@ class Project extends HXProject
     if (FEATURE_DISCORD_RPC.isEnabled(this))
     {
       addHaxelib('hxdiscord_rpc');
+    }
+
+        if (FEATURE_HXRPC.isEnabled(this))
+    {
+      addHaxelib('hxrpc');
     }
 
     if (FEATURE_MULTITHREADING.isEnabled(this))
@@ -1093,6 +1172,58 @@ class Project extends HXProject
     }
 
     sys.FileSystem.deleteDirectory(path);
+  }
+
+    function configureBuildInfo():Void
+  {
+    info('Embedding build info...');
+
+    var buildInfo = {
+      commit: getGitShortHash(),
+      branch: getGitBranch(),
+      buildType: isDebug() ? 'debug' : 'release',
+      platform: targetPlatformName(),
+      builtAt: Date.now().toString()
+    };
+
+    var outputDir:String = 'assets/preload/data';
+    var outputPath:String = '$outputDir/build-info.json';
+
+    try
+    {
+      if (!sys.FileSystem.exists(outputDir)) sys.FileSystem.createDirectory(outputDir);
+      sys.io.File.saveContent(outputPath, haxe.Json.stringify(buildInfo, null, '  '));
+      info('  Build info written to $outputPath (commit ${buildInfo.commit}, ${buildInfo.buildType}, ${buildInfo.platform})');
+    }
+    catch (e:Dynamic)
+    {
+      info('  ! Failed to write build info: $e');
+    }
+  }
+
+  function getGitShortHash():String
+  {
+    try
+    {
+      var process = new sys.io.Process('git', ['rev-parse', '--short', 'HEAD']);
+      var output:String = StringTools.trim(process.stdout.readLine());
+      process.close();
+      return output == '' ? 'unknown' : output;
+    }
+    catch (e:Dynamic)
+    {
+      return 'unknown';
+    }
+  }
+
+  function targetPlatformName():String
+  {
+    if (isAndroid()) return 'android';
+    if (isIOS()) return 'ios';
+    if (isWeb()) return 'web';
+    if (isMobile()) return 'mobile';
+    if (isLinux()) return 'linux';
+    return 'desktop';
   }
 
   function configureIcons()

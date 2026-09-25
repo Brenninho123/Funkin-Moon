@@ -1,6 +1,7 @@
 package funkin.play.notes;
 
 import flixel.util.FlxColor;
+import flixel.math.FlxPoint;
 
 /**
  * The direction of a note.
@@ -16,6 +17,23 @@ enum abstract NoteDirection(Int) from Int to Int
   public var nameUpper(get, never):String;
   public var color(get, never):FlxColor;
   public var colorName(get, never):String;
+
+  public function getOffsetVector(distance:Float):FlxPoint
+  {
+    return switch (abstract)
+    {
+      case LEFT:
+        new FlxPoint(-distance, 0);
+      case DOWN:
+        new FlxPoint(0, distance);
+      case UP:
+        new FlxPoint(0, -distance);
+      case RIGHT:
+        new FlxPoint(distance, 0);
+      default:
+        new FlxPoint();
+    }
+  }
 
   @:from
   public static function fromInt(value:Int):NoteDirection

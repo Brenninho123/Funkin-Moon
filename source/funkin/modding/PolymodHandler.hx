@@ -14,6 +14,7 @@ import funkin.data.stage.StageRegistry;
 import funkin.data.stickers.StickerRegistry;
 import funkin.data.story.level.LevelRegistry;
 import funkin.modding.module.ModuleHandler;
+import funkin.mod.FunkinConverter.ConversionReport;
 import funkin.play.notes.notekind.NoteKindManager;
 import funkin.save.Save;
 import funkin.util.FileUtil;
@@ -35,7 +36,6 @@ class PolymodHandler
   }
 
   public static final API_VERSION_RULE:String = '*';
-
   public static var MOD_FOLDER(get, never):String;
 
   static function get_MOD_FOLDER():String
@@ -59,12 +59,21 @@ class PolymodHandler
     #else
     null
     #end;
-
+  public static var conversionReports:Map<String, ConversionReport> = new Map();
   public static var loadedModDirs:Array<String> = [];
-
   public static var loadedModIds:Array<String> = [];
-
   static var modFileSystem:Null<ZipFileSystem> = null;
+
+  /**
+   * Returns the physical folder where mods are stored.
+   *
+   * This is used by systems which need direct filesystem access, such as the
+   * Lua module loader.
+   */
+  public static function getModFolder():String
+  {
+    return MOD_FOLDER;
+  }
 
   public static function createModRoot():Void
   {

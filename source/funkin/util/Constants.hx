@@ -19,7 +19,27 @@ class Constants
    * The title of the game, for debug printing purposes.
    * Change this if you're making an engine.
    */
-  public static final TITLE:String = "Friday Night Funkin'";
+  public static final TITLE:String = "Friday Night Funkin': Moon Engine";
+
+  /**
+   * Moon Engine version number.
+   */
+  public static var MOON_VERSION(get, never):String;
+
+  static function get_MOON_VERSION():String
+  {
+    return #if (MOON_VERSION) MOON_VERSION #else '0.1.0' #end;
+  }
+
+  /**
+   * Moon Engine version number.
+   */
+  public static var BUILD_NUMBER(get, never):String;
+
+  static function get_BUILD_NUMBER():String
+  {
+    return #if (BUILD_NUMBER) BUILD_NUMBER #else '239' #end;
+  }
 
   /**
    * The current version number of the game.
@@ -126,12 +146,7 @@ class Constants
   /**
    * Maps the plural path segment in a GameBanana profile URL onto the API's model name.
    */
-  public static final ONE_CLICK_MODELS:Map<String, String> = [
-    'mods' => 'Mod',
-    'tools' => 'Tool',
-    'sounds' => 'Sound',
-    'wips' => 'Wip'
-  ];
+  public static final ONE_CLICK_MODELS:Map<String, String> = ['mods' => 'Mod', 'tools' => 'Tool', 'sounds' => 'Sound', 'wips' => 'Wip'];
 
   /**
    * The GameBanana category that holds mod folders for the base game.
@@ -800,7 +815,7 @@ class Constants
   /**
    * The path where our save data will be stored.
    */
-  public static inline final SAVE_PATH:String = 'FunkinCrew';
+  public static inline final SAVE_PATH:String = 'MoonEngine';
 
   /**
    * The name of our save slot.
