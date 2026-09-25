@@ -7,6 +7,7 @@ import funkin.mobile.util.InAppPurchasesUtil;
 import funkin.save.Save;
 import funkin.util.WindowUtil;
 import funkin.util.HapticUtil.HapticsMode;
+import funkin.ui.debug.FunkinDebugDisplay;
 import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 import flixel.util.FlxSignal.FlxTypedSignal;
 #if FEATURE_DISCORD_RPC
@@ -237,6 +238,54 @@ class Preferences
     save.options.zoomCamera = value;
     commit('zoomCamera');
     return value;
+  }
+
+  public static var boostFramerate(get, set):Bool;
+
+  static function get_boostFramerate():Bool
+  {
+    return Save?.instance?.options?.boostFramerate ?? true;
+  }
+
+  static function set_boostFramerate(value:Bool):Bool
+  {
+    if (value != Save.instance.options.boostFramerate) FunkinDebugDisplay.setAutoBoostEnabled(value);
+
+    var save:Save = Save.instance;
+    save.options.boostFramerate = value;
+    commit('boostFramerate');
+    return value;
+  }
+
+  public static var boostSensitivity(get, set):String;
+
+  static function get_boostSensitivity():String
+  {
+    var value:String = Save?.instance?.options?.boostSensitivity ?? 'normal';
+
+    return switch (value)
+    {
+      case 'light', 'aggressive':
+        value;
+      default:
+        'normal';
+    };
+  }
+
+  static function set_boostSensitivity(value:String):String
+  {
+    var normalized:String = switch (value)
+    {
+      case 'light', 'aggressive':
+        value;
+      default:
+        'normal';
+    };
+
+    var save:Save = Save.instance;
+    save.options.boostSensitivity = normalized;
+    commit('boostSensitivity');
+    return normalized;
   }
 
   public static var debugDisplay(get, set):DebugDisplayMode;
@@ -738,12 +787,6 @@ class Preferences
   #end
   #end
 
-  /**
-   * Resets the main user-facing preferences back to their documented default
-   * values, in a single batched write (one flush, one set of change signals).
-   * Does not touch platform-purchase state (`noAds`) or anything not meant
-   * to be casually reset.
-   */
   public static function resetToDefaults():Void
   {
     beginBatch();
@@ -757,6 +800,8 @@ class Preferences
     mode3D = false;
     storageType = 'data';
     zoomCamera = true;
+    boostFramerate = true;
+    boostSensitivity = 'normal';
     debugDisplay = DebugDisplayMode.Off;
     debugDisplayBGOpacity = 50;
     debugDisplayOffsetX = 10;
@@ -783,22 +828,11 @@ class Preferences
     endBatch();
   }
 
-  /**
-   * Serializes every current preference value to a JSON string. This is a
-   * dump of the raw save data structure (`Save.instance.options`), so it
-   * includes any platform-specific fields present on this build.
-   */
   public static function exportPreferences():String
   {
     return haxe.Json.stringify(Save.instance.options);
   }
 
-  /**
-   * Merges a JSON string (as produced by `exportPreferences`) into the
-   * current save data, then flushes and notifies listeners for every field
-   * that was present in the import. Fields the JSON doesn't mention are left
-   * untouched. Returns false (and changes nothing) if the JSON is invalid.
-   */
   public static function importPreferences(json:String):Bool
   {
     var parsed:Dynamic = null;
@@ -831,33 +865,17 @@ class Preferences
     return true;
   }
 
-  /**
-   * Reads a preference's raw saved value by name, via reflection on the
-   * underlying save data. Note this bypasses any "live apply" side effects
-   * that a named property's setter would normally trigger (e.g. `debugDisplay`
-   * toggling the on-screen overlay) - it only reads/writes the stored value.
-   * Prefer the named static property directly when one exists and side
-   * effects matter.
-   */
   public static function getPreference(name:String):Dynamic
   {
     return Reflect.field(Save.instance.options, name);
   }
 
-  /**
-   * Writes a preference's raw saved value by name, via reflection. See the
-   * caveat on `getPreference` about live-apply side effects.
-   */
   public static function setPreference(name:String, value:Dynamic):Void
   {
     Reflect.setField(Save.instance.options, name, value);
     commit(name);
   }
 
-  /**
-   * Flips a boolean preference by name, via reflection. See the caveat on
-   * `getPreference` about live-apply side effects.
-   */
   public static function togglePreference(name:String):Void
   {
     var current:Dynamic = getPreference(name);
