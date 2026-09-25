@@ -1,6 +1,7 @@
 package funkin.ui.haxeui;
 
 import flixel.FlxBasic;
+import flixel.input.FlxInput.FlxInputState;
 import flixel.input.gamepad.FlxGamepad;
 import flixel.input.gamepad.FlxGamepadInputID;
 import flixel.util.FlxSignal.FlxTypedSignal;
@@ -262,7 +263,7 @@ class FlxGamepadActionInputSource extends FlxBasic
 
     for (input in inputs)
     {
-      if (gamepad.pressed.check(input)) return true;
+      if (gamepad.checkStatus(input, PRESSED)) return true;
     }
 
     return false;
@@ -276,7 +277,7 @@ class FlxGamepadActionInputSource extends FlxBasic
 
     for (input in inputs)
     {
-      if (gamepad.justPressed.check(input)) return true;
+      if (gamepad.checkStatus(input, JUST_PRESSED)) return true;
     }
 
     return false;
