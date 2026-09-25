@@ -230,6 +230,20 @@ jobs:
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
+      - name: Fix neko library path
+        shell: bash
+        run: |
+          NEKO_LIB="$(find "$(brew --prefix 2>/dev/null || echo /Users/runner/hostedtoolcache)"/../hostedtoolcache/neko -name 'libneko.2.dylib' 2>/dev/null | head -n 1)"
+          if [ -z "$NEKO_LIB" ]; then
+            NEKO_LIB="$(find /Users/runner/hostedtoolcache/neko -name 'libneko.2.dylib' 2>/dev/null | head -n 1)"
+          fi
+          if [ -z "$NEKO_LIB" ]; then
+            echo "Could not locate libneko.2.dylib in hostedtoolcache" >&2
+            exit 1
+          fi
+          sudo mkdir -p /usr/local/lib
+          sudo ln -sf "$NEKO_LIB" /usr/local/lib/libneko.2.dylib
+
       - name: Install HMM
         shell: bash
         run: haxelib install hmm --quiet
@@ -498,6 +512,20 @@ jobs:
         uses: krdlab/setup-haxe@v1
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Fix neko library path
+        shell: bash
+        run: |
+          NEKO_LIB="$(find "$(brew --prefix 2>/dev/null || echo /Users/runner/hostedtoolcache)"/../hostedtoolcache/neko -name 'libneko.2.dylib' 2>/dev/null | head -n 1)"
+          if [ -z "$NEKO_LIB" ]; then
+            NEKO_LIB="$(find /Users/runner/hostedtoolcache/neko -name 'libneko.2.dylib' 2>/dev/null | head -n 1)"
+          fi
+          if [ -z "$NEKO_LIB" ]; then
+            echo "Could not locate libneko.2.dylib in hostedtoolcache" >&2
+            exit 1
+          fi
+          sudo mkdir -p /usr/local/lib
+          sudo ln -sf "$NEKO_LIB" /usr/local/lib/libneko.2.dylib
 
       - name: Install HMM
         shell: bash
