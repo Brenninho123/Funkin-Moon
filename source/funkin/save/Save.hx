@@ -121,6 +121,8 @@ class Save implements ConsoleClass
         globalOffset: 0,
         audioVisualOffset: 0,
         unlockedFramerate: false,
+        boostFramerate: true,
+        boostSensitivity: 'normal',
         enabledDiscordRPC: true,
         screenshot: {
           shouldHideMouse: true,
@@ -1312,6 +1314,10 @@ typedef SaveDataOptions =
    * @default `false`
    */
   var unlockedFramerate:Bool;
+
+  var boostFramerate:Bool;
+
+  var boostSensitivity:String;
 
   /**
    * Indicates if the discord RPC is enabled.
