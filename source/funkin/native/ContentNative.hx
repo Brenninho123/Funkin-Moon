@@ -3,6 +3,7 @@ package funkin.native;
 @:buildXml('
 <files id="haxe">
   <compilerflag value="-Isource/funkin" />
+  <compilerflag value="-std=c++17" />
   <file name="source/funkin/Content.cpp" />
 </files>
 ')

@@ -27,14 +27,7 @@ struct RunResult
   double durationSeconds;
 };
 
-#if defined(_WIN32)
-static bool isCrashExitCode(int code)
-{
-  unsigned int unsignedCode = static_cast<unsigned int>(code);
-
-  return (unsignedCode & 0xF0000000u) == 0xC0000000u || (unsignedCode & 0xF0000000u) == 0x80000000u;
-}
-#else
+#if !defined(_WIN32)
 static std::string signalName(int sig)
 {
   switch (sig)
@@ -125,9 +118,7 @@ static RunResult runOnce(const std::string &command, std::deque<std::string> &ta
 #if defined(_WIN32)
   int status = _pclose(pipe);
 
-  bool crashed = isCrashExitCode(status);
-
-  return {crashed, false, status, 0, duration};
+  return {status != 0, false, status, 0, duration};
 #else
   int status = pclose(pipe);
 
@@ -138,15 +129,17 @@ static RunResult runOnce(const std::string &command, std::deque<std::string> &ta
 
   if (WIFSIGNALED(status))
   {
-    int sig = WTERMSIG(status);
-
-    return {true, true, status, sig, duration};
+    return {true, true, status, WTERMSIG(status), duration};
   }
 
   int code = WIFEXITED(status) ? WEXITSTATUS(status) : status;
-  bool crashed = code != 0;
 
-  return {crashed, false, code, 0, duration};
+  if (code > 128 && code < 128 + NSIG)
+  {
+    return {true, true, code, code - 128, duration};
+  }
+
+  return {code != 0, false, code, 0, duration};
 #endif
 }
 
@@ -157,7 +150,7 @@ static std::string writeCrashLog(const std::filesystem::path &logDir, const std:
 
   std::filesystem::create_directories(logDir, dirError);
 
-  std::filesystem::path logPath = logDir / ("crash_" + timestampForFilename() + ".log");
+  std::filesystem::path logPath = logDir / ("crash_" + timestampForFilename() + "_run" + std::to_string(attempt) + ".log");
 
   std::ofstream file(logPath);
 
@@ -198,6 +191,43 @@ static std::string writeCrashLog(const std::filesystem::path &logDir, const std:
   file.close();
 
   return logPath.string();
+}
+
+static bool needsQuoting(const std::string &part)
+{
+  return part.empty() || part.find_first_of(" \t\"'&|<>()^;$`*?[]{}!#~\\") != std::string::npos;
+}
+
+static std::string quoteArgument(const std::string &part)
+{
+  if (!needsQuoting(part)) return part;
+
+  std::string quoted;
+
+#if defined(_WIN32)
+  quoted += '"';
+
+  for (char c : part)
+  {
+    if (c == '"') quoted += '\\';
+
+    quoted += c;
+  }
+
+  quoted += '"';
+#else
+  quoted += '\'';
+
+  for (char c : part)
+  {
+    if (c == '\'') quoted += "'\\''";
+    else quoted += c;
+  }
+
+  quoted += '\'';
+#endif
+
+  return quoted;
 }
 
 static void printUsage()
@@ -279,29 +309,30 @@ int main(int argc, char **argv)
   {
     if (argIndex > 0) commandBuilder << " ";
 
-    const std::string &part = targetArgs[argIndex];
-
-    if (part.find(' ') != std::string::npos)
-    {
-      commandBuilder << "\"" << part << "\"";
-    }
-    else
-    {
-      commandBuilder << part;
-    }
+    commandBuilder << quoteArgument(targetArgs[argIndex]);
   }
 
   commandBuilder << " 2>&1";
 
+#if defined(_WIN32)
+  std::string command = "\"" + commandBuilder.str() + "\"";
+#else
   std::string command = commandBuilder.str();
+#endif
+
   std::filesystem::path logPath(logDir);
 
+  if (maxRestarts < 0) maxRestarts = 0;
+
   int attempt = 1;
+  int runsExecuted = 0;
   int totalAttempts = restartOnCrash ? (maxRestarts + 1) : 1;
   int crashCount = 0;
 
   while (attempt <= totalAttempts)
   {
+    runsExecuted++;
+
     std::cout << "\n" << std::string(70, '=') << "\n";
     std::cout << "CrasherLog run " << attempt << " of " << totalAttempts << "\n";
     std::cout << std::string(70, '=') << "\n";
@@ -334,7 +365,7 @@ int main(int argc, char **argv)
   }
 
   std::cout << "\n" << std::string(70, '=') << "\n";
-  std::cout << "CrasherLog summary: " << attempt << " run(s), " << crashCount << " crash(es) detected.\n";
+  std::cout << "CrasherLog summary: " << runsExecuted << " run(s), " << crashCount << " crash(es) detected.\n";
   std::cout << std::string(70, '=') << "\n";
 
   return crashCount > 0 ? 1 : 0;

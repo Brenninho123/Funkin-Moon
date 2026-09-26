@@ -3,117 +3,138 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
-static std::string joinSorted(std::vector<std::string> items)
+namespace fs = std::filesystem;
+
+namespace
 {
-  std::sort(items.begin(), items.end());
+enum class EntryKind
+{
+  Directory,
+  JsonFile
+};
+
+std::string toUtf8(const fs::path &path)
+{
+  auto text = path.u8string();
+
+  return std::string(text.begin(), text.end());
+}
+
+fs::path buildPath(const char *assetsRoot, const char *relativePath)
+{
+  fs::path root = assetsRoot != nullptr ? fs::u8path(assetsRoot) : fs::path();
+
+  if (relativePath != nullptr && relativePath[0] != '\0')
+  {
+    root /= fs::u8path(relativePath);
+  }
+
+  return root.lexically_normal();
+}
+
+bool escapesRoot(const char *relativePath)
+{
+  if (relativePath == nullptr) return false;
+
+  for (const fs::path &part : fs::u8path(relativePath))
+  {
+    if (part == "..") return true;
+  }
+
+  return false;
+}
+
+std::string scanEntries(const fs::path &root, EntryKind kind)
+{
+  std::error_code ec;
+
+  if (!fs::is_directory(root, ec) || ec) return "";
+
+  fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+
+  if (ec) return "";
+
+  std::vector<std::string> names;
+
+  for (const fs::directory_iterator end; it != end; it.increment(ec))
+  {
+    if (ec) break;
+
+    std::error_code entryEc;
+    const fs::directory_entry &entry = *it;
+
+    if (kind == EntryKind::Directory)
+    {
+      if (entry.is_directory(entryEc) && !entryEc)
+      {
+        names.push_back(toUtf8(entry.path().filename()));
+      }
+    }
+    else if (entry.is_regular_file(entryEc) && !entryEc && entry.path().extension() == ".json")
+    {
+      names.push_back(toUtf8(entry.path().stem()));
+    }
+  }
+
+  std::sort(names.begin(), names.end());
 
   std::string result;
 
-  for (std::size_t i = 0; i < items.size(); i++)
+  for (std::size_t i = 0; i < names.size(); i++)
   {
-    if (i > 0) result += "\n";
+    if (i > 0) result += '\n';
 
-    result += items[i];
+    result += names[i];
   }
 
   return result;
 }
 
-static std::string scanDirectoryNames(const std::filesystem::path &root)
+const char *scanInto(std::string &buffer, const char *assetsRoot, const char *relativePath, EntryKind kind)
 {
-  std::vector<std::string> names;
-  std::error_code ec;
-
-  if (!std::filesystem::exists(root, ec) || ec || !std::filesystem::is_directory(root, ec) || ec)
+  try
   {
-    return "";
+    buffer = escapesRoot(relativePath) ? std::string() : scanEntries(buildPath(assetsRoot, relativePath), kind);
+  }
+  catch (...)
+  {
+    buffer.clear();
   }
 
-  std::filesystem::directory_iterator it(root, ec);
-  std::filesystem::directory_iterator end;
-
-  if (ec) return "";
-
-  for (; it != end; it.increment(ec))
-  {
-    if (ec) break;
-
-    if (it->is_directory())
-    {
-      names.push_back(it->path().filename().string());
-    }
-  }
-
-  return joinSorted(names);
+  return buffer.c_str();
 }
 
-static std::string scanJsonFileStems(const std::filesystem::path &root)
-{
-  std::vector<std::string> names;
-  std::error_code ec;
-
-  if (!std::filesystem::exists(root, ec) || ec || !std::filesystem::is_directory(root, ec) || ec)
-  {
-    return "";
-  }
-
-  std::filesystem::directory_iterator it(root, ec);
-  std::filesystem::directory_iterator end;
-
-  if (ec) return "";
-
-  for (; it != end; it.increment(ec))
-  {
-    if (ec) break;
-
-    if (it->is_regular_file() && it->path().extension() == ".json")
-    {
-      names.push_back(it->path().stem().string());
-    }
-  }
-
-  return joinSorted(names);
-}
-
-static std::string subdirectoriesResult;
-static std::string jsonFilesResult;
-static std::string songsResult;
-static std::string weeksResult;
-static std::string charactersResult;
+thread_local std::string subdirectoriesResult;
+thread_local std::string jsonFilesResult;
+thread_local std::string songsResult;
+thread_local std::string weeksResult;
+thread_local std::string charactersResult;
+} // namespace
 
 extern "C" const char *funkin_content_scanSubdirectories(const char *assetsRoot, const char *relativePath)
 {
-  std::filesystem::path root = std::filesystem::path(assetsRoot) / relativePath;
-  subdirectoriesResult = scanDirectoryNames(root);
-  return subdirectoriesResult.c_str();
+  return scanInto(subdirectoriesResult, assetsRoot, relativePath, EntryKind::Directory);
 }
 
 extern "C" const char *funkin_content_scanJsonFiles(const char *assetsRoot, const char *relativePath)
 {
-  std::filesystem::path root = std::filesystem::path(assetsRoot) / relativePath;
-  jsonFilesResult = scanJsonFileStems(root);
-  return jsonFilesResult.c_str();
+  return scanInto(jsonFilesResult, assetsRoot, relativePath, EntryKind::JsonFile);
 }
 
 extern "C" const char *funkin_content_scanSongs(const char *assetsRoot)
 {
-  std::filesystem::path root = std::filesystem::path(assetsRoot) / "songs";
-  songsResult = scanDirectoryNames(root);
-  return songsResult.c_str();
+  return scanInto(songsResult, assetsRoot, "songs", EntryKind::Directory);
 }
 
 extern "C" const char *funkin_content_scanWeeks(const char *assetsRoot)
 {
-  std::filesystem::path root = std::filesystem::path(assetsRoot) / "data" / "weeks";
-  weeksResult = scanJsonFileStems(root);
-  return weeksResult.c_str();
+  return scanInto(weeksResult, assetsRoot, "data/weeks", EntryKind::JsonFile);
 }
 
 extern "C" const char *funkin_content_scanCharacters(const char *assetsRoot)
 {
-  std::filesystem::path root = std::filesystem::path(assetsRoot) / "data" / "characters";
-  charactersResult = scanJsonFileStems(root);
-  return charactersResult.c_str();
+  return scanInto(charactersResult, assetsRoot, "data/characters", EntryKind::JsonFile);
 }

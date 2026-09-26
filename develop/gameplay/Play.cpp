@@ -68,12 +68,12 @@ public:
 
   int currentStep() const
   {
-    return static_cast<int>(songPosition / stepCrochet());
+    return static_cast<int>(std::floor(songPosition / stepCrochet()));
   }
 
   int currentBeat() const
   {
-    return static_cast<int>(songPosition / crochet());
+    return static_cast<int>(std::floor(songPosition / crochet()));
   }
 };
 
@@ -108,21 +108,33 @@ public:
   std::function<void()> onPlayerDeath = [] {};
   std::function<void(const std::string &)> onValidationError = [](const std::string &) {};
 
+  bool dead = false;
+
   PlayState()
   {
     instance = this;
+  }
+
+  PlayState(const PlayState &) = delete;
+  PlayState &operator=(const PlayState &) = delete;
+
+  ~PlayState()
+  {
+    if (instance == this) instance = nullptr;
   }
 
   void loadChart(std::vector<ChartNote> chartNotes)
   {
     notes = std::move(chartNotes);
 
-    std::sort(notes.begin(), notes.end(), [](const ChartNote &a, const ChartNote &b) { return a.timeMs < b.timeMs; });
+    std::stable_sort(notes.begin(), notes.end(), [](const ChartNote &a, const ChartNote &b) { return a.timeMs < b.timeMs; });
+
+    missScanStart = 0;
   }
 
   void update(double elapsedMs)
   {
-    if (paused) return;
+    if (paused || dead) return;
 
     conductor.songPosition += elapsedMs * playbackRate;
 
@@ -145,13 +157,15 @@ public:
 
   bool hitNote(int lane, double inputTimeMs)
   {
+    if (paused || dead || songEnded) return false;
+
     ChartNote *closest = findClosestUnresolvedNote(lane, inputTimeMs);
 
     if (closest == nullptr) return false;
 
     double delta = std::fabs(inputTimeMs - closest->timeMs);
 
-    Judgement judgement;
+    Judgement judgement = Judgement::MISSED;
 
     if (delta <= judgementWindow.sickMs)
     {
@@ -270,6 +284,7 @@ public:
   }
 
 private:
+  std::size_t missScanStart = 0;
   int validateCount = 0;
   int validateEveryNTicks = 60;
   bool lastValidationOk = true;
@@ -312,23 +327,27 @@ private:
 
   void processMisses()
   {
-    for (auto &note : notes)
+    while (missScanStart < notes.size() && (notes[missScanStart].hit || notes[missScanStart].missed))
     {
+      missScanStart++;
+    }
+
+    for (std::size_t i = missScanStart; i < notes.size() && !dead; i++)
+    {
+      ChartNote &note = notes[i];
+
       if (note.hit || note.missed) continue;
 
-      double missDeadline = note.timeMs + judgementWindow.shitMs;
+      if (conductor.songPosition <= note.timeMs + judgementWindow.shitMs) break;
 
-      if (conductor.songPosition > missDeadline)
-      {
-        note.missed = true;
-        tallies.missed++;
-        tallies.combo = 0;
-        health = std::max(0.0, health - 0.075);
+      note.missed = true;
+      tallies.missed++;
+      tallies.combo = 0;
+      health = std::max(0.0, health - 0.075);
 
-        onNoteMissed(note);
+      onNoteMissed(note);
 
-        if (health <= 0.0 && !isPracticeMode) triggerDeath();
-      }
+      if (health <= 0.0 && !isPracticeMode) triggerDeath();
     }
   }
 
@@ -367,6 +386,9 @@ private:
 
   void triggerDeath()
   {
+    if (dead) return;
+
+    dead = true;
     deathCounter++;
     onPlayerDeath();
   }
@@ -446,7 +468,7 @@ int main()
   double elapsedPerTick = 16.0;
   double simulatedTime = 0.0;
 
-  while (!playState.songEnded && simulatedTime < 5000.0)
+  while (!playState.songEnded && !playState.dead && simulatedTime < 5000.0)
   {
     playState.update(elapsedPerTick);
     simulatedTime += elapsedPerTick;

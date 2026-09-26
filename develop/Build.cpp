@@ -18,6 +18,12 @@
 #include <vector>
 
 #if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <io.h>
 #include <windows.h>
 #else
@@ -136,8 +142,9 @@ static bool matchesError(const std::string &line)
 {
   static const std::vector<std::regex> patterns = {
     std::regex("\\bERROR\\b"),
-    std::regex("^Error:"),
-    std::regex(": error:", std::regex::icase),
+    std::regex("^Error\\s*:"),
+    std::regex(": error\\s*:", std::regex::icase),
+    std::regex("\\berror [A-Z]+[0-9]+"),
     std::regex("Uncaught exception", std::regex::icase),
     std::regex("Build failed", std::regex::icase),
     std::regex("Fatal error", std::regex::icase)
@@ -155,7 +162,8 @@ static bool matchesWarning(const std::string &line)
 {
   static const std::vector<std::regex> patterns = {
     std::regex("\\bWARNING\\b"),
-    std::regex(": warning:", std::regex::icase)
+    std::regex("^Warning\\s*:"),
+    std::regex(": warning\\s*:", std::regex::icase)
   };
 
   for (const auto &pattern : patterns)
@@ -179,34 +187,92 @@ static void enableWindowsAnsiSupport()
 }
 #endif
 
+static bool detectColorSupport()
+{
+  const char *noColor = std::getenv("NO_COLOR");
+  const char *forceColor = std::getenv("FORCE_COLOR");
+
+  if (noColor != nullptr) return false;
+
+  if (forceColor != nullptr) return std::string(forceColor) != "0";
+
+#if defined(_WIN32)
+  return _isatty(_fileno(stdout)) != 0;
+#else
+  return isatty(fileno(stdout)) != 0;
+#endif
+}
+
 static bool colorEnabled()
 {
-  static int cached = -1;
+  static const bool enabled = detectColorSupport();
 
-  if (cached == -1)
-  {
-    const char *noColor = std::getenv("NO_COLOR");
-    const char *forceColor = std::getenv("FORCE_COLOR");
+  return enabled;
+}
 
-    if (noColor != nullptr)
-    {
-      cached = 0;
-    }
-    else if (forceColor != nullptr)
-    {
-      cached = (std::string(forceColor) != "0") ? 1 : 0;
-    }
-    else
-    {
+static bool needsQuoting(const std::string &part)
+{
+  return part.empty() || part.find_first_of(" \t\"'&|<>()^;$`*?[]{}!#~\\") != std::string::npos;
+}
+
+static std::string quoteArgument(const std::string &part)
+{
+  if (!needsQuoting(part)) return part;
+
+  std::string quoted;
+
 #if defined(_WIN32)
-      cached = _isatty(_fileno(stdout)) ? 1 : 0;
-#else
-      cached = isatty(fileno(stdout)) ? 1 : 0;
-#endif
-    }
+  quoted += '"';
+
+  for (char c : part)
+  {
+    if (c == '"') quoted += '\\';
+
+    quoted += c;
   }
 
-  return cached == 1;
+  quoted += '"';
+#else
+  quoted += '\'';
+
+  for (char c : part)
+  {
+    if (c == '\'') quoted += "'\\''";
+    else quoted += c;
+  }
+
+  quoted += '\'';
+#endif
+
+  return quoted;
+}
+
+static bool isSafeName(const std::string &name)
+{
+  if (name.empty()) return false;
+
+  for (char c : name)
+  {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-' && c != '=' && c != '.') return false;
+  }
+
+  return true;
+}
+
+static bool readLine(FILE *pipe, std::string &line)
+{
+  line.clear();
+
+  std::array<char, 4096> buffer;
+
+  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+  {
+    line += buffer.data();
+
+    if (!line.empty() && line.back() == '\n') return true;
+  }
+
+  return !line.empty();
 }
 
 static std::string colorize(const std::string &text, const std::string &code)
@@ -295,7 +361,16 @@ static std::string jsonEscape(const std::string &input)
         output += "\\t";
         break;
       default:
-        output += c;
+        if (static_cast<unsigned char>(c) < 0x20)
+        {
+          char escaped[8];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned int>(static_cast<unsigned char>(c)));
+          output += escaped;
+        }
+        else
+        {
+          output += c;
+        }
     }
   }
 
@@ -306,7 +381,7 @@ static std::string buildCommand(const std::string &target, const BuildOptions &o
 {
   std::ostringstream command;
 
-  command << options.haxelibPath << " run lime build " << target;
+  command << quoteArgument(options.haxelibPath) << " run lime build " << target;
   command << (options.debug ? " -debug" : " -release");
 
   for (const auto &define : options.defines)
@@ -318,7 +393,11 @@ static std::string buildCommand(const std::string &target, const BuildOptions &o
 
   command << " 2>&1";
 
+#if defined(_WIN32)
+  return "\"" + command.str() + "\"";
+#else
   return command.str();
+#endif
 }
 
 static int closeProcess(FILE *pipe)
@@ -410,12 +489,10 @@ static TargetResult runTarget(const std::string &target, const BuildOptions &opt
 
   LineBlockCollector errorCollector(matchesError);
   LineBlockCollector warningCollector(matchesWarning);
-  std::array<char, 4096> buffer;
+  std::string line;
 
-  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+  while (readLine(pipe, line))
   {
-    std::string line(buffer.data());
-
     if (liveConsole) std::cout << line;
 
     if (logFile.is_open()) logFile << line;
@@ -434,7 +511,7 @@ static TargetResult runTarget(const std::string &target, const BuildOptions &opt
   auto end = std::chrono::steady_clock::now();
   double duration = std::chrono::duration<double>(end - start).count();
 
-  bool success = (exitCode == 0) && (errorCollector.count() == 0);
+  bool success = exitCode == 0;
 
   result.success = success;
   result.errorBlocks = errorCollector.count();
@@ -590,8 +667,23 @@ int main(int argc, char **argv)
 #endif
   }
 
+  for (const auto &define : options.defines)
+  {
+    if (!isSafeName(define))
+    {
+      std::cerr << "Invalid define: " << define << "\n";
+      return 2;
+    }
+  }
+
   for (const auto &target : targets)
   {
+    if (!isSafeName(target))
+    {
+      std::cerr << "Invalid target name: " << target << "\n";
+      return 2;
+    }
+
     if (std::find(KNOWN_TARGETS.begin(), KNOWN_TARGETS.end(), target) == KNOWN_TARGETS.end())
     {
       std::cerr << yellow("Warning: \"" + target + "\" is not a recognized target name.") << "\n";

@@ -1,5 +1,7 @@
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -11,17 +13,25 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
 #if defined(_WIN32)
-#include <psapi.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
+#include <psapi.h>
 #else
 #include <unistd.h>
 #endif
@@ -88,11 +98,10 @@ private:
 
 static uint32_t crc32(const std::vector<uint8_t> &data)
 {
-  static uint32_t table[256];
-  static bool initialized = false;
-
-  if (!initialized)
+  static const std::array<uint32_t, 256> table = []
   {
+    std::array<uint32_t, 256> values{};
+
     for (uint32_t i = 0; i < 256; i++)
     {
       uint32_t c = i;
@@ -102,11 +111,11 @@ static uint32_t crc32(const std::vector<uint8_t> &data)
         c = (c & 1u) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
       }
 
-      table[i] = c;
+      values[i] = c;
     }
 
-    initialized = true;
-  }
+    return values;
+  }();
 
   uint32_t crc = 0xFFFFFFFFu;
 
@@ -150,8 +159,32 @@ static std::string jsonEscape(const std::string &input)
         output += "\\t";
         break;
       default:
-        output += c;
+        if (static_cast<unsigned char>(c) < 0x20)
+        {
+          char escaped[8];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned int>(static_cast<unsigned char>(c)));
+          output += escaped;
+        }
+        else
+        {
+          output += c;
+        }
     }
+  }
+
+  return output;
+}
+
+static std::string regexEscape(const std::string &input)
+{
+  static const std::string special = "\\^$.|?*+()[]{}";
+  std::string output;
+
+  for (char c : input)
+  {
+    if (special.find(c) != std::string::npos) output += '\\';
+
+    output += c;
   }
 
   return output;
@@ -200,7 +233,7 @@ static bool readFileText(const std::filesystem::path &path, std::string &out)
 
 static bool extractJsonString(const std::string &json, const std::string &field, std::string &out)
 {
-  std::regex pattern("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"");
+  std::regex pattern("\"" + regexEscape(field) + "\"\\s*:\\s*\"([^\"]*)\"");
   std::smatch match;
 
   if (std::regex_search(json, match, pattern) && match.size() > 1)
@@ -214,7 +247,7 @@ static bool extractJsonString(const std::string &json, const std::string &field,
 
 static bool extractJsonInt(const std::string &json, const std::string &field, int &out)
 {
-  std::regex pattern("\"" + field + "\"\\s*:\\s*(-?\\d+)");
+  std::regex pattern("\"" + regexEscape(field) + "\"\\s*:\\s*(-?\\d+)");
   std::smatch match;
 
   if (std::regex_search(json, match, pattern) && match.size() > 1)
@@ -229,7 +262,8 @@ static bool extractJsonInt(const std::string &json, const std::string &field, in
 static uint64_t getProcessMemoryBytes()
 {
 #if defined(_WIN32)
-  PROCESS_MEMORY_COUNTERS counters;
+  PROCESS_MEMORY_COUNTERS counters{};
+  counters.cb = sizeof(counters);
 
   if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
   {
@@ -271,7 +305,7 @@ static uint64_t getProcessMemoryBytes()
 static uint64_t getTotalSystemMemoryBytes()
 {
 #if defined(_WIN32)
-  MEMORYSTATUSEX status;
+  MEMORYSTATUSEX status{};
   status.dwLength = sizeof(status);
 
   if (GlobalMemoryStatusEx(&status))
@@ -331,7 +365,7 @@ public:
 
   static bool safeMode;
   static DeviceMemoryClass deviceMemoryClass;
-  static int lowMemoryEventCount;
+  static std::atomic<int> lowMemoryEventCount;
   static std::atomic<bool> isAppInForeground;
   static BuildInfo buildInfo;
 
@@ -360,6 +394,11 @@ public:
     instance = this;
   }
 
+  ~FunkinApp()
+  {
+    if (instance == this) instance = nullptr;
+  }
+
   int run()
   {
     installSignalHandlers();
@@ -375,7 +414,7 @@ public:
       return 1;
     }
 
-    lastFrameStamp = nowSeconds();
+    touchFrameStamp();
     freezeWatchdogArmed = true;
     running = true;
 
@@ -384,10 +423,12 @@ public:
 
     while (running.load() && !shuttingDown.load())
     {
-      std::lock_guard<std::mutex> lock(frameStampMutex);
-      lastFrameStamp = nowSeconds();
+      touchFrameStamp();
 
-      bool keepRunning;
+      if (interruptRequested.exchange(false)) requestExitConfirm();
+      if (terminateRequested.load()) requestShutdown();
+
+      bool keepRunning = true;
 
       try
       {
@@ -398,8 +439,13 @@ public:
         reportUncaughtError(e.what());
         keepRunning = uncaughtErrorCount < MAX_UNCAUGHT_ERRORS_BEFORE_EXIT;
       }
+      catch (...)
+      {
+        reportUncaughtError("Unknown exception.");
+        keepRunning = uncaughtErrorCount < MAX_UNCAUGHT_ERRORS_BEFORE_EXIT;
+      }
 
-      if (!keepRunning) running = false;
+      if (!keepRunning) requestShutdown();
     }
 
     shutdown();
@@ -409,7 +455,12 @@ public:
 
   void requestShutdown()
   {
-    running = false;
+    {
+      std::lock_guard<std::mutex> lock(wakeMutex);
+      running = false;
+    }
+
+    wakeCondition.notify_all();
   }
 
   void enterBackground()
@@ -422,7 +473,7 @@ public:
   void enterForeground()
   {
     isAppInForeground = true;
-    lastFrameStamp = nowSeconds();
+    touchFrameStamp();
     watchdogWarningIssued = false;
     onEnterForeground.dispatch();
   }
@@ -448,22 +499,46 @@ private:
   bool assetIntegrityOk = true;
   int graphicsContextRetries = 0;
   double lastFrameStamp = 0.0;
-  bool freezeWatchdogArmed = false;
-  bool watchdogWarningIssued = false;
+  std::atomic<bool> freezeWatchdogArmed{false};
+  std::atomic<bool> watchdogWarningIssued{false};
   double lastMemoryPollBytes = 0.0;
   double lastExitRequestTime = -1000.0;
   bool pendingBackgroundSave = false;
+  bool saveWorkerActive = false;
+  std::chrono::steady_clock::time_point saveDeadline;
   std::atomic<bool> shuttingDown{false};
   std::atomic<bool> running{false};
   std::mutex frameStampMutex;
+  std::mutex wakeMutex;
+  std::condition_variable wakeCondition;
+  std::mutex saveMutex;
+  std::condition_variable saveCondition;
   std::thread memoryPollThread;
   std::thread freezeWatchdogThread;
   std::thread backgroundSaveThread;
 
+  static std::atomic<bool> interruptRequested;
+  static std::atomic<bool> terminateRequested;
+
   static double nowSeconds()
   {
-    static auto start = std::chrono::steady_clock::now();
+    static const auto start = std::chrono::steady_clock::now();
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+  }
+
+  void touchFrameStamp()
+  {
+    std::lock_guard<std::mutex> lock(frameStampMutex);
+    lastFrameStamp = nowSeconds();
+  }
+
+  bool waitOrStop(int milliseconds)
+  {
+    std::unique_lock<std::mutex> lock(wakeMutex);
+
+    wakeCondition.wait_for(lock, std::chrono::milliseconds(milliseconds), [this] { return !running.load() || shuttingDown.load(); });
+
+    return running.load() && !shuttingDown.load();
   }
 
   void runStage(const std::string &name, const std::function<void()> &callback)
@@ -545,7 +620,7 @@ private:
 
       std::string expectedHash;
 
-      if (!extractJsonString(manifestJson, jsonEscape(assetPath.generic_string()), expectedHash)) continue;
+      if (!extractJsonString(manifestJson, assetPath.generic_string(), expectedHash)) continue;
 
       std::vector<uint8_t> bytes;
 
@@ -596,11 +671,8 @@ private:
   {
     memoryPollThread = std::thread([this]
     {
-      while (running.load() && !shuttingDown.load())
+      while (waitOrStop(MEMORY_POLL_INTERVAL_MS))
       {
-        std::this_thread::sleep_for(std::chrono::milliseconds(MEMORY_POLL_INTERVAL_MS));
-
-        if (!running.load() || shuttingDown.load()) break;
         if (!isAppInForeground.load()) continue;
 
         pollMemoryUsage();
@@ -641,11 +713,9 @@ private:
   {
     freezeWatchdogThread = std::thread([this]
     {
-      while (running.load() && !shuttingDown.load())
+      while (waitOrStop(500))
       {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-        if (!freezeWatchdogArmed || !isAppInForeground.load()) continue;
+        if (!freezeWatchdogArmed.load() || !isAppInForeground.load()) continue;
 
         double now = nowSeconds();
         double delta;
@@ -655,7 +725,7 @@ private:
           delta = now - lastFrameStamp;
         }
 
-        if (delta >= FREEZE_WATCHDOG_THRESHOLD_SECONDS && !watchdogWarningIssued)
+        if (delta >= FREEZE_WATCHDOG_THRESHOLD_SECONDS && !watchdogWarningIssued.load())
         {
           watchdogWarningIssued = true;
           std::cerr << "Main loop appears stalled for " << delta << "s." << std::endl;
@@ -671,18 +741,41 @@ private:
 
   void scheduleBackgroundSave()
   {
+    std::lock_guard<std::mutex> lock(saveMutex);
+
     pendingBackgroundSave = true;
+    saveDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(BACKGROUND_SAVE_DEBOUNCE_MS);
+
+    if (saveWorkerActive)
+    {
+      saveCondition.notify_all();
+      return;
+    }
 
     if (backgroundSaveThread.joinable()) backgroundSaveThread.join();
 
+    saveWorkerActive = true;
+
     backgroundSaveThread = std::thread([this]
     {
-      std::this_thread::sleep_for(std::chrono::milliseconds(BACKGROUND_SAVE_DEBOUNCE_MS));
+      std::unique_lock<std::mutex> workerLock(saveMutex);
 
-      if (!pendingBackgroundSave) return;
+      while (pendingBackgroundSave && !shuttingDown.load())
+      {
+        if (std::chrono::steady_clock::now() < saveDeadline)
+        {
+          saveCondition.wait_until(workerLock, saveDeadline);
+          continue;
+        }
 
-      pendingBackgroundSave = false;
-      onFlushSave();
+        pendingBackgroundSave = false;
+
+        workerLock.unlock();
+        onFlushSave();
+        workerLock.lock();
+      }
+
+      saveWorkerActive = false;
     });
   }
 
@@ -785,34 +878,45 @@ private:
   {
     if (shuttingDown.exchange(true)) return;
 
-    pendingBackgroundSave = false;
-    onFlushSave();
-    onStopAudio();
-    onPurgeCaches();
+    wakeCondition.notify_all();
+    saveCondition.notify_all();
 
     if (memoryPollThread.joinable()) memoryPollThread.join();
     if (freezeWatchdogThread.joinable()) freezeWatchdogThread.join();
     if (backgroundSaveThread.joinable()) backgroundSaveThread.join();
+
+    pendingBackgroundSave = false;
+    onFlushSave();
+    onStopAudio();
+    onPurgeCaches();
   }
 
   void installSignalHandlers()
   {
     std::signal(SIGINT, &FunkinApp::staticInterruptHandler);
-    std::signal(SIGTERM, &FunkinApp::staticInterruptHandler);
+    std::signal(SIGTERM, &FunkinApp::staticTerminateHandler);
     std::signal(SIGSEGV, &FunkinApp::staticFatalSignalHandler);
     std::signal(SIGABRT, &FunkinApp::staticFatalSignalHandler);
     std::signal(SIGFPE, &FunkinApp::staticFatalSignalHandler);
     std::signal(SIGILL, &FunkinApp::staticFatalSignalHandler);
   }
 
-  static void staticInterruptHandler(int)
+  static void staticInterruptHandler(int sig)
   {
-    if (instance != nullptr) instance->requestExitConfirm();
+    interruptRequested.store(true);
+    std::signal(sig, &FunkinApp::staticInterruptHandler);
+  }
+
+  static void staticTerminateHandler(int)
+  {
+    terminateRequested.store(true);
   }
 
   static void staticFatalSignalHandler(int sig)
   {
-    if (instance != nullptr)
+    static std::atomic<bool> handling{false};
+
+    if (!handling.exchange(true) && instance != nullptr)
     {
       instance->writeCrashDiagnostics("Fatal signal " + std::to_string(sig));
     }
@@ -825,17 +929,19 @@ private:
 FunkinApp *FunkinApp::instance = nullptr;
 bool FunkinApp::safeMode = false;
 DeviceMemoryClass FunkinApp::deviceMemoryClass = DeviceMemoryClass::Unknown;
-int FunkinApp::lowMemoryEventCount = 0;
+std::atomic<int> FunkinApp::lowMemoryEventCount{0};
 std::atomic<bool> FunkinApp::isAppInForeground{true};
+std::atomic<bool> FunkinApp::interruptRequested{false};
+std::atomic<bool> FunkinApp::terminateRequested{false};
 BuildInfo FunkinApp::buildInfo{};
 
-int main(int argc, char **argv)
+int main()
 {
   FunkinApp app;
 
   int frameCount = 0;
 
-  app.onCreateGame = [&frameCount]
+  app.onCreateGame = []
   {
     std::cout << "Game created. Running headless tick loop." << std::endl;
   };
