@@ -426,6 +426,8 @@ class MainMenuState extends MusicBeatState
   }
   #end
 
+  static final MOD_NOTICE_SECONDS:Float = 6.0;
+
   var modConversionText:Null<FlxText> = null;
 
   function checkModConversions():Void
@@ -458,14 +460,28 @@ class MainMenuState extends MusicBeatState
     modConversionText.setFormat('VCR OSD Mono', 12, totalErrors > 0 ? FlxColor.YELLOW : FlxColor.LIME, LEFT);
     modConversionText.zIndex = 100000;
     add(modConversionText);
+
+    final notice:Null<FlxText> = modConversionText;
+
+    if (notice == null) return;
+
+    FlxTween.tween(notice, {alpha: 0}, 0.6, {
+      startDelay: MOD_NOTICE_SECONDS,
+      ease: FlxEase.quadOut,
+      onComplete: _ ->
+      {
+        remove(notice, true);
+        notice.destroy();
+
+        if (modConversionText == notice) modConversionText = null;
+      }
+    });
   }
 
   function initLeftWatermarkText():Void
   {
     if (leftWatermarkText == null) return;
 
-    // se vc for dev ative isso.
-    // leftWatermarkText.text += 'Friday Night Funkin: ${Constants.VERSION} Moon Engine v${Constants.MOON_VERSION} [Build ${Constants.BUILD_NUMBER}]';
     leftWatermarkText.text += 'Friday Night Funkin: v0.8.7 | Moon Engine v${Constants.MOON_VERSION} - ${Constants.BUILD_NUMBER}';
 
     #if FEATURE_NEWGROUNDS
@@ -489,20 +505,7 @@ class MainMenuState extends MusicBeatState
   {
     FlxG.camera.follow(camFollow, null, 0.06);
 
-    trace('=== CAMERA RESET ===');
-    trace('target: ${FlxG.camera.target}');
-    trace('followLerp: ${FlxG.camera.followLerp}');
-    trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
-    trace('zoom: ${FlxG.camera.zoom}');
-    trace('deadzone: ${FlxG.camera.deadzone}');
-
-    if (snap)
-    {
-      FlxG.camera.snapToTarget();
-
-      trace('AFTER SNAP');
-      trace('scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
-    }
+    if (snap) FlxG.camera.snapToTarget();
   }
 
   function createMenuItem(name:String, atlas:String, callback:Void->Void, fireInstantly:Bool = false):Void
@@ -521,10 +524,6 @@ class MainMenuState extends MusicBeatState
 
   override function closeSubState():Void
   {
-    trace('=== closeSubState ===');
-    trace('persistentUpdate BEFORE: $persistentUpdate');
-    trace('camera target BEFORE: ${FlxG.camera.target}');
-
     magenta.visible = false;
 
     if (!(subState is flixel.addons.transition.Transition))
@@ -542,9 +541,6 @@ class MainMenuState extends MusicBeatState
     super.closeSubState();
 
     persistentUpdate = true;
-
-    trace('persistentUpdate AFTER: $persistentUpdate');
-    trace('camera target AFTER: ${FlxG.camera.target}');
   }
 
   function onMenuItemChange(selected:MenuListItem)
@@ -552,11 +548,6 @@ class MainMenuState extends MusicBeatState
     if (#if mobile ControlsHandler.usingExternalInputDevice #else true #end)
     {
       camFollow.setPosition(selected.getGraphicMidpoint().x, selected.getGraphicMidpoint().y);
-
-      trace('=== MENU CHANGE ===');
-      trace('camFollow: ${camFollow.x}, ${camFollow.y}');
-      trace('camera target: ${FlxG.camera.target}');
-      trace('camera scroll: ${FlxG.camera.scroll.x}, ${FlxG.camera.scroll.y}');
     }
   }
 

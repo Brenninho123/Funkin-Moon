@@ -96,7 +96,9 @@ class FunkinDebugDisplay extends Sprite
   var lastFpsColorTier:Int = -1;
   var fpsHistory:Array<Int> = [];
   var fpsHistorySum:Int = 0;
-  var frameTimeHistory:Array<Float> = [];
+  var frameTimeHistory:Array<Float> = [for (_ in 0...FRAME_TIME_HISTORY_SIZE) 0.0];
+  var frameTimeHistoryIndex:Int = 0;
+  var frameTimeHistoryCount:Int = 0;
   var cachedAverageFps:Int = 0;
   var cachedLowFps:Int = 0;
   var cachedHighFrameTimeMs:Float = 0.0;
@@ -673,23 +675,19 @@ class FunkinDebugDisplay extends Sprite
 
   function pushFrameTimeHistory(value:Float):Void
   {
-    frameTimeHistory.push(value);
+    frameTimeHistory[frameTimeHistoryIndex] = value;
+    frameTimeHistoryIndex = (frameTimeHistoryIndex + 1) % FRAME_TIME_HISTORY_SIZE;
 
-    if (frameTimeHistory.length > FRAME_TIME_HISTORY_SIZE)
-    {
-      frameTimeHistory.shift();
-    }
-
-    cachedHighFrameTimeMs = computeHighFrameTime();
+    if (frameTimeHistoryCount < FRAME_TIME_HISTORY_SIZE) frameTimeHistoryCount++;
   }
 
   function computeHighFrameTime():Float
   {
-    var length:Int = frameTimeHistory.length;
+    var length:Int = frameTimeHistoryCount;
 
     if (length == 0) return 0.0;
 
-    var sortedCopy:Array<Float> = frameTimeHistory.copy();
+    var sortedCopy:Array<Float> = frameTimeHistory.slice(0, length);
     sortedCopy.sort((a, b) -> a > b ? 1 : (a < b ? -1 : 0));
 
     var index:Int = Std.int(Math.floor(length * 0.99));
@@ -765,6 +763,8 @@ class FunkinDebugDisplay extends Sprite
     updateTaskMemGraph();
 
     if (!hasDisplayedStatsChanged()) return;
+
+    cachedHighFrameTimeMs = computeHighFrameTime();
 
     var fpsLine:String = 'FPS: $fps  (${formatFrameTime()}ms)';
 
@@ -935,7 +935,8 @@ class FunkinDebugDisplay extends Sprite
     stutterCount = 0;
     fpsHistory = [];
     fpsHistorySum = 0;
-    frameTimeHistory = [];
+    frameTimeHistoryIndex = 0;
+    frameTimeHistoryCount = 0;
     frameTimeMinMs = 999.0;
     frameTimeMaxMs = 0.0;
     cachedAverageFps = fps;

@@ -328,7 +328,18 @@ class PolymodHandler
       funkin.Paths,
       funkin.Preferences,
       funkin.util.Constants,
-      flixel.FlxG
+      flixel.FlxG,
+      funkin.modding.api.MoonAPI,
+      funkin.modding.api.MoonSong,
+      funkin.modding.api.MoonPlayer,
+      funkin.modding.api.MoonCamera,
+      funkin.modding.api.MoonCharacter,
+      funkin.modding.api.MoonInput,
+      funkin.modding.api.MoonVars,
+      funkin.modding.api.MoonTimers,
+      funkin.modding.api.MoonAudio,
+      funkin.modding.api.MoonTween,
+      funkin.modding.api.MoonUI
     ];
 
     for (cls in DEFAULT_IMPORTS)

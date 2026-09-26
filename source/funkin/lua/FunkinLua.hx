@@ -4,6 +4,8 @@ import haxe.Json;
 import hxlua.Lua;
 import hxlua.LuaL;
 import hxlua.Types;
+import funkin.Conductor;
+import funkin.Highscore;
 import funkin.play.PlayState;
 import funkin.audio.FunkinSound;
 import funkin.lowend.FunkinLow;
