@@ -1,13 +1,8 @@
 package funkin.native;
 
-@:buildXml('
-<files id="haxe">
-  <compilerflag value="-Isource/funkin" />
-  <compilerflag value="-std=c++17" />
-  <file name="source/funkin/Content.cpp" />
-</files>
-')
+@:build(funkin.util.macro.LinkerMacro.xml('ContentBuild.xml'))
 @:include("Content.hpp")
+@:unreflective
 extern class ContentNative
 {
   @:native("funkin_content_scanSubdirectories")

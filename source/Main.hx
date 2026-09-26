@@ -31,7 +31,6 @@ import openfl.display.Sprite;
 import openfl.events.Event;
 import openfl.events.UncaughtErrorEvent;
 import openfl.events.KeyboardEvent;
-import openfl.ui.Keyboard;
 import openfl.Lib;
 import openfl.utils.Assets;
 import funkin.Paths;
@@ -109,6 +108,7 @@ class Main extends Sprite
   private static final BACKGROUND_SAVE_DEBOUNCE_MS:Int = 600;
   private static final LOW_MEMORY_DEVICE_THRESHOLD_MB:Int = 1536;
   private static final MID_MEMORY_DEVICE_THRESHOLD_MB:Int = 3072;
+  private static final ANDROID_BACK_KEY_CODE:Int = 0x4000010E;
 
   public static function main():Void
   {
@@ -196,7 +196,7 @@ class Main extends Sprite
     try
     {
       #if android
-      return extension.androidtools.app.ActivityManager.getMemoryInfo().totalMem / (1024 * 1024);
+      return extension.androidtools.os.DeviceInfo.getTotalMemory() / (1024 * 1024);
       #elseif FEATURE_NATIVE_CPP
       return MainNative.getTotalSystemMemoryBytes() / (1024 * 1024);
       #elseif ios
@@ -381,7 +381,7 @@ class Main extends Sprite
   private function onMobileKeyDown(event:KeyboardEvent):Void
   {
     #if android
-    if (event.keyCode != Keyboard.BACK) return;
+    if (event.keyCode != ANDROID_BACK_KEY_CODE) return;
 
     event.preventDefault();
     handleAndroidBackButton();
@@ -523,7 +523,7 @@ class Main extends Sprite
 
     try
     {
-      FunkinSound.pauseAll();
+      FlxG.sound.pause();
     }
     catch (e:Dynamic) {}
     #end
@@ -570,7 +570,7 @@ class Main extends Sprite
       #if mobile
       try
       {
-        FunkinSound.resumeAll();
+        FlxG.sound.resume();
       }
       catch (e:Dynamic) {}
       #end

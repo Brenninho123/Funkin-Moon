@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+	<pragma once="true" />
+
+	<files id="haxe">
+		<compilerflag value="-I${this_dir}/../.." />
+	</files>
+
+	<files id="moon-native-main">
+		<compilerflag value="-I${this_dir}/../.." />
+		<compilerflag value="-std:c++17" if="windows" />
+		<compilerflag value="-std=c++17" unless="windows" />
+
+		<file name="${this_dir}/../../Main.cpp" />
+	</files>
+
+	<target id="haxe">
+		<files id="moon-native-main" />
+	</target>
+</xml>

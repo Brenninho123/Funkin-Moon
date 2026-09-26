@@ -1,12 +1,8 @@
 package funkin.native;
 
-@:buildXml('
-<files id="haxe">
-  <compilerflag value="-Isource" />
-  <file name="source/Main.cpp" />
-</files>
-')
+@:build(funkin.util.macro.LinkerMacro.xml('MainBuild.xml'))
 @:include("Main.hpp")
+@:unreflective
 extern class MainNative
 {
   @:native("funkin_native_getProcessMemoryBytes")
