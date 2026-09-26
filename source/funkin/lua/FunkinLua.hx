@@ -1,55 +1,53 @@
 package funkin.lua;
 
 #if FEATURE_LUA_SCRIPTS
+import haxe.Json;
 import hxlua.Lua;
 import hxlua.LuaL;
 import hxlua.Types;
+import hxlua.Types.Lua_State;
 import funkin.play.PlayState;
 import funkin.audio.FunkinSound;
 import funkin.lowend.FunkinLow;
 import funkin.ui.system.FunkinCosmic;
-import funkin.util.WindowUtil;
-import funkin.Paths;
 import flixel.FlxG;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
-
-typedef LuaState = cpp.RawPointer<hxlua.Lua_State>;
-typedef LuaCFunction = cpp.Callable<(L:cpp.RawPointer<hxlua.Lua_State>) -> Int>;
+import flixel.util.FlxTimer;
+import funkin.util.WindowUtil;
+import funkin.Paths;
 #end
 
-@:unreflective
-final class FunkinLua
+typedef LuaState = cpp.RawPointer<hxlua.Types.Lua_State>;
+
+class FunkinLua
 {
   #if FEATURE_LUA_SCRIPTS
   public static var lastCalledScript:FunkinLua;
   static var sharedVariables:Map<String, Dynamic> = new Map();
-  static var luaCbKeyJustPressed:LuaCFunction = cpp.Callable.fromStaticFunction(cb_keyJustPressed);
 
-  public var lua:cpp.RawPointer<hxlua.Lua_State>;
+  public var lua:LuaState;
   public var scriptName:String;
   public var closed:Bool = false;
   public var errorCount(default, null):Int = 0;
 
   var luaTexts:Map<String, FlxText> = new Map();
+  var activeTimers:Map<String, FlxTimer> = new Map();
   var currentFunction:String = '';
 
   public function new(scriptPath:String)
   {
     scriptName = scriptPath;
 
-    trace('[FunkinLua] Criando LuaState -> $scriptName');
-
     lua = LuaL.newstate();
 
     if (lua == null)
     {
       FlxG.log.error('FunkinLua: Could not create a Lua state for $scriptName');
-      Sys.println('[FunkinLua] ERRO: Não foi possível criar LuaState para $scriptName');
 
       WindowUtil.showError(
         'Lua Initialization Error',
-        'Could not initialize the Lua interpreter.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'The Lua state could not be created.\n' + 'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon/issues'
+        'Could not initialize the Lua interpreter.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'The Lua state could not be created.\n' + 'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon'
       );
 
       closed = true;
@@ -58,28 +56,17 @@ final class FunkinLua
 
     LuaL.openlibs(lua);
 
-    registerCallback();
+    registerCallbacks();
     setDefaultVariables();
 
     lastCalledScript = this;
 
-    trace('[FunkinLua] Executando arquivo Lua -> $scriptName');
-
     var result:Int = LuaL.dofile(lua, scriptPath);
-
-    trace('[FunkinLua] dofile retornou: $result -> $scriptName');
 
     if (result != 0)
     {
-      trace('[FunkinLua] (ERROR) NO DOFILE -> $scriptName');
-
       reportLoadError();
       destroy();
-    }
-    else
-    {
-      trace('[FunkinLua] LUA CARREGADO COM SUCESSO -> $scriptName');
-      Sys.println('[FunkinLua] LUA CARREGADO COM SUCESSO: $scriptName');
     }
   }
 
@@ -96,134 +83,222 @@ final class FunkinLua
     }
   }
 
-  /**
-   * Explicitly converts the Haxe static function wrapper into
-   * hxlua's Lua_CFunction type before calling Lua.register().
-   *
-   * This prevents cpp.Function.fromStaticFunction() from being
-   * inferred as Dynamic and generating invalid C++ callback calls.
-   */
-  inline function registerLuaCallback(name:String, callback:LuaCFunction):Void
+  function registerCallbacks():Void
   {
-    Lua.register(lua, name, callback);
+    registerCoreCallbacks();
+    registerGameplayCallbacks();
+    registerStatCallbacks();
+    registerAudioCallbacks();
+    registerCameraCallbacks();
+    registerTextCallbacks();
+    registerCharacterCallbacks();
+    registerVariableCallbacks();
+    registerSaveCallbacks();
+    registerTimerCallbacks();
+    registerUtilityCallbacks();
+    registerInputCallbacks();
+    registerOnlineCallbacks();
   }
 
-  function registerCallback():Void
+  function registerCoreCallbacks():Void
   {
-    registerLuaCallback('debugPrint', cpp.Callable.fromStaticFunction(cb_debugPrint));
-    registerLuaCallback('logWarn', cpp.Callable.fromStaticFunction(cb_logWarn));
-    registerLuaCallback('logError', cpp.Callable.fromStaticFunction(cb_logError));
+    Lua.register(lua, 'debugPrint', cpp.Function.fromStaticFunction(cb_debugPrint));
+    Lua.register(lua, 'logWarn', cpp.Function.fromStaticFunction(cb_logWarn));
+    Lua.register(lua, 'logError', cpp.Function.fromStaticFunction(cb_logError));
 
-    registerLuaCallback('getSongName', cpp.Callable.fromStaticFunction(cb_getSongName));
-    registerLuaCallback('getDifficulty', cpp.Callable.fromStaticFunction(cb_getDifficulty));
-    registerLuaCallback('getVariation', cpp.Callable.fromStaticFunction(cb_getVariation));
-    registerLuaCallback('getPlaybackRate', cpp.Callable.fromStaticFunction(cb_getPlaybackRate));
-    registerLuaCallback('setPlaybackRate', cpp.Callable.fromStaticFunction(cb_setPlaybackRate));
-    registerLuaCallback('triggerEvent', cpp.Callable.fromStaticFunction(cb_triggerEvent));
+    Lua.register(lua, 'getSongName', cpp.Function.fromStaticFunction(cb_getSongName));
+    Lua.register(lua, 'getDifficulty', cpp.Function.fromStaticFunction(cb_getDifficulty));
+    Lua.register(lua, 'getVariation', cpp.Function.fromStaticFunction(cb_getVariation));
+    Lua.register(lua, 'getPlaybackRate', cpp.Function.fromStaticFunction(cb_getPlaybackRate));
+    Lua.register(lua, 'setPlaybackRate', cpp.Function.fromStaticFunction(cb_setPlaybackRate));
 
-    registerLuaCallback('getHealth', cpp.Callable.fromStaticFunction(cb_getHealth));
-    registerLuaCallback('setHealth', cpp.Callable.fromStaticFunction(cb_setHealth));
-    registerLuaCallback('addHealth', cpp.Callable.fromStaticFunction(cb_addHealth));
-    registerLuaCallback('getHealthPercent', cpp.Callable.fromStaticFunction(cb_getHealthPercent));
+    Lua.register(lua, 'getSongId', cpp.Function.fromStaticFunction(cb_getSongId));
+    Lua.register(lua, 'getDifficultyId', cpp.Function.fromStaticFunction(cb_getDifficultyId));
+    Lua.register(lua, 'getVariationId', cpp.Function.fromStaticFunction(cb_getVariationId));
 
-    registerLuaCallback('getScore', cpp.Callable.fromStaticFunction(cb_getScore));
-    registerLuaCallback('addScore', cpp.Callable.fromStaticFunction(cb_addScore));
-    registerLuaCallback('setScore', cpp.Callable.fromStaticFunction(cb_setScore));
-    registerLuaCallback('getCombo', cpp.Callable.fromStaticFunction(cb_getCombo));
-    registerLuaCallback('getMaxCombo', cpp.Callable.fromStaticFunction(cb_getMaxCombo));
-    registerLuaCallback('getAccuracy', cpp.Callable.fromStaticFunction(cb_getAccuracy));
-    registerLuaCallback('getJudgementCount', cpp.Callable.fromStaticFunction(cb_getJudgementCount));
+    Lua.register(lua, 'triggerEvent', cpp.Function.fromStaticFunction(cb_triggerEvent));
 
-    registerLuaCallback('getSongPosition', cpp.Callable.fromStaticFunction(cb_getSongPosition));
-    registerLuaCallback('getBPM', cpp.Callable.fromStaticFunction(cb_getBPM));
-    registerLuaCallback('getCurrentStep', cpp.Callable.fromStaticFunction(cb_getCurrentStep));
-    registerLuaCallback('getCurrentBeat', cpp.Callable.fromStaticFunction(cb_getCurrentBeat));
-    registerLuaCallback('getDeaths', cpp.Callable.fromStaticFunction(cb_getDeaths));
-    registerLuaCallback('isPracticeMode', cpp.Callable.fromStaticFunction(cb_isPracticeMode));
-    registerLuaCallback('isBotPlayMode', cpp.Callable.fromStaticFunction(cb_isBotPlayMode));
+    Lua.register(lua, 'getGameVersion', cpp.Function.fromStaticFunction(cb_getGameVersion));
+    Lua.register(lua, 'getWindowWidth', cpp.Function.fromStaticFunction(cb_getWindowWidth));
+    Lua.register(lua, 'getWindowHeight', cpp.Function.fromStaticFunction(cb_getWindowHeight));
+    Lua.register(lua, 'getFPS', cpp.Function.fromStaticFunction(cb_getFPS));
+    Lua.register(lua, 'setFPS', cpp.Function.fromStaticFunction(cb_setFPS));
+    Lua.register(lua, 'getDrawFPS', cpp.Function.fromStaticFunction(cb_getDrawFPS));
+    Lua.register(lua, 'setDrawFPS', cpp.Function.fromStaticFunction(cb_setDrawFPS));
+    Lua.register(lua, 'isMobilePlatform', cpp.Function.fromStaticFunction(cb_isMobilePlatform));
+    Lua.register(lua, 'getPlatformName', cpp.Function.fromStaticFunction(cb_getPlatformName));
+  }
 
-    registerLuaCallback('playSound', cpp.Callable.fromStaticFunction(cb_playSound));
-    registerLuaCallback('stopAllSounds', cpp.Callable.fromStaticFunction(cb_stopAllSounds));
-    registerLuaCallback('setMusicPitch', cpp.Callable.fromStaticFunction(cb_setMusicPitch));
+  function registerGameplayCallbacks():Void
+  {
+    Lua.register(lua, 'getHealth', cpp.Function.fromStaticFunction(cb_getHealth));
+    Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
+    Lua.register(lua, 'addHealth', cpp.Function.fromStaticFunction(cb_addHealth));
+    Lua.register(lua, 'getHealthPercent', cpp.Function.fromStaticFunction(cb_getHealthPercent));
 
-    registerLuaCallback('setVar', cpp.Callable.fromStaticFunction(cb_setVar));
-    registerLuaCallback('getVar', cpp.Callable.fromStaticFunction(cb_getVar));
-    registerLuaCallback('hasVar', cpp.Callable.fromStaticFunction(cb_hasVar));
-    registerLuaCallback('removeVar', cpp.Callable.fromStaticFunction(cb_removeVar));
+    Lua.register(lua, 'getScore', cpp.Function.fromStaticFunction(cb_getScore));
+    Lua.register(lua, 'addScore', cpp.Function.fromStaticFunction(cb_addScore));
+    Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
 
-    registerLuaCallback('getMisses', cpp.Callable.fromStaticFunction(cb_getMisses));
+    Lua.register(lua, 'getDeaths', cpp.Function.fromStaticFunction(cb_getDeaths));
 
-    registerLuaCallback('randomFloat', cpp.Callable.fromStaticFunction(cb_randomFloat));
-    registerLuaCallback('randomInt', cpp.Callable.fromStaticFunction(cb_randomInt));
-    registerLuaCallback('randomBool', cpp.Callable.fromStaticFunction(cb_randomBool));
+    Lua.register(lua, 'isPracticeMode', cpp.Function.fromStaticFunction(cb_isPracticeMode));
+    Lua.register(lua, 'isBotPlayMode', cpp.Function.fromStaticFunction(cb_isBotPlayMode));
 
-    registerLuaCallback('triggerCameraMovement', cpp.Callable.fromStaticFunction(cb_triggerCameraMovement));
-    registerLuaCallback('setCameraMovementEnabled', cpp.Callable.fromStaticFunction(cb_setCameraMovementEnabled));
-    registerLuaCallback('flashCamera', cpp.Callable.fromStaticFunction(cb_flashCamera));
-    registerLuaCallback('shakeCamera', cpp.Callable.fromStaticFunction(cb_shakeCamera));
+    Lua.register(lua, 'getSongPosition', cpp.Function.fromStaticFunction(cb_getSongPosition));
+    Lua.register(lua, 'getBPM', cpp.Function.fromStaticFunction(cb_getBPM));
+    Lua.register(lua, 'getCurrentStep', cpp.Function.fromStaticFunction(cb_getCurrentStep));
+    Lua.register(lua, 'getCurrentBeat', cpp.Function.fromStaticFunction(cb_getCurrentBeat));
 
-    registerLuaCallback('getSongId', cpp.Callable.fromStaticFunction(cb_getSongId));
-    registerLuaCallback('getDifficultyId', cpp.Callable.fromStaticFunction(cb_getDifficultyId));
-    registerLuaCallback('getVariationId', cpp.Callable.fromStaticFunction(cb_getVariationId));
+    Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
+  }
 
-    registerLuaCallback('getCameraX', cpp.Callable.fromStaticFunction(cb_getCameraX));
-    registerLuaCallback('getCameraY', cpp.Callable.fromStaticFunction(cb_getCameraY));
-    registerLuaCallback('setCameraZoom', cpp.Callable.fromStaticFunction(cb_setCameraZoom));
-    registerLuaCallback('setMusicVolume', cpp.Callable.fromStaticFunction(cb_setMusicVolume));
+  function registerStatCallbacks():Void
+  {
+    Lua.register(lua, 'getCombo', cpp.Function.fromStaticFunction(cb_getCombo));
+    Lua.register(lua, 'getMaxCombo', cpp.Function.fromStaticFunction(cb_getMaxCombo));
+    Lua.register(lua, 'getAccuracy', cpp.Function.fromStaticFunction(cb_getAccuracy));
+    Lua.register(lua, 'getJudgementCount', cpp.Function.fromStaticFunction(cb_getJudgementCount));
+    Lua.register(lua, 'getMisses', cpp.Function.fromStaticFunction(cb_getMisses));
 
-    registerLuaCallback('getDirectionName', cpp.Callable.fromStaticFunction(cb_getDirectionName));
+    Lua.register(lua, 'getFullComboCount', cpp.Function.fromStaticFunction(cb_getFullComboCount));
+    Lua.register(lua, 'getPerfectSongCount', cpp.Function.fromStaticFunction(cb_getPerfectSongCount));
+    Lua.register(lua, 'getAverageScorePerSong', cpp.Function.fromStaticFunction(cb_getAverageScorePerSong));
 
-    registerLuaCallback('runLater', cpp.Callable.fromStaticFunction(cb_runLater));
-    registerLuaCallback('runRepeating', cpp.Callable.fromStaticFunction(cb_runRepeating));
+    Lua.register(lua, 'getQualityTier', cpp.Function.fromStaticFunction(cb_getQualityTier));
+    Lua.register(lua, 'forceQualityTier', cpp.Function.fromStaticFunction(cb_forceQualityTier));
+    Lua.register(lua, 'resetQualityAuto', cpp.Function.fromStaticFunction(cb_resetQualityAuto));
+    Lua.register(lua, 'shouldSkipEffect', cpp.Function.fromStaticFunction(cb_shouldSkipEffect));
+  }
 
-    registerLuaCallback('getQualityTier', cpp.Callable.fromStaticFunction(cb_getQualityTier));
-    registerLuaCallback('forceQualityTier', cpp.Callable.fromStaticFunction(cb_forceQualityTier));
-    registerLuaCallback('resetQualityAuto', cpp.Callable.fromStaticFunction(cb_resetQualityAuto));
-    registerLuaCallback('shouldSkipEffect', cpp.Callable.fromStaticFunction(cb_shouldSkipEffect));
+  function registerAudioCallbacks():Void
+  {
+    Lua.register(lua, 'playSound', cpp.Function.fromStaticFunction(cb_playSound));
+    Lua.register(lua, 'stopAllSounds', cpp.Function.fromStaticFunction(cb_stopAllSounds));
+    Lua.register(lua, 'setMusicPitch', cpp.Function.fromStaticFunction(cb_setMusicPitch));
+    Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
+    Lua.register(lua, 'getMusicTime', cpp.Function.fromStaticFunction(cb_getMusicTime));
+    Lua.register(lua, 'setMusicTime', cpp.Function.fromStaticFunction(cb_setMusicTime));
+  }
 
-    registerLuaCallback('getFullComboCount', cpp.Callable.fromStaticFunction(cb_getFullComboCount));
-    registerLuaCallback('getPerfectSongCount', cpp.Callable.fromStaticFunction(cb_getPerfectSongCount));
-    registerLuaCallback('getAverageScorePerSong', cpp.Callable.fromStaticFunction(cb_getAverageScorePerSong));
+  function registerCameraCallbacks():Void
+  {
+    Lua.register(lua, 'triggerCameraMovement', cpp.Function.fromStaticFunction(cb_triggerCameraMovement));
+    Lua.register(lua, 'setCameraMovementEnabled', cpp.Function.fromStaticFunction(cb_setCameraMovementEnabled));
+    Lua.register(lua, 'flashCamera', cpp.Function.fromStaticFunction(cb_flashCamera));
+    Lua.register(lua, 'shakeCamera', cpp.Function.fromStaticFunction(cb_shakeCamera));
+    Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
+    Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
+    Lua.register(lua, 'setCameraPosition', cpp.Function.fromStaticFunction(cb_setCameraPosition));
+    Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
+    Lua.register(lua, 'getCameraZoom', cpp.Function.fromStaticFunction(cb_getCameraZoom));
+  }
 
-    registerLuaCallback('keyJustPressed', luaCbKeyJustPressed);
-    registerLuaCallback('keyPressed', cpp.Callable.fromStaticFunction(cb_keyPressed));
-    registerLuaCallback('keyJustReleased', cpp.Callable.fromStaticFunction(cb_keyJustReleased));
+  function registerTextCallbacks():Void
+  {
+    Lua.register(lua, 'createLuaText', cpp.Function.fromStaticFunction(cb_createLuaText));
+    Lua.register(lua, 'setLuaTextColor', cpp.Function.fromStaticFunction(cb_setLuaTextColor));
+    Lua.register(lua, 'setLuaTextString', cpp.Function.fromStaticFunction(cb_setLuaTextString));
+    Lua.register(lua, 'setLuaTextPosition', cpp.Function.fromStaticFunction(cb_setLuaTextPosition));
+    Lua.register(lua, 'setLuaTextAlpha', cpp.Function.fromStaticFunction(cb_setLuaTextAlpha));
+    Lua.register(lua, 'setLuaTextAlignment', cpp.Function.fromStaticFunction(cb_setLuaTextAlignment));
+    Lua.register(lua, 'setLuaTextScale', cpp.Function.fromStaticFunction(cb_setLuaTextScale));
+    Lua.register(lua, 'getLuaTextWidth', cpp.Function.fromStaticFunction(cb_getLuaTextWidth));
+    Lua.register(lua, 'getLuaTextHeight', cpp.Function.fromStaticFunction(cb_getLuaTextHeight));
+    Lua.register(lua, 'addLuaText', cpp.Function.fromStaticFunction(cb_addLuaText));
+    Lua.register(lua, 'setLuaTextVisible', cpp.Function.fromStaticFunction(cb_setLuaTextVisible));
+    Lua.register(lua, 'removeLuaText', cpp.Function.fromStaticFunction(cb_removeLuaText));
+    Lua.register(lua, 'hasLuaText', cpp.Function.fromStaticFunction(cb_hasLuaText));
+  }
 
-    registerLuaCallback('createLuaText', cpp.Callable.fromStaticFunction(cb_createLuaText));
-    registerLuaCallback('setLuaTextColor', cpp.Callable.fromStaticFunction(cb_setLuaTextColor));
-    registerLuaCallback('setLuaTextString', cpp.Callable.fromStaticFunction(cb_setLuaTextString));
-    registerLuaCallback('setLuaTextPosition', cpp.Callable.fromStaticFunction(cb_setLuaTextPosition));
-    registerLuaCallback('setLuaTextAlpha', cpp.Callable.fromStaticFunction(cb_setLuaTextAlpha));
-    registerLuaCallback('addLuaText', cpp.Callable.fromStaticFunction(cb_addLuaText));
-    registerLuaCallback('setLuaTextVisible', cpp.Callable.fromStaticFunction(cb_setLuaTextVisible));
-    registerLuaCallback('removeLuaText', cpp.Callable.fromStaticFunction(cb_removeLuaText));
+  function registerCharacterCallbacks():Void
+  {
+    Lua.register(lua, 'characterPlayAnim', cpp.Function.fromStaticFunction(cb_characterPlayAnim));
+    Lua.register(lua, 'characterDance', cpp.Function.fromStaticFunction(cb_characterDance));
+    Lua.register(lua, 'setCharacterVisible', cpp.Function.fromStaticFunction(cb_setCharacterVisible));
+    Lua.register(lua, 'setCharacterPosition', cpp.Function.fromStaticFunction(cb_setCharacterPosition));
+    Lua.register(lua, 'setCharacterAlpha', cpp.Function.fromStaticFunction(cb_setCharacterAlpha));
+    Lua.register(lua, 'setCharacterFlip', cpp.Function.fromStaticFunction(cb_setCharacterFlip));
+    Lua.register(lua, 'setCharacterScale', cpp.Function.fromStaticFunction(cb_setCharacterScale));
+  }
 
-    registerLuaCallback('characterPlayAnim', cpp.Callable.fromStaticFunction(cb_characterPlayAnim));
-    registerLuaCallback('characterDance', cpp.Callable.fromStaticFunction(cb_characterDance));
-    registerLuaCallback('setCharacterVisible', cpp.Callable.fromStaticFunction(cb_setCharacterVisible));
-    registerLuaCallback('setCharacterPosition', cpp.Callable.fromStaticFunction(cb_setCharacterPosition));
+  function registerVariableCallbacks():Void
+  {
+    Lua.register(lua, 'setVar', cpp.Function.fromStaticFunction(cb_setVar));
+    Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
+    Lua.register(lua, 'hasVar', cpp.Function.fromStaticFunction(cb_hasVar));
+    Lua.register(lua, 'removeVar', cpp.Function.fromStaticFunction(cb_removeVar));
 
-    registerLuaCallback('getWindowWidth', cpp.Callable.fromStaticFunction(cb_getWindowWidth));
-    registerLuaCallback('getWindowHeight', cpp.Callable.fromStaticFunction(cb_getWindowHeight));
-    registerLuaCallback('getFPS', cpp.Callable.fromStaticFunction(cb_getFPS));
-    registerLuaCallback('isMobilePlatform', cpp.Callable.fromStaticFunction(cb_isMobilePlatform));
-    registerLuaCallback('getPlatformName', cpp.Callable.fromStaticFunction(cb_getPlatformName));
+    Lua.register(lua, 'jsonEncode', cpp.Function.fromStaticFunction(cb_jsonEncode));
+    Lua.register(lua, 'jsonDecode', cpp.Function.fromStaticFunction(cb_jsonDecode));
+  }
 
-    registerLuaCallback('saveReadString', cpp.Callable.fromStaticFunction(cb_saveReadString));
-    registerLuaCallback('saveWriteString', cpp.Callable.fromStaticFunction(cb_saveWriteString));
+  function registerSaveCallbacks():Void
+  {
+    Lua.register(lua, 'saveReadString', cpp.Function.fromStaticFunction(cb_saveReadString));
+    Lua.register(lua, 'saveWriteString', cpp.Function.fromStaticFunction(cb_saveWriteString));
+    Lua.register(lua, 'saveReadNumber', cpp.Function.fromStaticFunction(cb_saveReadNumber));
+    Lua.register(lua, 'saveWriteNumber', cpp.Function.fromStaticFunction(cb_saveWriteNumber));
+    Lua.register(lua, 'saveReadBool', cpp.Function.fromStaticFunction(cb_saveReadBool));
+    Lua.register(lua, 'saveWriteBool', cpp.Function.fromStaticFunction(cb_saveWriteBool));
+  }
 
-    registerLuaCallback('stringTrim', cpp.Callable.fromStaticFunction(cb_stringTrim));
-    registerLuaCallback('stringSplitCount', cpp.Callable.fromStaticFunction(cb_stringSplitCount));
+  function registerTimerCallbacks():Void
+  {
+    Lua.register(lua, 'runLater', cpp.Function.fromStaticFunction(cb_runLater));
+    Lua.register(lua, 'runRepeating', cpp.Function.fromStaticFunction(cb_runRepeating));
+    Lua.register(lua, 'cancelTimer', cpp.Function.fromStaticFunction(cb_cancelTimer));
+    Lua.register(lua, 'hasActiveTimer', cpp.Function.fromStaticFunction(cb_hasActiveTimer));
+  }
 
+  function registerUtilityCallbacks():Void
+  {
+    Lua.register(lua, 'randomFloat', cpp.Function.fromStaticFunction(cb_randomFloat));
+    Lua.register(lua, 'randomInt', cpp.Function.fromStaticFunction(cb_randomInt));
+    Lua.register(lua, 'randomBool', cpp.Function.fromStaticFunction(cb_randomBool));
+
+    Lua.register(lua, 'clamp', cpp.Function.fromStaticFunction(cb_clamp));
+    Lua.register(lua, 'lerp', cpp.Function.fromStaticFunction(cb_lerp));
+    Lua.register(lua, 'mapRange', cpp.Function.fromStaticFunction(cb_mapRange));
+    Lua.register(lua, 'roundNumber', cpp.Function.fromStaticFunction(cb_roundNumber));
+    Lua.register(lua, 'floorNumber', cpp.Function.fromStaticFunction(cb_floorNumber));
+    Lua.register(lua, 'ceilNumber', cpp.Function.fromStaticFunction(cb_ceilNumber));
+
+    Lua.register(lua, 'stringTrim', cpp.Function.fromStaticFunction(cb_stringTrim));
+    Lua.register(lua, 'stringUpper', cpp.Function.fromStaticFunction(cb_stringUpper));
+    Lua.register(lua, 'stringLower', cpp.Function.fromStaticFunction(cb_stringLower));
+    Lua.register(lua, 'stringContains', cpp.Function.fromStaticFunction(cb_stringContains));
+    Lua.register(lua, 'stringReplace', cpp.Function.fromStaticFunction(cb_stringReplace));
+    Lua.register(lua, 'stringSplit', cpp.Function.fromStaticFunction(cb_stringSplit));
+    Lua.register(lua, 'stringSplitCount', cpp.Function.fromStaticFunction(cb_stringSplitCount));
+
+    Lua.register(lua, 'tableLength', cpp.Function.fromStaticFunction(cb_tableLength));
+    Lua.register(lua, 'arrayContains', cpp.Function.fromStaticFunction(cb_arrayContains));
+  }
+
+  function registerInputCallbacks():Void
+  {
+    Lua.register(lua, 'keyJustPressed', cpp.Function.fromStaticFunction(cb_keyJustPressed));
+    Lua.register(lua, 'keyPressed', cpp.Function.fromStaticFunction(cb_keyPressed));
+    Lua.register(lua, 'keyJustReleased', cpp.Function.fromStaticFunction(cb_keyJustReleased));
+
+    Lua.register(lua, 'mouseX', cpp.Function.fromStaticFunction(cb_mouseX));
+    Lua.register(lua, 'mouseY', cpp.Function.fromStaticFunction(cb_mouseY));
+    Lua.register(lua, 'mousePressed', cpp.Function.fromStaticFunction(cb_mousePressed));
+    Lua.register(lua, 'mouseJustPressed', cpp.Function.fromStaticFunction(cb_mouseJustPressed));
+  }
+
+  function registerOnlineCallbacks():Void
+  {
     #if FEATURE_ONLINE
-    registerLuaCallback('isOnline', cpp.Callable.fromStaticFunction(cb_isOnline));
-    registerLuaCallback('getOnlineUserCount', cpp.Callable.fromStaticFunction(cb_getOnlineUserCount));
-    registerLuaCallback('sendOnlineMessage', cpp.Callable.fromStaticFunction(cb_sendOnlineMessage));
+    Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
+    Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
+    Lua.register(lua, 'sendOnlineMessage', cpp.Function.fromStaticFunction(cb_sendOnlineMessage));
     #end
 
     #if FEATURE_MULTIPLAYER
-    registerLuaCallback('isMultiplayerActive', cpp.Callable.fromStaticFunction(cb_isMultiplayerActive));
-    registerLuaCallback('getLocalModCount', cpp.Callable.fromStaticFunction(cb_getLocalModCount));
+    Lua.register(lua, 'isMultiplayerActive', cpp.Function.fromStaticFunction(cb_isMultiplayerActive));
+    Lua.register(lua, 'getLocalModCount', cpp.Function.fromStaticFunction(cb_getLocalModCount));
     #end
   }
 
@@ -253,18 +328,11 @@ final class FunkinLua
 
   public function call(funcName:String, args:Array<Dynamic> = null):Dynamic
   {
-    if (closed)
-    {
-      trace('[FunkinLua] Script FECHADO -> $scriptName');
-      return null;
-    }
+    if (closed) return null;
 
     currentFunction = funcName;
 
     if (args == null) args = [];
-
-    trace('[FunkinLua] Tentando chamar "$funcName" em $scriptName');
-    Sys.println('[FunkinLua] Chamando "$funcName" -> $scriptName');
 
     lastCalledScript = this;
 
@@ -272,14 +340,9 @@ final class FunkinLua
 
     if (Lua.isfunction(lua, -1) != 1)
     {
-      trace('[FunkinLua] "$funcName" NÃO existe em $scriptName');
-      Sys.println('[FunkinLua] FUNÇÃO NÃO ENCONTRADA: "$funcName" -> $scriptName');
-
       Lua.pop(lua, 1);
       return null;
     }
-
-    trace('[FunkinLua] "$funcName" encontrada em $scriptName');
 
     for (arg in args)
     {
@@ -288,9 +351,6 @@ final class FunkinLua
 
     if (Lua.pcall(lua, args.length, 1, 0) != 0)
     {
-      trace('[FunkinLua] ERRO ao executar "$funcName" em $scriptName');
-      Sys.println('[FunkinLua] ERRO AO EXECUTAR "$funcName" -> $scriptName');
-
       reportError();
       Lua.pop(lua, 1);
       return null;
@@ -299,9 +359,6 @@ final class FunkinLua
     var result:Dynamic = pullValue(-1);
 
     Lua.pop(lua, 1);
-
-    trace('[FunkinLua] "$funcName" executado com sucesso em $scriptName');
-    Sys.println('[FunkinLua] "$funcName" EXECUTADO COM SUCESSO -> $scriptName');
 
     return result;
   }
@@ -362,12 +419,12 @@ final class FunkinLua
 
     if (luaType == Lua.TNUMBER)
     {
-      return Lua.tonumber(lua, index);
+      return (Lua.tonumber(lua, index) : Float);
     }
 
     if (luaType == Lua.TSTRING)
     {
-      return Lua.tostring(lua, index);
+      return (Lua.tostring(lua, index) : String);
     }
 
     if (luaType == Lua.TTABLE)
@@ -410,28 +467,12 @@ final class FunkinLua
 
     FlxG.log.error('[$scriptName] $message');
 
-    Sys.println('');
-    Sys.println('============================================================');
-    Sys.println('                    LUA SCRIPT ERROR');
-    Sys.println('============================================================');
-    Sys.println('');
-    Sys.println('Script:');
-    Sys.println('  $scriptName');
-    Sys.println('');
-    Sys.println('Error:');
-    Sys.println('  $message');
-    Sys.println('');
-    Sys.println('Error count: $errorCount');
-    Sys.println('');
-    Sys.println('============================================================');
-    Sys.println('');
-
     var errorMessage:String =
       'Script: $scriptName\n\n'
       + 'Function: $currentFunction\n\n'
       + 'Error:\n$message\n\n'
       + 'Report bugs or share suggestions by creating an issue on our GitHub:\n'
-      + 'https://github.com/Brenninho123/Funkin-Moon/issues';
+      + 'https://github.com/Brenninho123/Funkin-Moon';
 
     WindowUtil.showError('Lua Script Error', errorMessage);
   }
@@ -454,23 +495,9 @@ final class FunkinLua
 
     FlxG.log.error('[$scriptName] $message');
 
-    Sys.println('');
-    Sys.println('============================================================');
-    Sys.println('                    LUA SCRIPT LOAD ERROR');
-    Sys.println('============================================================');
-    Sys.println('');
-    Sys.println('Script:');
-    Sys.println('  $scriptName');
-    Sys.println('');
-    Sys.println('Error:');
-    Sys.println('  $message');
-    Sys.println('');
-    Sys.println('============================================================');
-    Sys.println('');
-
     WindowUtil.showError(
       'Lua Script Load Error',
-      'Failed to load the Lua script.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'Error:\n' + '$message\n\n' + 'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon/issues'
+      'Failed to load the Lua script.\n\n' + 'Script:\n' + '$scriptName\n\n' + 'Error:\n' + '$message\n\n' + 'Report bugs or share suggestions by creating an issue on our GitHub:\n' + 'https://github.com/Brenninho123/Funkin-Moon'
     );
   }
 
@@ -491,11 +518,22 @@ final class FunkinLua
     luaTexts.clear();
   }
 
+  function destroyTimers():Void
+  {
+    for (id => timer in activeTimers)
+    {
+      if (timer != null) timer.cancel();
+    }
+
+    activeTimers.clear();
+  }
+
   public function destroy():Void
   {
     if (closed || lua == null) return;
 
     destroyLuaTexts();
+    destroyTimers();
 
     Lua.close(lua);
 
@@ -521,14 +559,15 @@ final class FunkinLua
   static function resolveKeyState(list:Dynamic, keyName:String):Bool
   {
     var value:Dynamic = Reflect.field(list, keyName);
-    return value;
+
+    return value == true;
   }
 
   static function keyStateCallback(l:LuaState, resolver:String->Bool):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var keyName:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var keyName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -556,6 +595,42 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_mouseX(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.mouse.screenX);
+
+    return 1;
+  }
+
+  static function cb_mouseY(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.mouse.screenY);
+
+    return 1;
+  }
+
+  static function cb_mousePressed(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushboolean(l, FlxG.mouse.pressed ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_mouseJustPressed(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushboolean(l, FlxG.mouse.justPressed ? 1 : 0);
+
+    return 1;
+  }
+
   static function cb_createLuaText(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -566,11 +641,11 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
-    var textString:String = Lua.tostring(l, 2);
-    var x:Float = Lua.tonumber(l, 3);
-    var y:Float = Lua.tonumber(l, 4);
-    var size:Int = Std.int(Lua.tonumber(l, 5));
+    var id:String = (Lua.tostring(l, 1) : String);
+    var textString:String = (Lua.tostring(l, 2) : String);
+    var x:Float = (Lua.tonumber(l, 3) : Float);
+    var y:Float = (Lua.tonumber(l, 4) : Float);
+    var size:Int = Std.int((Lua.tonumber(l, 5) : Float));
 
     Lua.pop(l, n);
 
@@ -597,8 +672,8 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
-    var colorValue:Int = Std.int(Lua.tonumber(l, 2));
+    var id:String = (Lua.tostring(l, 1) : String);
+    var colorValue:Int = Std.int((Lua.tonumber(l, 2) : Float));
 
     Lua.pop(l, n);
 
@@ -621,8 +696,8 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
-    var newText:String = Lua.tostring(l, 2);
+    var id:String = (Lua.tostring(l, 1) : String);
+    var newText:String = (Lua.tostring(l, 2) : String);
 
     Lua.pop(l, n);
 
@@ -645,9 +720,9 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
-    var x:Float = Lua.tonumber(l, 2);
-    var y:Float = Lua.tonumber(l, 3);
+    var id:String = (Lua.tostring(l, 1) : String);
+    var x:Float = (Lua.tonumber(l, 2) : Float);
+    var y:Float = (Lua.tonumber(l, 3) : Float);
 
     Lua.pop(l, n);
 
@@ -671,8 +746,8 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
-    var alpha:Float = Lua.tonumber(l, 2);
+    var id:String = (Lua.tostring(l, 1) : String);
+    var alpha:Float = (Lua.tonumber(l, 2) : Float);
 
     Lua.pop(l, n);
 
@@ -685,6 +760,85 @@ final class FunkinLua
     return 0;
   }
 
+  static function cb_setLuaTextAlignment(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var id:String = (Lua.tostring(l, 1) : String);
+    var alignment:String = (Lua.tostring(l, 2) : String);
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript.luaTexts.get(id);
+
+    if (text == null) return 0;
+
+    text.alignment = alignment.toLowerCase();
+
+    return 0;
+  }
+
+  static function cb_setLuaTextScale(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      return 0;
+    }
+
+    var id:String = (Lua.tostring(l, 1) : String);
+    var scaleX:Float = (Lua.tonumber(l, 2) : Float);
+    var scaleY:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : scaleX;
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript.luaTexts.get(id);
+
+    if (text == null) return 0;
+
+    text.scale.set(scaleX, scaleY);
+
+    return 0;
+  }
+
+  static function cb_getLuaTextWidth(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var id:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript?.luaTexts?.get(id);
+
+    Lua.pushnumber(l, text != null ? text.width : 0);
+
+    return 1;
+  }
+
+  static function cb_getLuaTextHeight(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var id:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    var text:Null<FlxText> = lastCalledScript?.luaTexts?.get(id);
+
+    Lua.pushnumber(l, text != null ? text.height : 0);
+
+    return 1;
+  }
+
   static function cb_addLuaText(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
@@ -695,7 +849,7 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
+    var id:String = (Lua.tostring(l, 1) : String);
 
     Lua.pop(l, n);
 
@@ -720,7 +874,7 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
+    var id:String = (Lua.tostring(l, 1) : String);
     var visible:Bool = Lua.toboolean(l, 2) == 1;
 
     Lua.pop(l, n);
@@ -744,13 +898,26 @@ final class FunkinLua
       return 0;
     }
 
-    var id:String = Lua.tostring(l, 1);
+    var id:String = (Lua.tostring(l, 1) : String);
 
     Lua.pop(l, n);
 
     lastCalledScript.removeLuaText(id);
 
     return 0;
+  }
+
+  static function cb_hasLuaText(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var id:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushboolean(l, (lastCalledScript != null && lastCalledScript.luaTexts.exists(id)) ? 1 : 0);
+
+    return 1;
   }
 
   function removeLuaText(id:String):Void
@@ -765,6 +932,7 @@ final class FunkinLua
     }
 
     text.destroy();
+
     luaTexts.remove(id);
   }
 
@@ -772,8 +940,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var target:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var animName:String = n >= 2 ? Lua.tostring(l, 2) : '';
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var animName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
     var force:Bool = n >= 3 ? Lua.toboolean(l, 3) == 1 : false;
 
     Lua.pop(l, n);
@@ -791,7 +959,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var target:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -808,7 +976,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var target:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
     var visible:Bool = n >= 2 ? Lua.toboolean(l, 2) == 1 : true;
 
     Lua.pop(l, n);
@@ -826,9 +994,9 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var target:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var x:Float = n >= 2 ? Lua.tonumber(l, 2) : 0.0;
-    var y:Float = n >= 3 ? Lua.tonumber(l, 3) : 0.0;
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var x:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+    var y:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : 0.0;
 
     Lua.pop(l, n);
 
@@ -838,6 +1006,61 @@ final class FunkinLua
 
     character.x = x;
     character.y = y;
+
+    return 0;
+  }
+
+  static function cb_setCharacterAlpha(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var alpha:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.alpha = alpha;
+
+    return 0;
+  }
+
+  static function cb_setCharacterFlip(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var flipped:Bool = n >= 2 ? Lua.toboolean(l, 2) == 1 : false;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.flipX = flipped;
+
+    return 0;
+  }
+
+  static function cb_setCharacterScale(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var target:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var scaleX:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+    var scaleY:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : scaleX;
+
+    Lua.pop(l, n);
+
+    var character:Null<funkin.play.character.BaseCharacter> = resolveCharacter(target);
+
+    if (character == null) return 0;
+
+    character.scale.set(scaleX, scaleY);
 
     return 0;
   }
@@ -864,32 +1087,17 @@ final class FunkinLua
 
   static function cb_debugPrint(l:LuaState):Int
   {
-    return logCallback(l, function(message:Dynamic):Void
-    {
-      FlxG.log.add(message);
-
-      var scriptName:String = 'Unknown';
-
-      if (lastCalledScript != null) scriptName = lastCalledScript.scriptName;
-
-      Sys.println('[Lua:$scriptName] $message');
-    });
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.add(message));
   }
 
   static function cb_logWarn(l:LuaState):Int
   {
-    return logCallback(l, function(message:Dynamic):Void
-    {
-      FlxG.log.warn(message);
-    });
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.warn(message));
   }
 
   static function cb_logError(l:LuaState):Int
   {
-    return logCallback(l, function(message:Dynamic):Void
-    {
-      FlxG.log.error(message);
-    });
+    return logCallback(l, function(message:Dynamic):Void FlxG.log.error(message));
   }
 
   static function logCallback(l:LuaState, sink:Dynamic->Void):Int
@@ -952,13 +1160,22 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Float = n >= 1 ? Lua.tonumber(l, 1) : 1.0;
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
 
     Lua.pop(l, n);
 
     if (PlayState.instance != null) PlayState.instance.playbackRate = value;
 
     return 0;
+  }
+
+  static function cb_getGameVersion(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushstring(l, Constants.VERSION);
+
+    return 1;
   }
 
   static function cb_getHealth(l:LuaState):Int
@@ -974,11 +1191,14 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Float = n >= 1 ? Lua.tonumber(l, 1) : 0;
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.health = value;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.health = value;
+    }
 
     return 0;
   }
@@ -987,11 +1207,14 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var amount:Float = n >= 1 ? Lua.tonumber(l, 1) : 0;
+    var amount:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.health += amount;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.health += amount;
+    }
 
     return 0;
   }
@@ -1021,11 +1244,14 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var amount:Float = n >= 1 ? Lua.tonumber(l, 1) : 0;
+    var amount:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0;
 
     Lua.pop(l, n);
 
-    if (PlayState.instance != null) PlayState.instance.songScore += amount;
+    if (PlayState.instance != null)
+    {
+      PlayState.instance.songScore += amount;
+    }
 
     return 0;
   }
@@ -1034,7 +1260,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Int = n >= 1 ? Std.int(Lua.tonumber(l, 1)) : 0;
+    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
 
     Lua.pop(l, n);
 
@@ -1076,7 +1302,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var judgement:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var judgement:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1086,19 +1312,14 @@ final class FunkinLua
     {
       case 'sick':
         tallies.sick;
-
       case 'good':
         tallies.good;
-
       case 'bad':
         tallies.bad;
-
       case 'shit':
         tallies.shit;
-
       case 'missed':
         tallies.missed;
-
       default:
         0;
     };
@@ -1175,8 +1396,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var path:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var volume:Float = n >= 2 ? Lua.tonumber(l, 2) : 1.0;
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var volume:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
 
@@ -1200,11 +1421,49 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Float = n >= 1 ? Lua.tonumber(l, 1) : 1.0;
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
 
     Lua.pop(l, n);
 
     if (FlxG.sound.music != null) FlxG.sound.music.pitch = value;
+
+    return 0;
+  }
+
+  static function cb_setMusicVolume(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    if (FlxG.sound.music != null)
+    {
+      FlxG.sound.music.volume = value;
+    }
+
+    return 0;
+  }
+
+  static function cb_getMusicTime(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.sound.music != null ? FlxG.sound.music.time : 0.0);
+
+    return 1;
+  }
+
+  static function cb_setMusicTime(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    if (FlxG.sound.music != null) FlxG.sound.music.time = value;
 
     return 0;
   }
@@ -1219,7 +1478,7 @@ final class FunkinLua
       return 0;
     }
 
-    var name:String = Lua.tostring(l, 1);
+    var name:String = (Lua.tostring(l, 1) : String);
     var value:Dynamic = lastCalledScript.pullValue(2);
 
     sharedVariables.set(name, value);
@@ -1233,11 +1492,14 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var name:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
-    if (lastCalledScript == null || !sharedVariables.exists(name)) return 0;
+    if (lastCalledScript == null || !sharedVariables.exists(name))
+    {
+      return 0;
+    }
 
     lastCalledScript.pushValue(sharedVariables.get(name));
 
@@ -1248,7 +1510,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var name:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1261,13 +1523,68 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var name:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var name:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
     sharedVariables.remove(name);
 
     return 0;
+  }
+
+  static function cb_jsonEncode(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 1 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      Lua.pushnil(l);
+      return 1;
+    }
+
+    var value:Dynamic = lastCalledScript.pullValue(1);
+
+    Lua.pop(l, n);
+
+    try
+    {
+      Lua.pushstring(l, Json.stringify(value));
+    }
+    catch (e:Dynamic)
+    {
+      Lua.pushnil(l);
+    }
+
+    return 1;
+  }
+
+  static function cb_jsonDecode(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var raw:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    if (raw == '' || lastCalledScript == null)
+    {
+      Lua.pushnil(l);
+      return 1;
+    }
+
+    try
+    {
+      var parsed:Dynamic = Json.parse(raw);
+
+      lastCalledScript.pushValue(parsed);
+    }
+    catch (e:Dynamic)
+    {
+      Lua.pushnil(l);
+    }
+
+    return 1;
   }
 
   static function cb_getMisses(l:LuaState):Int
@@ -1283,8 +1600,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var min:Float = n >= 1 ? Lua.tonumber(l, 1) : 0.0;
-    var max:Float = n >= 2 ? Lua.tonumber(l, 2) : 1.0;
+    var min:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var max:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
 
@@ -1297,8 +1614,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var min:Int = n >= 1 ? Std.int(Lua.tonumber(l, 1)) : 0;
-    var max:Int = n >= 2 ? Std.int(Lua.tonumber(l, 2)) : 1;
+    var min:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
+    var max:Int = n >= 2 ? Std.int((Lua.tonumber(l, 2) : Float)) : 1;
 
     Lua.pop(l, n);
 
@@ -1311,7 +1628,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var chance:Float = n >= 1 ? Lua.tonumber(l, 1) : 0.5;
+    var chance:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.5;
 
     Lua.pop(l, n);
 
@@ -1320,12 +1637,100 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_clamp(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var min:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+    var max:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, value < min ? min : (value > max ? max : value));
+
+    return 1;
+  }
+
+  static function cb_lerp(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var a:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var b:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
+    var t:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, a + (b - a) * t);
+
+    return 1;
+  }
+
+  static function cb_mapRange(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var inMin:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+    var inMax:Float = n >= 3 ? (Lua.tonumber(l, 3) : Float) : 1.0;
+    var outMin:Float = n >= 4 ? (Lua.tonumber(l, 4) : Float) : 0.0;
+    var outMax:Float = n >= 5 ? (Lua.tonumber(l, 5) : Float) : 1.0;
+
+    Lua.pop(l, n);
+
+    var ratio:Float = inMax != inMin ? (value - inMin) / (inMax - inMin) : 0.0;
+
+    Lua.pushnumber(l, outMin + ratio * (outMax - outMin));
+
+    return 1;
+  }
+
+  static function cb_roundNumber(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, Math.round(value));
+
+    return 1;
+  }
+
+  static function cb_floorNumber(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, Math.floor(value));
+
+    return 1;
+  }
+
+  static function cb_ceilNumber(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, Math.ceil(value));
+
+    return 1;
+  }
+
   static function cb_triggerCameraMovement(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var directionStr:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var intensity:Float = n >= 2 ? Lua.tonumber(l, 2) : 1.0;
+    var directionStr:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var intensity:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 1.0;
 
     Lua.pop(l, n);
 
@@ -1333,21 +1738,20 @@ final class FunkinLua
     {
       case 'left':
         LEFT;
-
       case 'down':
         DOWN;
-
       case 'up':
         UP;
-
       case 'right':
         RIGHT;
-
       default:
         null;
     };
 
-    if (direction == null || PlayState.instance == null) return 0;
+    if (direction == null || PlayState.instance == null)
+    {
+      return 0;
+    }
     @:privateAccess
     if (PlayState.instance.camMovement != null)
     {
@@ -1377,8 +1781,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var colorValue:Int = n >= 1 ? Std.int(Lua.tonumber(l, 1)) : 0xFFFFFF;
-    var duration:Float = n >= 2 ? Lua.tonumber(l, 2) : 0.5;
+    var colorValue:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0xFFFFFF;
+    var duration:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.5;
 
     Lua.pop(l, n);
 
@@ -1394,8 +1798,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var intensity:Float = n >= 1 ? Lua.tonumber(l, 1) : 0.05;
-    var duration:Float = n >= 2 ? Lua.tonumber(l, 2) : 0.5;
+    var intensity:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.05;
+    var duration:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.5;
 
     Lua.pop(l, n);
 
@@ -1452,11 +1856,28 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_setCameraPosition(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var x:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var y:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    if (PlayState.instance?.camGame != null)
+    {
+      PlayState.instance.camGame.scroll.set(x, y);
+    }
+
+    return 0;
+  }
+
   static function cb_setCameraZoom(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var value:Float = n >= 1 ? Lua.tonumber(l, 1) : 1.0;
+    var value:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
 
     Lua.pop(l, n);
 
@@ -1468,27 +1889,20 @@ final class FunkinLua
     return 0;
   }
 
-  static function cb_setMusicVolume(l:LuaState):Int
+  static function cb_getCameraZoom(l:LuaState):Int
   {
-    final n:Int = Lua.gettop(l);
+    Lua.pop(l, Lua.gettop(l));
 
-    var value:Float = n >= 1 ? Lua.tonumber(l, 1) : 1.0;
+    Lua.pushnumber(l, PlayState.instance?.camGame?.zoom ?? 1.0);
 
-    Lua.pop(l, n);
-
-    if (FlxG.sound.music != null)
-    {
-      FlxG.sound.music.volume = value;
-    }
-
-    return 0;
+    return 1;
   }
 
   static function cb_getDirectionName(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var dir:Int = n >= 1 ? Std.int(Lua.tonumber(l, 1)) : 0;
+    var dir:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 0;
 
     Lua.pop(l, n);
 
@@ -1501,8 +1915,9 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var delay:Float = n >= 1 ? Lua.tonumber(l, 1) : 0.0;
-    var funcName:String = n >= 2 ? Lua.tostring(l, 2) : '';
+    var delay:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 0.0;
+    var funcName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    var timerId:String = n >= 3 ? (Lua.tostring(l, 3) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1510,12 +1925,20 @@ final class FunkinLua
 
     var script:FunkinLua = lastCalledScript;
 
-    new flixel.util.FlxTimer().start(delay, (_) ->
+    if (timerId != '') script.cancelTimer(timerId);
+
+    var timer:FlxTimer = new FlxTimer();
+
+    timer.start(delay, (_) ->
     {
+      if (timerId != '') script.activeTimers.remove(timerId);
+
       if (script.closed) return;
 
       script.call(funcName, []);
     });
+
+    if (timerId != '') script.activeTimers.set(timerId, timer);
 
     return 0;
   }
@@ -1524,9 +1947,10 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var interval:Float = n >= 1 ? Lua.tonumber(l, 1) : 1.0;
-    var funcName:String = n >= 2 ? Lua.tostring(l, 2) : '';
-    var repeatCount:Int = n >= 3 ? Std.int(Lua.tonumber(l, 3)) : 0;
+    var interval:Float = n >= 1 ? (Lua.tonumber(l, 1) : Float) : 1.0;
+    var funcName:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    var repeatCount:Int = n >= 3 ? Std.int((Lua.tonumber(l, 3) : Float)) : 0;
+    var timerId:String = n >= 4 ? (Lua.tostring(l, 4) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1534,14 +1958,59 @@ final class FunkinLua
 
     var script:FunkinLua = lastCalledScript;
 
-    new flixel.util.FlxTimer().start(interval, (_) ->
+    if (timerId != '') script.cancelTimer(timerId);
+
+    var timer:FlxTimer = new FlxTimer();
+
+    timer.start(interval, (_) ->
     {
       if (script.closed) return;
 
       script.call(funcName, []);
     }, repeatCount);
 
+    if (timerId != '') script.activeTimers.set(timerId, timer);
+
     return 0;
+  }
+
+  static function cb_cancelTimer(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var timerId:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    if (timerId == '' || lastCalledScript == null) return 0;
+
+    lastCalledScript.cancelTimer(timerId);
+
+    return 0;
+  }
+
+  static function cb_hasActiveTimer(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var timerId:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushboolean(l, (lastCalledScript != null && lastCalledScript.activeTimers.exists(timerId)) ? 1 : 0);
+
+    return 1;
+  }
+
+  function cancelTimer(timerId:String):Void
+  {
+    var timer:Null<FlxTimer> = activeTimers.get(timerId);
+
+    if (timer == null) return;
+
+    timer.cancel();
+
+    activeTimers.remove(timerId);
   }
 
   static function cb_getQualityTier(l:LuaState):Int
@@ -1557,7 +2026,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var tierName:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var tierName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1565,19 +2034,14 @@ final class FunkinLua
     {
       case 'ultra':
         Ultra;
-
       case 'high':
         High;
-
       case 'medium':
         Medium;
-
       case 'low':
         Low;
-
       case 'potato':
         Potato;
-
       default:
         null;
     };
@@ -1600,7 +2064,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var costName:String = n >= 1 ? Lua.tostring(l, 1) : 'normal';
+    var costName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : 'normal';
 
     Lua.pop(l, n);
 
@@ -1608,10 +2072,8 @@ final class FunkinLua
     {
       case 'low':
         LOW;
-
       case 'high':
         HIGH;
-
       default:
         NORMAL;
     };
@@ -1675,6 +2137,41 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_setFPS(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 60;
+
+    Lua.pop(l, n);
+
+    FlxG.updateFramerate = value;
+
+    return 0;
+  }
+
+  static function cb_getDrawFPS(l:LuaState):Int
+  {
+    Lua.pop(l, Lua.gettop(l));
+
+    Lua.pushnumber(l, FlxG.drawFramerate);
+
+    return 1;
+  }
+
+  static function cb_setDrawFPS(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:Int = n >= 1 ? Std.int((Lua.tonumber(l, 1) : Float)) : 60;
+
+    Lua.pop(l, n);
+
+    FlxG.drawFramerate = value;
+
+    return 0;
+  }
+
   static function cb_isMobilePlatform(l:LuaState):Int
   {
     Lua.pop(l, Lua.gettop(l));
@@ -1701,7 +2198,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var path:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1729,8 +2226,8 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var path:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var content:String = n >= 2 ? Lua.tostring(l, 2) : '';
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var content:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1745,11 +2242,84 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_saveReadNumber(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var fallback:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    var content:Null<String> = path == '' ? null : FunkinCosmic.readText(path);
+    var parsed:Null<Float> = content == null ? null : Std.parseFloat(content);
+
+    Lua.pushnumber(l, (parsed != null && !Math.isNaN(parsed)) ? parsed : fallback);
+
+    return 1;
+  }
+
+  static function cb_saveWriteNumber(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var value:Float = n >= 2 ? (Lua.tonumber(l, 2) : Float) : 0.0;
+
+    Lua.pop(l, n);
+
+    if (path == '')
+    {
+      Lua.pushboolean(l, 0);
+      return 1;
+    }
+
+    Lua.pushboolean(l, FunkinCosmic.writeTextAtomic(path, Std.string(value)) ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_saveReadBool(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var fallback:Bool = n >= 2 ? Lua.toboolean(l, 2) == 1 : false;
+
+    Lua.pop(l, n);
+
+    var content:Null<String> = path == '' ? null : FunkinCosmic.readText(path);
+
+    Lua.pushboolean(l, (content == null ? fallback : content.trim().toLowerCase() == 'true') ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_saveWriteBool(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var path:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var value:Bool = n >= 2 ? Lua.toboolean(l, 2) == 1 : false;
+
+    Lua.pop(l, n);
+
+    if (path == '')
+    {
+      Lua.pushboolean(l, 0);
+      return 1;
+    }
+
+    Lua.pushboolean(l, FunkinCosmic.writeTextAtomic(path, value ? 'true' : 'false') ? 1 : 0);
+
+    return 1;
+  }
+
   static function cb_stringTrim(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var value:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1758,18 +2328,152 @@ final class FunkinLua
     return 1;
   }
 
+  static function cb_stringUpper(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushstring(l, value.toUpperCase());
+
+    return 1;
+  }
+
+  static function cb_stringLower(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushstring(l, value.toLowerCase());
+
+    return 1;
+  }
+
+  static function cb_stringContains(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var search:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushboolean(l, (search != '' && value.indexOf(search) != -1) ? 1 : 0);
+
+    return 1;
+  }
+
+  static function cb_stringReplace(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var from:String = n >= 2 ? (Lua.tostring(l, 2) : String) : '';
+    var to:String = n >= 3 ? (Lua.tostring(l, 3) : String) : '';
+
+    Lua.pop(l, n);
+
+    Lua.pushstring(l, from == '' ? value : StringTools.replace(value, from, to));
+
+    return 1;
+  }
+
+  static function cb_stringSplit(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var separator:String = n >= 2 ? (Lua.tostring(l, 2) : String) : ',';
+
+    Lua.pop(l, n);
+
+    if (lastCalledScript == null)
+    {
+      Lua.pushnil(l);
+      return 1;
+    }
+
+    var parts:Array<String> = separator == '' ? [value] : value.split(separator);
+
+    lastCalledScript.pushValue(parts);
+
+    return 1;
+  }
+
   static function cb_stringSplitCount(l:LuaState):Int
   {
     final n:Int = Lua.gettop(l);
 
-    var value:String = n >= 1 ? Lua.tostring(l, 1) : '';
-    var separator:String = n >= 2 ? Lua.tostring(l, 2) : ',';
+    var value:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
+    var separator:String = n >= 2 ? (Lua.tostring(l, 2) : String) : ',';
 
     Lua.pop(l, n);
 
-    var parts:Array<String> = value.split(separator);
+    var parts:Array<String> = separator == '' ? [value] : value.split(separator);
 
     Lua.pushnumber(l, parts.length);
+
+    return 1;
+  }
+
+  static function cb_tableLength(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 1 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      Lua.pushnumber(l, 0);
+      return 1;
+    }
+
+    var value:Dynamic = lastCalledScript.pullValue(1);
+
+    Lua.pop(l, n);
+
+    Lua.pushnumber(l, Std.isOfType(value, Array) ? (cast(value, Array<Dynamic>)).length : 0);
+
+    return 1;
+  }
+
+  static function cb_arrayContains(l:LuaState):Int
+  {
+    final n:Int = Lua.gettop(l);
+
+    if (n < 2 || lastCalledScript == null)
+    {
+      Lua.pop(l, n);
+      Lua.pushboolean(l, 0);
+      return 1;
+    }
+
+    var arrayValue:Dynamic = lastCalledScript.pullValue(1);
+    var searchValue:Dynamic = lastCalledScript.pullValue(2);
+
+    Lua.pop(l, n);
+
+    var found:Bool = false;
+
+    if (Std.isOfType(arrayValue, Array))
+    {
+      var arr:Array<Dynamic> = cast arrayValue;
+
+      for (item in arr)
+      {
+        if (Std.string(item) == Std.string(searchValue))
+        {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    Lua.pushboolean(l, found ? 1 : 0);
 
     return 1;
   }
@@ -1797,7 +2501,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var messageType:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var messageType:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 
@@ -1833,7 +2537,7 @@ final class FunkinLua
   {
     final n:Int = Lua.gettop(l);
 
-    var eventName:String = n >= 1 ? Lua.tostring(l, 1) : '';
+    var eventName:String = n >= 1 ? (Lua.tostring(l, 1) : String) : '';
 
     Lua.pop(l, n);
 

@@ -39,3 +39,12 @@ package-lock.json
 # Cppia stuff
 sdk/
 export_classes.info
+Windows64/lime-debug.ndll
+Windows64/lime-debug.ndll
+Windows64/lime-debug.ndll
+Windows64/lime-debug.ndll.hash
+Windows64/lime.ndll
+Windows64/lime.ndll
+Windows64/lime.ndll.hash
+vscode-project.hxml
+*.ndll
