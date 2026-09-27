@@ -6350,12 +6350,12 @@ class ChartEditorState extends UIState
     {
       inner += '*';
     }
-    WindowUtil.setWindowTitle('Friday Night Funkin\' Chart Editor - ${inner} ');
+    WindowUtil.setWindowTitle('Friday Night Funkin\': Moon Engine - Chart Editor - ${inner} ');
   }
 
   function resetWindowTitle():Void
   {
-    WindowUtil.setWindowTitle(' Friday Night Funkin\'');
+    WindowUtil.setWindowTitle(' Friday Night Funkin\': Moon Engine');
   }
 
   public static function noteDataToGridColumn(input:Int):Int

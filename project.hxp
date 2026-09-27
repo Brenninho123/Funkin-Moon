@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.8";
 
-  static final BUILD_NUMBER:Int = 247;
+  static final BUILD_NUMBER:Int = 252;
 
   static final MOON_VERSION:String = '0.1.0';
 
@@ -473,7 +473,7 @@ class Project extends HXProject
     FEATURE_PARTIAL_SOUNDS.apply(this, true);
     FEATURE_MULTITHREADING.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
-    FEATURE_LUA_SCRIPTS.apply(this, false);
+    FEATURE_LUA_SCRIPTS.apply(this, true);
 
 
     FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this) && !isIOS());
