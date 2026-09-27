@@ -1,12 +1,21 @@
 #include "Content.hpp"
 
 #include <algorithm>
-#include <filesystem>
 #include <string>
-#include <system_error>
 #include <vector>
 
-namespace fs = std::filesystem;
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 namespace
 {
@@ -16,66 +25,166 @@ enum class EntryKind
   JsonFile
 };
 
-std::string toUtf8(const fs::path &path)
+struct DirectoryEntry
 {
-  auto text = path.u8string();
+  std::string name;
+  bool isDirectory = false;
+};
 
-  return std::string(text.begin(), text.end());
-}
-
-fs::path buildPath(const char *assetsRoot, const char *relativePath)
+bool hasParentReference(const std::string &relativePath)
 {
-  fs::path root = assetsRoot != nullptr ? fs::u8path(assetsRoot) : fs::path();
+  std::size_t start = 0;
 
-  if (relativePath != nullptr && relativePath[0] != '\0')
+  while (start <= relativePath.size())
   {
-    root /= fs::u8path(relativePath);
-  }
+    std::size_t end = relativePath.find_first_of("/\\", start);
 
-  return root.lexically_normal();
-}
+    if (end == std::string::npos) end = relativePath.size();
 
-bool escapesRoot(const char *relativePath)
-{
-  if (relativePath == nullptr) return false;
+    if (relativePath.compare(start, end - start, "..") == 0) return true;
 
-  for (const fs::path &part : fs::u8path(relativePath))
-  {
-    if (part == "..") return true;
+    start = end + 1;
   }
 
   return false;
 }
 
-std::string scanEntries(const fs::path &root, EntryKind kind)
+std::string joinPath(const char *assetsRoot, const char *relativePath)
 {
-  std::error_code ec;
+  std::string root = assetsRoot != nullptr ? assetsRoot : "";
+  std::string relative = relativePath != nullptr ? relativePath : "";
 
-  if (!fs::is_directory(root, ec) || ec) return "";
+  if (relative.empty()) return root;
 
-  fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+  if (root.empty()) return relative;
 
-  if (ec) return "";
+  char last = root.back();
 
+  if (last != '/' && last != '\\') root += '/';
+
+  return root + relative;
+}
+
+#if defined(_WIN32)
+std::wstring toWide(const std::string &text)
+{
+  if (text.empty()) return std::wstring();
+
+  int length = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
+
+  if (length <= 0) return std::wstring();
+
+  std::wstring result(static_cast<std::size_t>(length), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), &result[0], length);
+
+  return result;
+}
+
+std::string toUtf8(const wchar_t *text)
+{
+  int length = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+
+  if (length <= 1) return std::string();
+
+  std::string result(static_cast<std::size_t>(length), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text, -1, &result[0], length, nullptr, nullptr);
+  result.resize(static_cast<std::size_t>(length - 1));
+
+  return result;
+}
+
+std::vector<DirectoryEntry> listDirectory(const std::string &path)
+{
+  std::vector<DirectoryEntry> entries;
+
+  std::wstring pattern = toWide(path);
+
+  if (pattern.empty()) return entries;
+
+  if (pattern.back() != L'/' && pattern.back() != L'\\') pattern += L'\\';
+
+  pattern += L'*';
+
+  WIN32_FIND_DATAW data;
+  HANDLE handle = FindFirstFileW(pattern.c_str(), &data);
+
+  if (handle == INVALID_HANDLE_VALUE) return entries;
+
+  do
+  {
+    std::string name = toUtf8(data.cFileName);
+
+    if (name.empty() || name == "." || name == "..") continue;
+
+    DirectoryEntry entry;
+    entry.name = name;
+    entry.isDirectory = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    entries.push_back(entry);
+  } while (FindNextFileW(handle, &data) != 0);
+
+  FindClose(handle);
+
+  return entries;
+}
+#else
+std::vector<DirectoryEntry> listDirectory(const std::string &path)
+{
+  std::vector<DirectoryEntry> entries;
+
+  DIR *directory = opendir(path.c_str());
+
+  if (directory == nullptr) return entries;
+
+  while (dirent *item = readdir(directory))
+  {
+    std::string name = item->d_name;
+
+    if (name == "." || name == "..") continue;
+
+    struct stat info;
+    std::string fullPath = path;
+
+    if (fullPath.empty() || fullPath.back() != '/') fullPath += '/';
+
+    fullPath += name;
+
+    if (stat(fullPath.c_str(), &info) != 0) continue;
+
+    DirectoryEntry entry;
+    entry.name = name;
+    entry.isDirectory = S_ISDIR(info.st_mode);
+
+    if (!entry.isDirectory && !S_ISREG(info.st_mode)) continue;
+
+    entries.push_back(entry);
+  }
+
+  closedir(directory);
+
+  return entries;
+}
+#endif
+
+bool endsWithJson(const std::string &name)
+{
+  static const std::string extension = ".json";
+
+  return name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0;
+}
+
+std::string scanEntries(const std::string &path, EntryKind kind)
+{
   std::vector<std::string> names;
 
-  for (const fs::directory_iterator end; it != end; it.increment(ec))
+  for (const DirectoryEntry &entry : listDirectory(path))
   {
-    if (ec) break;
-
-    std::error_code entryEc;
-    const fs::directory_entry &entry = *it;
-
     if (kind == EntryKind::Directory)
     {
-      if (entry.is_directory(entryEc) && !entryEc)
-      {
-        names.push_back(toUtf8(entry.path().filename()));
-      }
+      if (entry.isDirectory) names.push_back(entry.name);
     }
-    else if (entry.is_regular_file(entryEc) && !entryEc && entry.path().extension() == ".json")
+    else if (!entry.isDirectory && endsWithJson(entry.name))
     {
-      names.push_back(toUtf8(entry.path().stem()));
+      names.push_back(entry.name.substr(0, entry.name.size() - 5));
     }
   }
 
@@ -97,7 +206,9 @@ const char *scanInto(std::string &buffer, const char *assetsRoot, const char *re
 {
   try
   {
-    buffer = escapesRoot(relativePath) ? std::string() : scanEntries(buildPath(assetsRoot, relativePath), kind);
+    bool blocked = relativePath != nullptr && hasParentReference(relativePath);
+
+    buffer = blocked ? std::string() : scanEntries(joinPath(assetsRoot, relativePath), kind);
   }
   catch (...)
   {

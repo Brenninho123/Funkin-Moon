@@ -50,6 +50,8 @@ import funkin.play.notes.notekind.NoteKind;
 import funkin.play.notes.NoteSprite;
 import funkin.play.notes.notestyle.NoteStyle;
 import funkin.play.notes.Strumline;
+import funkin.play.modcharts.ModchartData.ModchartFile;
+import funkin.play.modcharts.ModchartManager;
 import funkin.play.notes.SustainTrail;
 import funkin.play.notes.NoteVibrationsHandler;
 import funkin.play.scoring.Scoring;
@@ -220,6 +222,7 @@ class PlayState extends MusicBeatSubState
   public var iconP1:Null<HealthIcon>;
   public var iconP2:Null<HealthIcon>;
   public var playerStrumline:Strumline;
+  public var modchart:Null<ModchartManager> = null;
   public var opponentStrumline:Strumline;
   public var camHUD:FunkinCamera;
   public var camGame:FunkinCamera;
@@ -709,6 +712,8 @@ class PlayState extends MusicBeatSubState
   {
     if (criticalFailure) return;
 
+    modchart?.undo();
+
     super.update(elapsed);
 
     FunkinLow.update(elapsed);
@@ -717,6 +722,8 @@ class PlayState extends MusicBeatSubState
 
     callLuaEvent('onUpdate', [elapsed]);
     callMoonEvent('onUpdate', [elapsed]);
+
+    modchart?.apply(Conductor.instance.songPosition);
 
     updateHealthBar();
     updateScoreText();
@@ -734,6 +741,8 @@ class PlayState extends MusicBeatSubState
       currentStage?.resetStage();
 
       dispatchEvent(retryEvent);
+
+      funkin.modding.api.MoonModchart.clearLive();
 
       resetCamera();
 
@@ -1847,6 +1856,32 @@ class PlayState extends MusicBeatSubState
 
     playerStrumline.fadeInArrows();
     if (!Preferences.middlescroll) opponentStrumline.fadeInArrows();
+
+    initModchart();
+  }
+
+  function initModchart():Void
+  {
+    modchart?.destroy();
+    modchart = new ModchartManager(playerStrumline, opponentStrumline);
+
+    var songId:String = currentSong?.id ?? '';
+
+    if (songId == '') return;
+
+    var path:String = 'songs:assets/songs/${songId.toLowerCase()}/modchart.json';
+
+    if (!Assets.exists(path, TEXT)) return;
+
+    var data = ModchartFile.parse(Assets.getText(path));
+
+    if (data == null)
+    {
+      FlxG.log.warn('[PlayState] Modchart for "$songId" could not be parsed and was ignored.');
+      return;
+    }
+
+    modchart.timeline.load(data);
   }
 
   #if mobile
@@ -3332,6 +3367,14 @@ class PlayState extends MusicBeatSubState
     #if FEATURE_ONLINE
     funkin.online.FunkinUser.instance.setActivity('In Menu');
     #end
+
+    if (modchart != null)
+    {
+      modchart.destroy();
+      modchart = null;
+    }
+
+    funkin.modding.api.MoonModchart.clearLive();
 
     if (camMovement != null)
     {

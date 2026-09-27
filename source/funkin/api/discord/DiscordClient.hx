@@ -199,7 +199,7 @@ class DiscordClient
 
   public function respondToJoinRequest(userId:String, accept:Bool):Void
   {
-    Discord.Respond(userId, accept ? DiscordReply_Yes : DiscordReply_No);
+    Discord.Respond(userId, accept ? DiscordActivityJoinRequestReply_Yes : DiscordActivityJoinRequestReply_No);
   }
 
   function buildSignature(params:DiscordClientPresenceParams):String

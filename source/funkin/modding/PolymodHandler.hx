@@ -339,7 +339,8 @@ class PolymodHandler
       funkin.modding.api.MoonTimers,
       funkin.modding.api.MoonAudio,
       funkin.modding.api.MoonTween,
-      funkin.modding.api.MoonUI
+      funkin.modding.api.MoonUI,
+      funkin.modding.api.MoonModchart
     ];
 
     for (cls in DEFAULT_IMPORTS)

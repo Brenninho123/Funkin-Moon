@@ -199,8 +199,6 @@ class Main extends Sprite
       return extension.androidtools.os.DeviceInfo.getTotalMemory() / (1024 * 1024);
       #elseif FEATURE_NATIVE_CPP
       return MainNative.getTotalSystemMemoryBytes() / (1024 * 1024);
-      #elseif ios
-      return System.totalMemory / (1024 * 1024);
       #end
     }
     catch (e:Dynamic) {}

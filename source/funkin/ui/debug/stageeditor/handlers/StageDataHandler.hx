@@ -140,7 +140,7 @@ class StageDataHandler
 
     for (stuff in entries)
     {
-      var ext:String = stuff.fileName.split(".")[1];
+      var ext:String = Path.extension(stuff.fileName).toLowerCase();
 
       // A json file can either be a texture atlas file or the stage data.
       // Texture atlas files are found in a folder with other atlas assets, so the stage data doesn't have a slash in the name
@@ -156,7 +156,7 @@ class StageDataHandler
 
     if (stageData == null)
     {
-      // TODO: throw an error, then load a dummy data
+      FlxG.log.warn("[StageEditor] The loaded file does not contain valid stage data, loading an empty stage instead.");
       loadDummyData(state);
       return;
     }

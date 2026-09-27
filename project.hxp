@@ -436,7 +436,10 @@ class Project extends HXProject
     if (isIOS())
     {
       config.set("ios.non-exempt-encryption", "false");
-      config.set("ios.team-id", envValue("TEAM_ID") ?? IOS_TEAM_ID);
+      var teamId:String = envValue("TEAM_ID") ?? IOS_TEAM_ID;
+
+      if (teamId != "") config.set("ios.team-id", teamId);
+
       config.set("ios.deployment", "16.0");
     }
   }

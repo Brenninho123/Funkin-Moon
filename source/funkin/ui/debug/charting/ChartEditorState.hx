@@ -1288,6 +1288,11 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
    */
   var touchHoldStartTime:Null<Float> = null;
 
+  var touchHoldStartX:Float = 0.0;
+  var touchHoldStartY:Float = 0.0;
+
+  final TOUCH_HOLD_MOVE_TOLERANCE:Float = 12.0;
+
   /**
    * True for the frame(s) after a touch/click has been held long enough to count as a right-click equivalent.
    */
@@ -3121,9 +3126,20 @@ class ChartEditorState extends UIState // UIState derives from MusicBeatState
     if (FlxG.mouse.justPressed)
     {
       touchHoldStartTime = FlxG.game.ticks / 1000.0;
+      touchHoldStartX = FlxG.mouse.viewX;
+      touchHoldStartY = FlxG.mouse.viewY;
     }
     else if (FlxG.mouse.pressed && touchHoldStartTime != null)
     {
+      var movedX:Float = FlxG.mouse.viewX - touchHoldStartX;
+      var movedY:Float = FlxG.mouse.viewY - touchHoldStartY;
+
+      if ((movedX * movedX) + (movedY * movedY) > TOUCH_HOLD_MOVE_TOLERANCE * TOUCH_HOLD_MOVE_TOLERANCE)
+      {
+        touchHoldStartTime = null;
+        return;
+      }
+
       var heldFor:Float = (FlxG.game.ticks / 1000.0) - touchHoldStartTime;
       if (heldFor >= TOUCH_HOLD_DURATION)
       {

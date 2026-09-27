@@ -222,6 +222,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #if FEATURE_STAGE_EDITOR
     createItem("STAGE EDITOR", openStageEditor);
     #end
+    createItem("MODCHART EDITOR", openModchartEditor);
     #if FEATURE_MUSIC_EDITOR
     createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
     #end
@@ -399,6 +400,11 @@ class DebugMenuSubState extends MusicBeatSubState
   {
     openSubState(new funkin.ui.transition.stickers.StickerSubState({
     }));
+  }
+
+  function openModchartEditor():Void
+  {
+    switchToState(() -> new funkin.ui.debug.modchart.ModchartEditorState());
   }
 
   #if FEATURE_STAGE_EDITOR

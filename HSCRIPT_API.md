@@ -107,3 +107,48 @@ MoonTween.to(sprite, {x: 400, alpha: 0.5}, 0.6, 'quadOut', function() MoonUI.toa
 Text objects belong to the current state and are dropped when it changes. `camera` is `"hud"` (default) or `"game"`.
 
 `createText(id, content, x, y, size, camera)`, `hasText(id)`, `setText(id, content)`, `setTextColor(id, color)`, `setTextPosition(id, x, y)`, `setTextAlpha(id, alpha)`, `setTextVisible(id, visible)`, `removeText(id)`, `removeAll()`, and `toast(message, seconds, color)` for a short on-screen notification.
+
+## MoonModchart
+
+Moves the strumlines, notes and sustains during a song. Values are offsets or multipliers applied on top of the normal layout, so they never permanently change the chart.
+
+`target` is `"player"`, `"opponent"` or `"both"`. `lane` is `0`–`3` (left, down, up, right) or `-1` for every lane.
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `x`, `y` | `0` | Offset in pixels |
+| `angle` | `0` | Rotation in degrees (strums and notes) |
+| `alpha` | `1` | Opacity multiplier |
+| `scale` | `1` | Size multiplier (strums and notes) |
+| `speed` | `1` | Scroll speed multiplier (whole strumline) |
+| `drunk` | `0` | Horizontal sine wave amplitude in pixels, travelling along the note path |
+| `tipsy` | `0` | Vertical sine wave amplitude in pixels |
+
+| Function | Description |
+| --- | --- |
+| `set(target, lane, property, value)` | Changes the value at the current song position |
+| `tween(target, lane, property, value, durationMs, ease)` | Eases to `value` over `durationMs` |
+| `get(target, lane, property)` | Current value |
+| `load(path)` | Replaces the modchart with a JSON file |
+| `clearLive()` | Removes every change made by `set` and `tween` |
+| `setEnabled(enabled)` / `isActive()` / `properties()` | Control and introspection |
+
+```haxe
+MoonModchart.tween('both', -1, 'tipsy', 24, 2000, 'sineInOut');
+MoonModchart.set('player', 2, 'alpha', 0.3);
+```
+
+### Modchart files
+
+`songs/<songId>/modchart.json` is loaded automatically when the song starts. The Modchart Editor (Debug menu → Editors) reads and writes the same file.
+
+```json
+{
+  "version": "1.0.0",
+  "events": [
+    {"time": 4000, "target": "both", "lane": -1, "property": "tipsy", "value": 24, "duration": 2000, "ease": "sineInOut"}
+  ]
+}
+```
+
+`time` and `duration` are in milliseconds. `ease` is any `FlxEase` function name.
