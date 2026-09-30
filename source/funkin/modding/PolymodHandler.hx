@@ -226,7 +226,11 @@ class PolymodHandler
       funkin.Paths,
       funkin.Preferences,
       funkin.util.Constants,
-      flixel.FlxG
+      funkin.modding.ScriptBridge,
+      flixel.FlxG,
+      flixel.tweens.FlxTween,
+      flixel.tweens.FlxEase,
+      flixel.util.FlxTimer
     ];
 
     for (cls in DEFAULT_IMPORTS)

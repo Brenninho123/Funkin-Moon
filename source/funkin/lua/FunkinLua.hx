@@ -88,6 +88,7 @@ class FunkinLua
 
     LuaL.openlibs(lua);
     LuaL.dostring(lua, SANDBOX);
+    configureRequirePath();
 
     setupDispatcher();
 
@@ -116,6 +117,15 @@ class FunkinLua
     Lua.settop(lua, 0);
   }
 
+  function configureRequirePath():Void
+  {
+    var directory:String = haxe.io.Path.directory(scriptName);
+
+    if (directory == '' || directory.indexOf(']]') != -1) return;
+
+    LuaL.dostring(lua, 'package.path = [[' + directory + '/?.lua;]] .. package.path');
+  }
+
   function runChunk(source:Null<String>):Int
   {
     if (source == null) return LuaL.dofile(lua, scriptName);
@@ -123,6 +133,43 @@ class FunkinLua
     var status:Int = LuaL.loadbuffer(lua, source, '=' + scriptName);
 
     return status != 0 ? status : Lua.pcall(lua, 0, 0, 0);
+  }
+
+  public static function callScriptByName(name:String, functionName:String, args:Array<Dynamic>):Dynamic
+  {
+    var target:Null<FunkinLua> = findScript(name);
+
+    return target == null ? null : target.call(functionName, args);
+  }
+
+  public static function hasScriptNamed(name:String):Bool
+  {
+    return findScript(name) != null;
+  }
+
+  public static function getLoadedScriptNames():Array<String>
+  {
+    return [for (script in instances) if (!script.closed) script.scriptName];
+  }
+
+  public static function setSharedValue(name:String, value:Dynamic):Void
+  {
+    if (name != '') sharedVariables.set(name, value);
+  }
+
+  public static function getSharedValue(name:String):Dynamic
+  {
+    return sharedVariables.get(name);
+  }
+
+  public static function hasSharedValue(name:String):Bool
+  {
+    return sharedVariables.exists(name);
+  }
+
+  public static function removeSharedValue(name:String):Void
+  {
+    sharedVariables.remove(name);
   }
 
   public static function getApiNames():Array<String>
@@ -714,6 +761,7 @@ class FunkinLua
     registerProperties();
     registerScripts();
     registerAdvancedUtility();
+    registerExtras();
     registerDebugDisplay();
     registerCodex();
     registerOnline();
@@ -1679,6 +1727,137 @@ class FunkinLua
       return [];
       #end
     });
+  }
+
+  static function registerExtras():Void
+  {
+    query('getScriptName', (s, a) -> s.scriptName);
+    query('getScriptDirectory', (s, a) -> haxe.io.Path.directory(s.scriptName));
+
+    command('playMusic', (s, a) ->
+    {
+      var key:String = argStr(a, 0);
+
+      if (key != '') FunkinSound.playMusic(key, {overrideExisting: true, loop: argBool(a, 2, true), startingVolume: Math.max(0.0, Math.min(1.0, argNum(a, 1, 1.0)))});
+    });
+    command('stopMusic', (s, a) ->
+    {
+      if (FlxG.sound.music != null) FlxG.sound.music.stop();
+    });
+    command('pauseMusic', (s, a) ->
+    {
+      if (FlxG.sound.music != null) FlxG.sound.music.pause();
+    });
+    command('resumeMusic', (s, a) ->
+    {
+      if (FlxG.sound.music != null) FlxG.sound.music.resume();
+    });
+    query('getMusicLength', (s, a) -> FlxG.sound.music != null ? FlxG.sound.music.length : 0.0);
+    query('isMusicPlaying', (s, a) -> FlxG.sound.music != null && FlxG.sound.music.playing);
+
+    command('setLuaTextBorder', (s, a) -> withText(s, a, text -> text.setBorderStyle(FlxTextBorderStyle.OUTLINE, argColor(a, 1, FlxColor.BLACK), argNum(a, 2, 2.0))));
+    command('setSpriteScrollFactor', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite != null) sprite.scrollFactor.set(argNum(a, 1, 1.0), argNum(a, 2, argNum(a, 1, 1.0)));
+    });
+
+    command('cancelAllTimers', (s, a) -> s.destroyTimers());
+    command('cancelAllTweens', (s, a) -> s.destroyTweens());
+
+    query('randomChoice', (s, a) ->
+    {
+      var items:Dynamic = a.length > 0 ? a[0] : null;
+
+      if (!Std.isOfType(items, Array) || (cast items : Array<Dynamic>).length == 0) return null;
+
+      var list:Array<Dynamic> = cast items;
+
+      return list[FlxG.random.int(0, list.length - 1)];
+    });
+    query('shuffleTable', (s, a) ->
+    {
+      var items:Dynamic = a.length > 0 ? a[0] : null;
+
+      if (!Std.isOfType(items, Array)) return [];
+
+      var list:Array<Dynamic> = (cast items : Array<Dynamic>).copy();
+
+      var i:Int = list.length;
+
+      while (i > 1)
+      {
+        i--;
+
+        var j:Int = FlxG.random.int(0, i);
+        var swap:Dynamic = list[i];
+
+        list[i] = list[j];
+        list[j] = swap;
+      }
+
+      return list;
+    });
+
+    query('sign', (s, a) -> argNum(a, 0) > 0 ? 1 : (argNum(a, 0) < 0 ? -1 : 0));
+    query('wrap', (s, a) ->
+    {
+      var min:Float = argNum(a, 1);
+      var max:Float = argNum(a, 2, 1.0);
+      var range:Float = max - min;
+
+      if (range <= 0) return min;
+
+      var value:Float = (argNum(a, 0) - min) % range;
+
+      return (value < 0 ? value + range : value) + min;
+    });
+    query('approach', (s, a) ->
+    {
+      var current:Float = argNum(a, 0);
+      var target:Float = argNum(a, 1);
+      var step:Float = Math.abs(argNum(a, 2));
+
+      return current < target ? Math.min(current + step, target) : Math.max(current - step, target);
+    });
+    query('distance', (s, a) ->
+    {
+      var dx:Float = argNum(a, 2) - argNum(a, 0);
+      var dy:Float = argNum(a, 3) - argNum(a, 1);
+
+      return Math.sqrt(dx * dx + dy * dy);
+    });
+    query('smoothStep', (s, a) ->
+    {
+      var edge0:Float = argNum(a, 0);
+      var edge1:Float = argNum(a, 1, 1.0);
+      var t:Float = edge1 == edge0 ? 0.0 : Math.max(0.0, Math.min(1.0, (argNum(a, 2) - edge0) / (edge1 - edge0)));
+
+      return t * t * (3.0 - 2.0 * t);
+    });
+
+    query('callModule', (s, a) -> funkin.modding.ScriptBridge.callModule(argStr(a, 0), argStr(a, 1), a.slice(2)));
+
+    #if FEATURE_ONLINE
+    query('isDiscordLoggedIn', (s, a) -> funkin.online.DiscordAuth.instance.isLoggedIn());
+    query('getDiscordUser', (s, a) ->
+    {
+      var auth = funkin.online.DiscordAuth.instance;
+
+      return auth.isLoggedIn() ? {id: auth.profile.id, username: auth.profile.username, avatarUrl: auth.profile.avatarUrl} : null;
+    });
+    query('getOnlineUsers', (s, a) -> [
+      for (user in funkin.online.FunkinUser.instance.getActiveUsers())
+        {
+          id: user.id,
+          username: user.username,
+          platform: user.platform,
+          activity: user.activity,
+          authenticated: user.authenticated == true
+        }
+    ]);
+    #end
   }
 
   static function registerDebugDisplay():Void

@@ -278,6 +278,14 @@ Scripts can read and write plain text files through the engine's atomic file sys
 | `getOnlineUserCount` | `getOnlineUserCount()` | Number of currently active online users |
 | `sendOnlineMessage` | `sendOnlineMessage(messageType, data)` | Sends a message of the given type, with optional data, through the online service |
 
+Also available with `FEATURE_ONLINE`:
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `isDiscordLoggedIn` | `isDiscordLoggedIn()` | Whether the player is logged in with Discord |
+| `getDiscordUser` | `getDiscordUser()` | Table with `id`, `username` and `avatarUrl`, or `nil` |
+| `getOnlineUsers` | `getOnlineUsers()` | Table of players with `id`, `username`, `platform`, `activity` and `authenticated` |
+
 ## Multiplayer (requires `FEATURE_MULTIPLAYER`)
 
 | Function | Signature | Description |
@@ -371,6 +379,41 @@ end
 | `saveList` | `saveList(directory)` | Lists a directory inside the script data folder |
 
 `print` is now an alias of `debugPrint`, so it shows up in the log and in the script editor console.
+
+## Script tools
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `getScriptName` | `getScriptName()` | Path of the running script |
+| `getScriptDirectory` | `getScriptDirectory()` | Folder of the running script |
+| `callModule` | `callModule(moduleId, functionName, ...)` | Calls a function on a loaded HScript module and returns the result, or `nil` |
+| `cancelAllTimers` | `cancelAllTimers()` | Cancels every timer your script started |
+| `cancelAllTweens` | `cancelAllTweens()` | Cancels every tween your script started |
+
+`require` works for other `.lua` files that sit in the same folder as your script, so a script can be split into several files.
+
+## Music
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `playMusic` | `playMusic(id, volume, loop)` | Plays a music track by its music id, replacing the current one. `loop` defaults to `true` |
+| `stopMusic` / `pauseMusic` / `resumeMusic` | `stopMusic()` | Controls the current music track |
+| `getMusicLength` | `getMusicLength()` | Length of the current track in milliseconds |
+| `isMusicPlaying` | `isMusicPlaying()` | Whether the current track is playing |
+
+## More math and helpers
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `sign` | `sign(value)` | -1, 0 or 1 |
+| `wrap` | `wrap(value, min, max)` | Wraps `value` into `[min, max)` |
+| `approach` | `approach(current, target, step)` | Moves `current` toward `target` by at most `step` |
+| `distance` | `distance(x1, y1, x2, y2)` | Distance between two points |
+| `smoothStep` | `smoothStep(edge0, edge1, value)` | Smooth 0–1 interpolation |
+| `randomChoice` | `randomChoice(table)` | A random item of an array table |
+| `shuffleTable` | `shuffleTable(table)` | A shuffled copy of an array table |
+| `setLuaTextBorder` | `setLuaTextBorder(id, color, size)` | Adds an outline to a text |
+| `setSpriteScrollFactor` | `setSpriteScrollFactor(id, x, y)` | Sets how much a sprite follows the camera |
 
 ## Debug display
 
