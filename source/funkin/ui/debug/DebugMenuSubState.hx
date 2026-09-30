@@ -79,6 +79,9 @@ class DebugMenuSubState extends MusicBeatSubState
     #if FEATURE_MUSIC_EDITOR
     createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
     #end
+    #if (FEATURE_LUA_SCRIPTS && !mobile)
+    createItem("LUA SCRIPT EDITOR", openLuaScriptEditor);
+    #end
     #if FEATURE_RESULTS_DEBUG
     createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
     #end
@@ -270,6 +273,13 @@ class DebugMenuSubState extends MusicBeatSubState
   function openMusicEditor():Void
   {
     switchToState(() -> new MusicEditorState('tutorial'));
+  }
+  #end
+
+  #if (FEATURE_LUA_SCRIPTS && !mobile)
+  function openLuaScriptEditor():Void
+  {
+    FlxG.switchState(() -> new funkin.ui.debug.scripteditor.LuaScriptEditorState());
   }
   #end
 

@@ -418,6 +418,21 @@ Song script callbacks: `onCreate()`, `onCreatePost()`, `onUpdate(elapsed)`, `onU
 
 Global module scripts receive the engine's script events with the same names and additional menu events such as `onCapsuleSelected(difficulty, variation)`, `onCharacterSelect(characterId)` and `onCodexPageSwitch(page, previousPage)`.
 
+## Script editor
+
+The debug menu has a **LUA SCRIPT EDITOR** entry (desktop builds). It lists every `.lua` file under `assets/songs` and the mods folder, and edits them in place.
+
+| Key | Action |
+| --- | --- |
+| Ctrl+S | Save to the path in the top field (must end in `.lua`; the path can be edited to save a copy) |
+| F5 / F6 | Run / stop the current buffer |
+| F7 | Check syntax and jump to the error line |
+| Ctrl+Z / Ctrl+Y | Undo / redo |
+| Tab | Insert two spaces |
+| Esc | Leave (press twice to discard unsaved changes) |
+
+Running a buffer creates a temporary script, calls `onCreate()` once and `onUpdate(elapsed)` every frame. Song callbacks are not available there, and error dialogs are replaced by console messages. Scripts that are already loaded by the game keep running the previous version until they are reloaded.
+
 ## Notes for mod authors
 
 - Every getter that depends on an active song (health, score, combo, camera, etc.) returns a safe default (`0`, `""`, `false`) if called outside of `PlayState` — scripts don't need to guard every call with a null check.

@@ -27,7 +27,10 @@ class VolumePlugin extends FlxBasic
 
     var isHaxeUIFocused:Bool = #if FEATURE_HAXEUI haxe.ui.focus.FocusManager.instance?.focus != null #else false #end;
 
-    if (!isHaxeUIFocused)
+    var focused:Null<openfl.display.InteractiveObject> = FlxG.stage?.focus;
+    var isTextInputFocused:Bool = focused != null && Std.isOfType(focused, openfl.text.TextField) && cast(focused, openfl.text.TextField).type == openfl.text.TextFieldType.INPUT;
+
+    if (!isHaxeUIFocused && !isTextInputFocused)
     {
       // Rebindable volume keys.
       if (PlayerSettings.player1.controls.VOLUME_MUTE) FlxG.sound.toggleMuted();
