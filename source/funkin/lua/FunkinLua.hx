@@ -1417,8 +1417,8 @@ class FunkinLua
     query('keyPressed', (s, a) -> keyState(a, FlxG.keys.anyPressed));
     query('keyJustReleased', (s, a) -> keyState(a, FlxG.keys.anyJustReleased));
 
-    query('mouseX', (s, a) -> FlxG.mouse.screenX);
-    query('mouseY', (s, a) -> FlxG.mouse.screenY);
+    query('mouseX', (s, a) -> FlxG.mouse.viewX);
+    query('mouseY', (s, a) -> FlxG.mouse.viewY);
     query('mousePressed', (s, a) -> FlxG.mouse.pressed);
     query('mouseJustPressed', (s, a) -> FlxG.mouse.justPressed);
   }
