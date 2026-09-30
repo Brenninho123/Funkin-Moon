@@ -40,8 +40,10 @@ import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 import funkin.ui.quickpanel.QuickPanelState;
 import flixel.text.FlxText;
 #if FEATURE_ONLINE
+import funkin.online.DiscordAuth;
 import funkin.online.FunkinOnline;
 import funkin.online.FunkinUser;
+import funkin.online.OnlineConfig;
 #end
 #if FEATURE_DISCORD_RPC
 import funkin.api.discord.DiscordClient;
@@ -87,8 +89,6 @@ class MainMenuState extends MusicBeatState
   var onlineBarBg:Null<FlxSprite> = null;
   var onlineStatusText:Null<FlxText> = null;
 
-  static final ONLINE_SERVER_HOST:String = "your-server-address.example.com";
-  static final ONLINE_SERVER_PORT:Int = 7777;
   #end
 
   public function new(_overrideMusic:Bool = false)
@@ -209,10 +209,17 @@ class MainMenuState extends MusicBeatState
     });
 
     #if FEATURE_ONLINE
-    createMenuItem('online', 'ui/main-menu/items/online', function()
+    if (Assets.exists('assets/ui/main-menu/items/online.png'))
     {
-      startExitState(() -> new funkin.ui.online.OnlineMenuState());
-    });
+      createMenuItem('online', 'ui/main-menu/items/online', function()
+      {
+        startExitState(() -> new funkin.ui.online.OnlineMenuState());
+      });
+    }
+    else
+    {
+      FlxG.log.warn('[MainMenuState] Missing ui/main-menu/items/online atlas, online menu entry hidden.');
+    }
     #end
 
     #if !debug
@@ -378,7 +385,7 @@ class MainMenuState extends MusicBeatState
 
     if (FunkinOnline.instance.state == Disconnected)
     {
-      FunkinOnline.instance.connect(ONLINE_SERVER_HOST, ONLINE_SERVER_PORT);
+      FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
     }
   }
 
@@ -389,7 +396,7 @@ class MainMenuState extends MusicBeatState
 
   function generateGuestName():String
   {
-    return 'Guest${FlxG.random.int(1000, 9999)}';
+    return DiscordAuth.instance.getCachedUsername() ?? 'Guest${FlxG.random.int(1000, 9999)}';
   }
 
   function updateOnlineStatusBar():Void

@@ -11,6 +11,8 @@ typedef FunkinUserInfo =
   var platform:String;
   var activity:String;
   var lastSeen:Float;
+  var ?authenticated:Bool;
+  var ?avatarUrl:String;
 }
 
 class FunkinUser
@@ -49,6 +51,9 @@ class FunkinUser
       activity: currentActivity,
       lastSeen: Date.now().getTime()
     };
+
+    DiscordAuth.instance.init();
+    DiscordAuth.instance.onChanged.add(onAuthChanged);
 
     FunkinOnline.instance.registerHandler('userJoined', onUserJoinedMessage);
     FunkinOnline.instance.registerHandler('userLeft', onUserLeftMessage);
@@ -95,8 +100,24 @@ class FunkinUser
       username: localUser.username,
       platform: localUser.platform,
       activity: localUser.activity,
-      lastSeen: localUser.lastSeen
+      lastSeen: localUser.lastSeen,
+      token: DiscordAuth.instance.getSavedToken()
     });
+  }
+
+  function onAuthChanged():Void
+  {
+    if (localUser == null) return;
+
+    var auth:DiscordAuth = DiscordAuth.instance;
+
+    if (auth.serverUserId != '') localUser.id = auth.serverUserId;
+    if (auth.isLoggedIn()) localUser.username = auth.profile.username;
+  }
+
+  public function getLocalUserId():String
+  {
+    return localUser?.id ?? '';
   }
 
   public function setActivity(activity:String):Void
@@ -198,13 +219,17 @@ class FunkinUser
     var platform:Null<String> = data.platform;
     var activity:Null<String> = data.activity;
     var lastSeen:Null<Float> = data.lastSeen;
+    var authenticated:Bool = data.authenticated == true;
+    var avatarUrl:Null<String> = data.avatarUrl;
 
     return {
       id: id,
       username: username ?? 'Unknown',
       platform: platform ?? 'Unknown',
       activity: activity ?? 'Idle',
-      lastSeen: lastSeen ?? Date.now().getTime()
+      lastSeen: lastSeen ?? Date.now().getTime(),
+      authenticated: authenticated,
+      avatarUrl: avatarUrl
     };
   }
 

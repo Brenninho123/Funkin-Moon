@@ -8,7 +8,11 @@ import funkin.audio.FunkinSound;
 import funkin.graphics.FunkinSprite;
 import funkin.ui.MusicBeatState;
 import funkin.ui.mainmenu.MainMenuState;
+import funkin.online.DiscordAuth;
+import funkin.online.DiscordAuth.DiscordUserProfile;
 import funkin.online.FunkinOnline;
+import funkin.online.FunkinUser;
+import funkin.online.OnlineConfig;
 import funkin.online.play.FunkinMultiplayer;
 import funkin.ui.multiplayer.LoginSubState;
 import funkin.ui.multiplayer.HostMenuSubState;
@@ -36,6 +40,9 @@ class OnlineMenuState extends MusicBeatState
   var exitButton:Null<FlxButton> = null;
   var currentAccount:Dynamic = null;
   var selectedIndex:Int = 0;
+  var playerListText:Null<FlxText> = null;
+  var loginPrompted:Bool = false;
+  var refreshTimer:Float = 0;
 
   static final OPTION_COUNT:Int = 3;
 
@@ -56,21 +63,21 @@ class OnlineMenuState extends MusicBeatState
       add(title);
     }
 
-    subtitle = new FlxText(0, 100, FlxG.width, 'Aguardando jogadores...', 18);
+    subtitle = new FlxText(0, 100, FlxG.width, 'Connecting...', 18);
     if (subtitle != null)
     {
       subtitle.setFormat(Paths.font('vcr.ttf'), 18, 0xFFB7C8FF, CENTER);
       add(subtitle);
     }
 
-    watermarkText = new FlxText(0, 230, FlxG.width, 'online feature in wip.', 18);
+    watermarkText = new FlxText(0, 230, FlxG.width, '', 18);
     if (watermarkText != null)
     {
       watermarkText.setFormat(Paths.font('vcr.ttf'), 18, 0xFFB7C8FF, CENTER);
       add(watermarkText);
     }
 
-    statusText = new FlxText(0, 150, FlxG.width, '1/2 connected', 22);
+    statusText = new FlxText(0, 150, FlxG.width, 'Offline', 22);
     if (statusText != null)
     {
       statusText.setFormat(Paths.font('vcr.ttf'), 22, 0xFF7CF6CF, CENTER);
@@ -128,30 +135,95 @@ class OnlineMenuState extends MusicBeatState
       add(exitButton);
     }
 
-    currentAccount = MultiplayerAccountManager.getOrCreateAccount('Player');
-    if (statusText != null)
-    {
-      statusText.text = 'Conta ativa: ' + Std.string(currentAccount.username) + ' | ID: ' + Std.string(currentAccount.id) + ' | 1/2 connected';
-    }
+    playerListText = new FlxText(FlxG.width - 360, 150, 340, '', 16);
+    playerListText.setFormat(Paths.font('vcr.ttf'), 16, 0xFFD6E0FF, LEFT);
+    add(playerListText);
+
+    currentAccount = MultiplayerAccountManager.getOrCreateAccount(DiscordAuth.instance.getCachedUsername() ?? 'Player');
 
     registerOnlineHandlers();
+    refreshStatus();
 
-    FunkinSound.playMusic('chartEditorloop', {
+    FunkinSound.playMusic('chartEditorLoop', {
       overrideExisting: true,
       loop: true
     });
 
-    if (!MultiplayerAccountManager.isDiscordLinked(currentAccount))
-    {
-      openSubState(new LoginSubState(currentAccount, (profile) ->
-      {
-        if (statusText != null)
-        {
-          statusText.text = 'Conta ativa: ' + Std.string(currentAccount.username) + ' | ID: ' + Std.string(currentAccount.id) + ' | 1/2 connected';
-        }
+    if (FunkinOnline.instance.state == Disconnected) FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
 
-        MultiplayerInviteService.instance.updateIdentity(currentAccount);
-      }));
+    promptLoginIfNeeded();
+  }
+
+  function promptLoginIfNeeded():Void
+  {
+    var auth:DiscordAuth = DiscordAuth.instance;
+
+    if (loginPrompted || auth.isLoggedIn() || !auth.discordEnabled || !FunkinOnline.instance.isConnected()) return;
+
+    loginPrompted = true;
+
+    openLogin();
+  }
+
+  function openLogin():Void
+  {
+    if (subState != null || currentAccount == null) return;
+
+    openSubState(new LoginSubState(currentAccount, onDiscordLoggedIn));
+  }
+
+  function onDiscordLoggedIn(profile:DiscordUserProfile):Void
+  {
+    MultiplayerInviteService.instance.updateIdentity(currentAccount);
+
+    refreshStatus();
+  }
+
+  function refreshStatus():Void
+  {
+    var online:FunkinOnline = FunkinOnline.instance;
+    var auth:DiscordAuth = DiscordAuth.instance;
+    var users:Array<funkin.online.FunkinUser.FunkinUserInfo> = FunkinUser.instance.getActiveUsers();
+
+    users.sort((a, b) -> a.username.toLowerCase() < b.username.toLowerCase() ? -1 : (a.username.toLowerCase() > b.username.toLowerCase() ? 1 : 0));
+
+    if (subtitle != null)
+    {
+      subtitle.text = switch (online.state)
+      {
+        case Connected: 'Connected to ' + OnlineConfig.describe();
+        case Connecting: 'Connecting to ' + OnlineConfig.describe() + '...';
+        case Reconnecting: 'Server unreachable, retrying...';
+        case Disconnected: 'Not connected';
+      };
+    }
+
+    if (statusText != null)
+    {
+      statusText.text = online.isConnected() ? '${users.length} player${users.length == 1 ? '' : 's'} online' : 'Offline';
+      statusText.color = online.isConnected() ? 0xFF7CF6CF : 0xFFFF7C7C;
+    }
+
+    if (watermarkText != null)
+    {
+      watermarkText.text = auth.isLoggedIn() ? 'Discord: ' + auth.profile.username : (auth.discordEnabled ? 'Discord: not logged in (press L)' : 'Discord login is unavailable on this server');
+    }
+
+    if (playerListText != null)
+    {
+      var localId:String = FunkinUser.instance.getLocalUserId();
+      var lines:Array<String> = [];
+
+      for (user in users)
+      {
+        if (lines.length >= 10) break;
+
+        lines.push((user.authenticated == true ? '* ' : '  ') + user.username + (user.id == localId ? ' (you)' : '') + '  ' + user.activity);
+      }
+
+      if (users.length > 10) lines.push('  +' + (users.length - 10) + ' more');
+
+      playerListText.text = lines.join('\n');
     }
   }
 
@@ -167,6 +239,8 @@ class OnlineMenuState extends MusicBeatState
     FunkinOnline.instance.onConnected.add(onOnlineConnected);
     FunkinOnline.instance.onDisconnected.add(onOnlineDisconnected);
     FunkinOnline.instance.onError.add(onOnlineError);
+    FunkinUser.instance.onActiveUsersChanged.add(refreshStatus);
+    DiscordAuth.instance.onChanged.add(refreshStatus);
 
     FunkinMultiplayer.instance.onRoomJoined.add(onRoomReady);
     FunkinMultiplayer.instance.onRoomCreated.add(onRoomReady);
@@ -178,6 +252,8 @@ class OnlineMenuState extends MusicBeatState
     FunkinOnline.instance.onConnected.remove(onOnlineConnected);
     FunkinOnline.instance.onDisconnected.remove(onOnlineDisconnected);
     FunkinOnline.instance.onError.remove(onOnlineError);
+    FunkinUser.instance.onActiveUsersChanged.remove(refreshStatus);
+    DiscordAuth.instance.onChanged.remove(refreshStatus);
 
     FunkinMultiplayer.instance.onRoomJoined.remove(onRoomReady);
     FunkinMultiplayer.instance.onRoomCreated.remove(onRoomReady);
@@ -217,6 +293,17 @@ class OnlineMenuState extends MusicBeatState
         trace('[MP] ESC pressionado - voltando pro MainMenuState');
         FlxG.switchState(() -> new MainMenuState());
       }
+    }
+
+    if (FlxG.keys.justPressed.L && !DiscordAuth.instance.isLoggedIn()) openLogin();
+
+    refreshTimer += elapsed;
+
+    if (refreshTimer >= 0.5)
+    {
+      refreshTimer = 0;
+      refreshStatus();
+      promptLoginIfNeeded();
     }
 
     updateSelectionVisuals();
@@ -288,43 +375,33 @@ class OnlineMenuState extends MusicBeatState
    */
   function connectOnline():Void
   {
-    trace('[MP] Connect button clicked');
+    if (FunkinOnline.instance.state == Disconnected)
+    {
+      FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
+    }
 
-    if (statusText != null) statusText.text = 'Conectando...';
-
-    FunkinOnline.instance.connect('127.0.0.1', 2082);
+    refreshStatus();
   }
 
   function onOnlineConnected():Void
   {
-    trace('[MP] connected to server');
-    if (statusText != null) statusText.text = 'Conectado. Aguardando partida...';
-
-    if (currentAccount != null)
-    {
-      FunkinOnline.instance.send('connect', {
-        id: Std.string(currentAccount.id),
-        username: Std.string(currentAccount.username),
-        password: Std.string(currentAccount.password)
-      });
-    }
+    refreshStatus();
+    promptLoginIfNeeded();
   }
 
   function onOnlineDisconnected():Void
   {
-    trace('[MP] disconnected');
-    if (statusText != null) statusText.text = 'Desconectado.';
+    refreshStatus();
   }
 
   function onOnlineError(msg:String):Void
   {
-    trace('[MP] error: $msg');
-    if (statusText != null) statusText.text = 'Erro: ' + msg;
+    if (statusText != null) statusText.text = 'Error: ' + msg;
   }
 
   function onRoomReady(room:Dynamic):Void
   {
-    if (statusText != null) statusText.text = 'Sala pronta. Aguardando oponente... 1/2 connected';
+    if (statusText != null) statusText.text = 'Room ready. Waiting for an opponent...';
   }
 
   // Chamado quando FunkinMultiplayer recebe 'mp_startSong' do host.
@@ -388,7 +465,7 @@ class OnlineMenuState extends MusicBeatState
       }
       else if (statusText != null)
       {
-        statusText.text = 'Host fechado. 1/2 connected';
+        refreshStatus();
       }
     }));
   }
@@ -396,7 +473,6 @@ class OnlineMenuState extends MusicBeatState
   override function destroy():Void
   {
     unregisterOnlineHandlers();
-    FunkinOnline.instance.disconnect();
 
     if (MultiplayerInviteService.instance.onInviteReceived == onInviteReceived)
     {

@@ -4,8 +4,7 @@ import haxe.Json;
 import sys.io.File;
 import sys.FileSystem;
 #if FEATURE_ONLINE
-import funkin.api.discord.auth.DiscordAuthServer;
-import funkin.api.discord.auth.DiscordAuthServer.DiscordProfile;
+import funkin.online.DiscordAuth.DiscordUserProfile;
 #end
 
 /**
@@ -101,7 +100,7 @@ class MultiplayerAccountManager
   /**
    * Vincula um perfil do Discord a uma conta local e salva.
    */
-  public static function linkDiscordAccount(account:Dynamic, profile:DiscordProfile):Void
+  public static function linkDiscordAccount(account:Dynamic, profile:DiscordUserProfile):Void
   {
     if (account == null || profile == null) return;
 
