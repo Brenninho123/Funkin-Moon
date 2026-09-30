@@ -38,7 +38,7 @@ class Constants
 
   static function get_BUILD_NUMBER():String
   {
-    return #if (BUILD_NUMBER) BUILD_NUMBER #else '252' #end;
+    return #if (BUILD_NUMBER) BUILD_NUMBER #else '265' #end;
   }
 
   /**
@@ -820,7 +820,7 @@ class Constants
   /**
    * The name of our save slot.
    */
-  public static inline final SAVE_NAME:String = 'Funkin';
+  public static inline final SAVE_NAME:String = 'MoonEngine';
 
   /**
    * The legacy path where our save data was saved. Used for backwards compatibility.

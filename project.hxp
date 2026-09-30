@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.8";
 
-  static final BUILD_NUMBER:Int = 252;
+  static final BUILD_NUMBER:Int = 265;
 
   static final MOON_VERSION:String = '0.1.0';
 
@@ -143,7 +143,7 @@ class Project extends HXProject
   static final FEATURE_STRICT_ASSET_CACHING:FeatureFlag = "FEATURE_STRICT_ASSET_CACHING";
   static final FEATURE_CAMERA_EDITOR:FeatureFlag = "FEATURE_CAMERA_EDITOR";
 
-    static final FEATURE_MUSIC_EDITOR:FeatureFlag = "FEATURE_MUSIC_EDITOR";
+  static final FEATURE_MUSIC_EDITOR:FeatureFlag = "FEATURE_MUSIC_EDITOR";
   static final FEATURE_TOUCH_CONTROLS:FeatureFlag = "FEATURE_TOUCH_CONTROLS";
   static final FEATURE_TOUCH_HERE_TO_PLAY:FeatureFlag = "FEATURE_TOUCH_HERE_TO_PLAY";
   static final FEATURE_MACOS_GESTURES:FeatureFlag = "FEATURE_MACOS_GESTURES";
@@ -158,6 +158,10 @@ class Project extends HXProject
   static final FEATURE_AWAY3D:FeatureFlag = "FEATURE_AWAY3D";
 
   static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
+
+  static final FEATURE_LINC_LUAJIT_MIGRATION:FeatureFlag = "FEATURE_LINC_LUAJIT_MIGRATION";
+
+  static final LUA_ALLOWED:FeatureFlag = "LUA_ALLOWED";
 
   static final FEATURE_MOBILE_BATTERY_SAVER:FeatureFlag = "FEATURE_MOBILE_BATTERY_SAVER";
   static final FEATURE_MOBILE_SAFE_AREA:FeatureFlag = "FEATURE_MOBILE_SAFE_AREA";
@@ -451,6 +455,7 @@ class Project extends HXProject
     GITHUB_BUILD.apply(this, false);
     EXCLUDE_ARMV7.apply(this, false);
     VERBOSE_ASSET_CACHE.apply(this, false);
+    LUA_ALLOWED.apply(this, true);
 
     HARDCODED_CREDITS.apply(this, true);
     UNLOCK_EVERYTHING.apply(this, true);
@@ -474,6 +479,7 @@ class Project extends HXProject
     FEATURE_MULTITHREADING.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
     FEATURE_LUA_SCRIPTS.apply(this, true);
+    FEATURE_LINC_LUAJIT_MIGRATION.apply(this, true);
 
 
     FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this) && !isIOS());
@@ -941,6 +947,11 @@ class Project extends HXProject
     if (FEATURE_LUA_SCRIPTS.isEnabled(this))
     {
       addHaxelib('hxlua');
+    }
+
+    if (FEATURE_LINC_LUAJIT_MIGRATION.isEnabled(this))
+    {
+      addHaxelib('linc_luajit');
     }
 
     addHaxelib('json2object');

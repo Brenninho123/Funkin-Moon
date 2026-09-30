@@ -2,10 +2,15 @@ package funkin.lua;
 
 #if FEATURE_LUA_SCRIPTS
 import haxe.Json;
+#if FEATURE_LINC_LUAJIT_MIGRATION
+import funkin.lua.compat.Lua;
+import funkin.lua.compat.LuaL;
+#else
 import hxlua.Lua;
 import hxlua.LuaL;
 import hxlua.Types;
 import hxlua.Types.Lua_State;
+#end
 import funkin.play.PlayState;
 import funkin.audio.FunkinSound;
 import funkin.lowend.FunkinLow;
@@ -18,8 +23,16 @@ import funkin.util.WindowUtil;
 import funkin.Paths;
 #end
 
+#if FEATURE_LINC_LUAJIT_MIGRATION
+typedef LuaState = llua.State.State;
+#else
 typedef LuaState = cpp.RawPointer<hxlua.Types.Lua_State>;
+#end
 
+#if (FEATURE_LUA_SCRIPTS && FEATURE_LINC_LUAJIT_MIGRATION)
+@:unreflective
+@:headerCode('#include <linc_lua.h>')
+#end
 class FunkinLua
 {
   #if FEATURE_LUA_SCRIPTS
@@ -85,6 +98,8 @@ class FunkinLua
 
   function registerCallbacks():Void
   {
+    trace('[Lua] === INICIANDO REGISTRO DOS CALLBACKS ===');
+
     registerCoreCallbacks();
     registerGameplayCallbacks();
     registerStatCallbacks();
@@ -98,207 +113,566 @@ class FunkinLua
     registerUtilityCallbacks();
     registerInputCallbacks();
     registerOnlineCallbacks();
+
+    trace('[Lua] === TODOS OS CALLBACKS FORAM PROCESSADOS ===');
   }
 
   function registerCoreCallbacks():Void
   {
+    trace('[Lua] Registrando debugPrint');
     Lua.register(lua, 'debugPrint', cpp.Function.fromStaticFunction(cb_debugPrint));
+    trace('[Lua] debugPrint registrado');
+
+    trace('[Lua] Registrando logWarn');
     Lua.register(lua, 'logWarn', cpp.Function.fromStaticFunction(cb_logWarn));
+    trace('[Lua] logWarn registrado');
+
+    trace('[Lua] Registrando logError');
     Lua.register(lua, 'logError', cpp.Function.fromStaticFunction(cb_logError));
+    trace('[Lua] logError registrado');
 
+    trace('[Lua] Registrando getSongName');
     Lua.register(lua, 'getSongName', cpp.Function.fromStaticFunction(cb_getSongName));
+    trace('[Lua] getSongName registrado');
+
+    trace('[Lua] Registrando getDifficulty');
     Lua.register(lua, 'getDifficulty', cpp.Function.fromStaticFunction(cb_getDifficulty));
+    trace('[Lua] getDifficulty registrado');
+
+    trace('[Lua] Registrando getVariation');
     Lua.register(lua, 'getVariation', cpp.Function.fromStaticFunction(cb_getVariation));
+    trace('[Lua] getVariation registrado');
+
+    trace('[Lua] Registrando getPlaybackRate');
     Lua.register(lua, 'getPlaybackRate', cpp.Function.fromStaticFunction(cb_getPlaybackRate));
+    trace('[Lua] getPlaybackRate registrado');
+
+    trace('[Lua] Registrando setPlaybackRate');
     Lua.register(lua, 'setPlaybackRate', cpp.Function.fromStaticFunction(cb_setPlaybackRate));
+    trace('[Lua] setPlaybackRate registrado');
 
+    trace('[Lua] Registrando getSongId');
     Lua.register(lua, 'getSongId', cpp.Function.fromStaticFunction(cb_getSongId));
+    trace('[Lua] getSongId registrado');
+
+    trace('[Lua] Registrando getDifficultyId');
     Lua.register(lua, 'getDifficultyId', cpp.Function.fromStaticFunction(cb_getDifficultyId));
+    trace('[Lua] getDifficultyId registrado');
+
+    trace('[Lua] Registrando getVariationId');
     Lua.register(lua, 'getVariationId', cpp.Function.fromStaticFunction(cb_getVariationId));
+    trace('[Lua] getVariationId registrado');
 
+    trace('[Lua] Registrando triggerEvent');
     Lua.register(lua, 'triggerEvent', cpp.Function.fromStaticFunction(cb_triggerEvent));
+    trace('[Lua] triggerEvent registrado');
 
+    trace('[Lua] Registrando getGameVersion');
     Lua.register(lua, 'getGameVersion', cpp.Function.fromStaticFunction(cb_getGameVersion));
+    trace('[Lua] getGameVersion registrado');
+
+    trace('[Lua] Registrando getWindowWidth');
     Lua.register(lua, 'getWindowWidth', cpp.Function.fromStaticFunction(cb_getWindowWidth));
+    trace('[Lua] getWindowWidth registrado');
+
+    trace('[Lua] Registrando getWindowHeight');
     Lua.register(lua, 'getWindowHeight', cpp.Function.fromStaticFunction(cb_getWindowHeight));
+    trace('[Lua] getWindowHeight registrado');
+
+    trace('[Lua] Registrando getFPS');
     Lua.register(lua, 'getFPS', cpp.Function.fromStaticFunction(cb_getFPS));
+    trace('[Lua] getFPS registrado');
+
+    trace('[Lua] Registrando setFPS');
     Lua.register(lua, 'setFPS', cpp.Function.fromStaticFunction(cb_setFPS));
+    trace('[Lua] setFPS registrado');
+
+    trace('[Lua] Registrando getDrawFPS');
     Lua.register(lua, 'getDrawFPS', cpp.Function.fromStaticFunction(cb_getDrawFPS));
+    trace('[Lua] getDrawFPS registrado');
+
+    trace('[Lua] Registrando setDrawFPS');
     Lua.register(lua, 'setDrawFPS', cpp.Function.fromStaticFunction(cb_setDrawFPS));
+    trace('[Lua] setDrawFPS registrado');
+
+    trace('[Lua] Registrando isMobilePlatform');
     Lua.register(lua, 'isMobilePlatform', cpp.Function.fromStaticFunction(cb_isMobilePlatform));
+    trace('[Lua] isMobilePlatform registrado');
+
+    trace('[Lua] Registrando getPlatformName');
     Lua.register(lua, 'getPlatformName', cpp.Function.fromStaticFunction(cb_getPlatformName));
+    trace('[Lua] getPlatformName registrado');
   }
 
   function registerGameplayCallbacks():Void
   {
+    trace('[Lua] Registrando getHealth');
     Lua.register(lua, 'getHealth', cpp.Function.fromStaticFunction(cb_getHealth));
+    trace('[Lua] getHealth registrado');
+
+    trace('[Lua] Registrando setHealth');
     Lua.register(lua, 'setHealth', cpp.Function.fromStaticFunction(cb_setHealth));
+    trace('[Lua] setHealth registrado');
+
+    trace('[Lua] Registrando addHealth');
     Lua.register(lua, 'addHealth', cpp.Function.fromStaticFunction(cb_addHealth));
+    trace('[Lua] addHealth registrado');
+
+    trace('[Lua] Registrando getHealthPercent');
     Lua.register(lua, 'getHealthPercent', cpp.Function.fromStaticFunction(cb_getHealthPercent));
+    trace('[Lua] getHealthPercent registrado');
 
+    trace('[Lua] Registrando getScore');
     Lua.register(lua, 'getScore', cpp.Function.fromStaticFunction(cb_getScore));
+    trace('[Lua] getScore registrado');
+
+    trace('[Lua] Registrando addScore');
     Lua.register(lua, 'addScore', cpp.Function.fromStaticFunction(cb_addScore));
+    trace('[Lua] addScore registrado');
+
+    trace('[Lua] Registrando setScore');
     Lua.register(lua, 'setScore', cpp.Function.fromStaticFunction(cb_setScore));
+    trace('[Lua] setScore registrado');
 
+    trace('[Lua] Registrando getDeaths');
     Lua.register(lua, 'getDeaths', cpp.Function.fromStaticFunction(cb_getDeaths));
+    trace('[Lua] getDeaths registrado');
 
+    trace('[Lua] Registrando isPracticeMode');
     Lua.register(lua, 'isPracticeMode', cpp.Function.fromStaticFunction(cb_isPracticeMode));
+    trace('[Lua] isPracticeMode registrado');
+
+    trace('[Lua] Registrando isBotPlayMode');
     Lua.register(lua, 'isBotPlayMode', cpp.Function.fromStaticFunction(cb_isBotPlayMode));
+    trace('[Lua] isBotPlayMode registrado');
 
+    trace('[Lua] Registrando getSongPosition');
     Lua.register(lua, 'getSongPosition', cpp.Function.fromStaticFunction(cb_getSongPosition));
-    Lua.register(lua, 'getBPM', cpp.Function.fromStaticFunction(cb_getBPM));
-    Lua.register(lua, 'getCurrentStep', cpp.Function.fromStaticFunction(cb_getCurrentStep));
-    Lua.register(lua, 'getCurrentBeat', cpp.Function.fromStaticFunction(cb_getCurrentBeat));
+    trace('[Lua] getSongPosition registrado');
 
+    trace('[Lua] Registrando getBPM');
+    Lua.register(lua, 'getBPM', cpp.Function.fromStaticFunction(cb_getBPM));
+    trace('[Lua] getBPM registrado');
+
+    trace('[Lua] Registrando getCurrentStep');
+    Lua.register(lua, 'getCurrentStep', cpp.Function.fromStaticFunction(cb_getCurrentStep));
+    trace('[Lua] getCurrentStep registrado');
+
+    trace('[Lua] Registrando getCurrentBeat');
+    Lua.register(lua, 'getCurrentBeat', cpp.Function.fromStaticFunction(cb_getCurrentBeat));
+    trace('[Lua] getCurrentBeat registrado');
+
+    trace('[Lua] Registrando getDirectionName');
     Lua.register(lua, 'getDirectionName', cpp.Function.fromStaticFunction(cb_getDirectionName));
+    trace('[Lua] getDirectionName registrado');
   }
 
   function registerStatCallbacks():Void
   {
+    trace('[Lua] Registrando getCombo');
     Lua.register(lua, 'getCombo', cpp.Function.fromStaticFunction(cb_getCombo));
+    trace('[Lua] getCombo registrado');
+
+    trace('[Lua] Registrando getMaxCombo');
     Lua.register(lua, 'getMaxCombo', cpp.Function.fromStaticFunction(cb_getMaxCombo));
+    trace('[Lua] getMaxCombo registrado');
+
+    trace('[Lua] Registrando getAccuracy');
     Lua.register(lua, 'getAccuracy', cpp.Function.fromStaticFunction(cb_getAccuracy));
+    trace('[Lua] getAccuracy registrado');
+
+    trace('[Lua] Registrando getJudgementCount');
     Lua.register(lua, 'getJudgementCount', cpp.Function.fromStaticFunction(cb_getJudgementCount));
+    trace('[Lua] getJudgementCount registrado');
+
+    trace('[Lua] Registrando getMisses');
     Lua.register(lua, 'getMisses', cpp.Function.fromStaticFunction(cb_getMisses));
+    trace('[Lua] getMisses registrado');
 
+    trace('[Lua] Registrando getFullComboCount');
     Lua.register(lua, 'getFullComboCount', cpp.Function.fromStaticFunction(cb_getFullComboCount));
-    Lua.register(lua, 'getPerfectSongCount', cpp.Function.fromStaticFunction(cb_getPerfectSongCount));
-    Lua.register(lua, 'getAverageScorePerSong', cpp.Function.fromStaticFunction(cb_getAverageScorePerSong));
+    trace('[Lua] getFullComboCount registrado');
 
+    trace('[Lua] Registrando getPerfectSongCount');
+    Lua.register(lua, 'getPerfectSongCount', cpp.Function.fromStaticFunction(cb_getPerfectSongCount));
+    trace('[Lua] getPerfectSongCount registrado');
+
+    trace('[Lua] Registrando getAverageScorePerSong');
+    Lua.register(lua, 'getAverageScorePerSong', cpp.Function.fromStaticFunction(cb_getAverageScorePerSong));
+    trace('[Lua] getAverageScorePerSong registrado');
+
+    trace('[Lua] Registrando getQualityTier');
     Lua.register(lua, 'getQualityTier', cpp.Function.fromStaticFunction(cb_getQualityTier));
+    trace('[Lua] getQualityTier registrado');
+
+    trace('[Lua] Registrando forceQualityTier');
     Lua.register(lua, 'forceQualityTier', cpp.Function.fromStaticFunction(cb_forceQualityTier));
+    trace('[Lua] forceQualityTier registrado');
+
+    trace('[Lua] Registrando resetQualityAuto');
     Lua.register(lua, 'resetQualityAuto', cpp.Function.fromStaticFunction(cb_resetQualityAuto));
+    trace('[Lua] resetQualityAuto registrado');
+
+    trace('[Lua] Registrando shouldSkipEffect');
     Lua.register(lua, 'shouldSkipEffect', cpp.Function.fromStaticFunction(cb_shouldSkipEffect));
+    trace('[Lua] shouldSkipEffect registrado');
   }
 
   function registerAudioCallbacks():Void
   {
+    trace('[Lua] Registrando playSound');
     Lua.register(lua, 'playSound', cpp.Function.fromStaticFunction(cb_playSound));
+    trace('[Lua] playSound registrado');
+
+    trace('[Lua] Registrando stopAllSounds');
     Lua.register(lua, 'stopAllSounds', cpp.Function.fromStaticFunction(cb_stopAllSounds));
+    trace('[Lua] stopAllSounds registrado');
+
+    trace('[Lua] Registrando setMusicPitch');
     Lua.register(lua, 'setMusicPitch', cpp.Function.fromStaticFunction(cb_setMusicPitch));
+    trace('[Lua] setMusicPitch registrado');
+
+    trace('[Lua] Registrando setMusicVolume');
     Lua.register(lua, 'setMusicVolume', cpp.Function.fromStaticFunction(cb_setMusicVolume));
+    trace('[Lua] setMusicVolume registrado');
+
+    trace('[Lua] Registrando getMusicTime');
     Lua.register(lua, 'getMusicTime', cpp.Function.fromStaticFunction(cb_getMusicTime));
+    trace('[Lua] getMusicTime registrado');
+
+    trace('[Lua] Registrando setMusicTime');
     Lua.register(lua, 'setMusicTime', cpp.Function.fromStaticFunction(cb_setMusicTime));
+    trace('[Lua] setMusicTime registrado');
   }
 
   function registerCameraCallbacks():Void
   {
+    trace('[Lua] Registrando triggerCameraMovement');
     Lua.register(lua, 'triggerCameraMovement', cpp.Function.fromStaticFunction(cb_triggerCameraMovement));
+    trace('[Lua] triggerCameraMovement registrado');
+
+    trace('[Lua] Registrando setCameraMovementEnabled');
     Lua.register(lua, 'setCameraMovementEnabled', cpp.Function.fromStaticFunction(cb_setCameraMovementEnabled));
+    trace('[Lua] setCameraMovementEnabled registrado');
+
+    trace('[Lua] Registrando flashCamera');
     Lua.register(lua, 'flashCamera', cpp.Function.fromStaticFunction(cb_flashCamera));
+    trace('[Lua] flashCamera registrado');
+
+    trace('[Lua] Registrando shakeCamera');
     Lua.register(lua, 'shakeCamera', cpp.Function.fromStaticFunction(cb_shakeCamera));
+    trace('[Lua] shakeCamera registrado');
+
+    trace('[Lua] Registrando getCameraX');
     Lua.register(lua, 'getCameraX', cpp.Function.fromStaticFunction(cb_getCameraX));
+    trace('[Lua] getCameraX registrado');
+
+    trace('[Lua] Registrando getCameraY');
     Lua.register(lua, 'getCameraY', cpp.Function.fromStaticFunction(cb_getCameraY));
+    trace('[Lua] getCameraY registrado');
+
+    trace('[Lua] Registrando setCameraPosition');
     Lua.register(lua, 'setCameraPosition', cpp.Function.fromStaticFunction(cb_setCameraPosition));
+    trace('[Lua] setCameraPosition registrado');
+
+    trace('[Lua] Registrando setCameraZoom');
     Lua.register(lua, 'setCameraZoom', cpp.Function.fromStaticFunction(cb_setCameraZoom));
+    trace('[Lua] setCameraZoom registrado');
+
+    trace('[Lua] Registrando getCameraZoom');
     Lua.register(lua, 'getCameraZoom', cpp.Function.fromStaticFunction(cb_getCameraZoom));
+    trace('[Lua] getCameraZoom registrado');
   }
 
   function registerTextCallbacks():Void
   {
+    trace('[Lua] Registrando createLuaText');
     Lua.register(lua, 'createLuaText', cpp.Function.fromStaticFunction(cb_createLuaText));
+    trace('[Lua] createLuaText registrado');
+
+    trace('[Lua] Registrando setLuaTextColor');
     Lua.register(lua, 'setLuaTextColor', cpp.Function.fromStaticFunction(cb_setLuaTextColor));
+    trace('[Lua] setLuaTextColor registrado');
+
+    trace('[Lua] Registrando setLuaTextString');
     Lua.register(lua, 'setLuaTextString', cpp.Function.fromStaticFunction(cb_setLuaTextString));
+    trace('[Lua] setLuaTextString registrado');
+
+    trace('[Lua] Registrando setLuaTextPosition');
     Lua.register(lua, 'setLuaTextPosition', cpp.Function.fromStaticFunction(cb_setLuaTextPosition));
+    trace('[Lua] setLuaTextPosition registrado');
+
+    trace('[Lua] Registrando setLuaTextAlpha');
     Lua.register(lua, 'setLuaTextAlpha', cpp.Function.fromStaticFunction(cb_setLuaTextAlpha));
+    trace('[Lua] setLuaTextAlpha registrado');
+
+    trace('[Lua] Registrando setLuaTextAlignment');
     Lua.register(lua, 'setLuaTextAlignment', cpp.Function.fromStaticFunction(cb_setLuaTextAlignment));
+    trace('[Lua] setLuaTextAlignment registrado');
+
+    trace('[Lua] Registrando setLuaTextScale');
     Lua.register(lua, 'setLuaTextScale', cpp.Function.fromStaticFunction(cb_setLuaTextScale));
+    trace('[Lua] setLuaTextScale registrado');
+
+    trace('[Lua] Registrando getLuaTextWidth');
     Lua.register(lua, 'getLuaTextWidth', cpp.Function.fromStaticFunction(cb_getLuaTextWidth));
+    trace('[Lua] getLuaTextWidth registrado');
+
+    trace('[Lua] Registrando getLuaTextHeight');
     Lua.register(lua, 'getLuaTextHeight', cpp.Function.fromStaticFunction(cb_getLuaTextHeight));
+    trace('[Lua] getLuaTextHeight registrado');
+
+    trace('[Lua] Registrando addLuaText');
     Lua.register(lua, 'addLuaText', cpp.Function.fromStaticFunction(cb_addLuaText));
+    trace('[Lua] addLuaText registrado');
+
+    trace('[Lua] Registrando setLuaTextVisible');
     Lua.register(lua, 'setLuaTextVisible', cpp.Function.fromStaticFunction(cb_setLuaTextVisible));
+    trace('[Lua] setLuaTextVisible registrado');
+
+    trace('[Lua] Registrando removeLuaText');
     Lua.register(lua, 'removeLuaText', cpp.Function.fromStaticFunction(cb_removeLuaText));
+    trace('[Lua] removeLuaText registrado');
+
+    trace('[Lua] Registrando hasLuaText');
     Lua.register(lua, 'hasLuaText', cpp.Function.fromStaticFunction(cb_hasLuaText));
+    trace('[Lua] hasLuaText registrado');
   }
 
   function registerCharacterCallbacks():Void
   {
+    trace('[Lua] Registrando characterPlayAnim');
     Lua.register(lua, 'characterPlayAnim', cpp.Function.fromStaticFunction(cb_characterPlayAnim));
+    trace('[Lua] characterPlayAnim registrado');
+
+    trace('[Lua] Registrando characterDance');
     Lua.register(lua, 'characterDance', cpp.Function.fromStaticFunction(cb_characterDance));
+    trace('[Lua] characterDance registrado');
+
+    trace('[Lua] Registrando setCharacterVisible');
     Lua.register(lua, 'setCharacterVisible', cpp.Function.fromStaticFunction(cb_setCharacterVisible));
+    trace('[Lua] setCharacterVisible registrado');
+
+    trace('[Lua] Registrando setCharacterPosition');
     Lua.register(lua, 'setCharacterPosition', cpp.Function.fromStaticFunction(cb_setCharacterPosition));
+    trace('[Lua] setCharacterPosition registrado');
+
+    trace('[Lua] Registrando setCharacterAlpha');
     Lua.register(lua, 'setCharacterAlpha', cpp.Function.fromStaticFunction(cb_setCharacterAlpha));
+    trace('[Lua] setCharacterAlpha registrado');
+
+    trace('[Lua] Registrando setCharacterFlip');
     Lua.register(lua, 'setCharacterFlip', cpp.Function.fromStaticFunction(cb_setCharacterFlip));
+    trace('[Lua] setCharacterFlip registrado');
+
+    trace('[Lua] Registrando setCharacterScale');
     Lua.register(lua, 'setCharacterScale', cpp.Function.fromStaticFunction(cb_setCharacterScale));
+    trace('[Lua] setCharacterScale registrado');
   }
 
   function registerVariableCallbacks():Void
   {
+    trace('[Lua] Registrando setVar');
     Lua.register(lua, 'setVar', cpp.Function.fromStaticFunction(cb_setVar));
-    Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
-    Lua.register(lua, 'hasVar', cpp.Function.fromStaticFunction(cb_hasVar));
-    Lua.register(lua, 'removeVar', cpp.Function.fromStaticFunction(cb_removeVar));
+    trace('[Lua] setVar registrado');
 
+    trace('[Lua] Registrando getVar');
+    Lua.register(lua, 'getVar', cpp.Function.fromStaticFunction(cb_getVar));
+    trace('[Lua] getVar registrado');
+
+    trace('[Lua] Registrando hasVar');
+    Lua.register(lua, 'hasVar', cpp.Function.fromStaticFunction(cb_hasVar));
+    trace('[Lua] hasVar registrado');
+
+    trace('[Lua] Registrando removeVar');
+    Lua.register(lua, 'removeVar', cpp.Function.fromStaticFunction(cb_removeVar));
+    trace('[Lua] removeVar registrado');
+
+    trace('[Lua] Registrando jsonEncode');
     Lua.register(lua, 'jsonEncode', cpp.Function.fromStaticFunction(cb_jsonEncode));
+    trace('[Lua] jsonEncode registrado');
+
+    trace('[Lua] Registrando jsonDecode');
     Lua.register(lua, 'jsonDecode', cpp.Function.fromStaticFunction(cb_jsonDecode));
+    trace('[Lua] jsonDecode registrado');
   }
 
   function registerSaveCallbacks():Void
   {
+    trace('[Lua] Registrando saveReadString');
     Lua.register(lua, 'saveReadString', cpp.Function.fromStaticFunction(cb_saveReadString));
+    trace('[Lua] saveReadString registrado');
+
+    trace('[Lua] Registrando saveWriteString');
     Lua.register(lua, 'saveWriteString', cpp.Function.fromStaticFunction(cb_saveWriteString));
+    trace('[Lua] saveWriteString registrado');
+
+    trace('[Lua] Registrando saveReadNumber');
     Lua.register(lua, 'saveReadNumber', cpp.Function.fromStaticFunction(cb_saveReadNumber));
+    trace('[Lua] saveReadNumber registrado');
+
+    trace('[Lua] Registrando saveWriteNumber');
     Lua.register(lua, 'saveWriteNumber', cpp.Function.fromStaticFunction(cb_saveWriteNumber));
+    trace('[Lua] saveWriteNumber registrado');
+
+    trace('[Lua] Registrando saveReadBool');
     Lua.register(lua, 'saveReadBool', cpp.Function.fromStaticFunction(cb_saveReadBool));
+    trace('[Lua] saveReadBool registrado');
+
+    trace('[Lua] Registrando saveWriteBool');
     Lua.register(lua, 'saveWriteBool', cpp.Function.fromStaticFunction(cb_saveWriteBool));
+    trace('[Lua] saveWriteBool registrado');
   }
 
   function registerTimerCallbacks():Void
   {
+    trace('[Lua] Registrando runLater');
     Lua.register(lua, 'runLater', cpp.Function.fromStaticFunction(cb_runLater));
+    trace('[Lua] runLater registrado');
+
+    trace('[Lua] Registrando runRepeating');
     Lua.register(lua, 'runRepeating', cpp.Function.fromStaticFunction(cb_runRepeating));
+    trace('[Lua] runRepeating registrado');
+
+    trace('[Lua] Registrando cancelTimer');
     Lua.register(lua, 'cancelTimer', cpp.Function.fromStaticFunction(cb_cancelTimer));
+    trace('[Lua] cancelTimer registrado');
+
+    trace('[Lua] Registrando hasActiveTimer');
     Lua.register(lua, 'hasActiveTimer', cpp.Function.fromStaticFunction(cb_hasActiveTimer));
+    trace('[Lua] hasActiveTimer registrado');
   }
 
   function registerUtilityCallbacks():Void
   {
+    trace('[Lua] Registrando randomFloat');
     Lua.register(lua, 'randomFloat', cpp.Function.fromStaticFunction(cb_randomFloat));
+    trace('[Lua] randomFloat registrado');
+
+    trace('[Lua] Registrando randomInt');
     Lua.register(lua, 'randomInt', cpp.Function.fromStaticFunction(cb_randomInt));
+    trace('[Lua] randomInt registrado');
+
+    trace('[Lua] Registrando randomBool');
     Lua.register(lua, 'randomBool', cpp.Function.fromStaticFunction(cb_randomBool));
+    trace('[Lua] randomBool registrado');
 
+    trace('[Lua] Registrando clamp');
     Lua.register(lua, 'clamp', cpp.Function.fromStaticFunction(cb_clamp));
+    trace('[Lua] clamp registrado');
+
+    trace('[Lua] Registrando lerp');
     Lua.register(lua, 'lerp', cpp.Function.fromStaticFunction(cb_lerp));
+    trace('[Lua] lerp registrado');
+
+    trace('[Lua] Registrando mapRange');
     Lua.register(lua, 'mapRange', cpp.Function.fromStaticFunction(cb_mapRange));
+    trace('[Lua] mapRange registrado');
+
+    trace('[Lua] Registrando roundNumber');
     Lua.register(lua, 'roundNumber', cpp.Function.fromStaticFunction(cb_roundNumber));
+    trace('[Lua] roundNumber registrado');
+
+    trace('[Lua] Registrando floorNumber');
     Lua.register(lua, 'floorNumber', cpp.Function.fromStaticFunction(cb_floorNumber));
+    trace('[Lua] floorNumber registrado');
+
+    trace('[Lua] Registrando ceilNumber');
     Lua.register(lua, 'ceilNumber', cpp.Function.fromStaticFunction(cb_ceilNumber));
+    trace('[Lua] ceilNumber registrado');
 
+    trace('[Lua] Registrando stringTrim');
     Lua.register(lua, 'stringTrim', cpp.Function.fromStaticFunction(cb_stringTrim));
-    Lua.register(lua, 'stringUpper', cpp.Function.fromStaticFunction(cb_stringUpper));
-    Lua.register(lua, 'stringLower', cpp.Function.fromStaticFunction(cb_stringLower));
-    Lua.register(lua, 'stringContains', cpp.Function.fromStaticFunction(cb_stringContains));
-    Lua.register(lua, 'stringReplace', cpp.Function.fromStaticFunction(cb_stringReplace));
-    Lua.register(lua, 'stringSplit', cpp.Function.fromStaticFunction(cb_stringSplit));
-    Lua.register(lua, 'stringSplitCount', cpp.Function.fromStaticFunction(cb_stringSplitCount));
+    trace('[Lua] stringTrim registrado');
 
+    trace('[Lua] Registrando stringUpper');
+    Lua.register(lua, 'stringUpper', cpp.Function.fromStaticFunction(cb_stringUpper));
+    trace('[Lua] stringUpper registrado');
+
+    trace('[Lua] Registrando stringLower');
+    Lua.register(lua, 'stringLower', cpp.Function.fromStaticFunction(cb_stringLower));
+    trace('[Lua] stringLower registrado');
+
+    trace('[Lua] Registrando stringContains');
+    Lua.register(lua, 'stringContains', cpp.Function.fromStaticFunction(cb_stringContains));
+    trace('[Lua] stringContains registrado');
+
+    trace('[Lua] Registrando stringReplace');
+    Lua.register(lua, 'stringReplace', cpp.Function.fromStaticFunction(cb_stringReplace));
+    trace('[Lua] stringReplace registrado');
+
+    trace('[Lua] Registrando stringSplit');
+    Lua.register(lua, 'stringSplit', cpp.Function.fromStaticFunction(cb_stringSplit));
+    trace('[Lua] stringSplit registrado');
+
+    trace('[Lua] Registrando stringSplitCount');
+    Lua.register(lua, 'stringSplitCount', cpp.Function.fromStaticFunction(cb_stringSplitCount));
+    trace('[Lua] stringSplitCount registrado');
+
+    trace('[Lua] Registrando tableLength');
     Lua.register(lua, 'tableLength', cpp.Function.fromStaticFunction(cb_tableLength));
+    trace('[Lua] tableLength registrado');
+
+    trace('[Lua] Registrando arrayContains');
     Lua.register(lua, 'arrayContains', cpp.Function.fromStaticFunction(cb_arrayContains));
+    trace('[Lua] arrayContains registrado');
   }
 
   function registerInputCallbacks():Void
   {
+    trace('[Lua] Registrando keyJustPressed');
     Lua.register(lua, 'keyJustPressed', cpp.Function.fromStaticFunction(cb_keyJustPressed));
-    Lua.register(lua, 'keyPressed', cpp.Function.fromStaticFunction(cb_keyPressed));
-    Lua.register(lua, 'keyJustReleased', cpp.Function.fromStaticFunction(cb_keyJustReleased));
+    trace('[Lua] keyJustPressed registrado');
 
+    trace('[Lua] Registrando keyPressed');
+    Lua.register(lua, 'keyPressed', cpp.Function.fromStaticFunction(cb_keyPressed));
+    trace('[Lua] keyPressed registrado');
+
+    trace('[Lua] Registrando keyJustReleased');
+    Lua.register(lua, 'keyJustReleased', cpp.Function.fromStaticFunction(cb_keyJustReleased));
+    trace('[Lua] keyJustReleased registrado');
+
+    trace('[Lua] Registrando mouseX');
     Lua.register(lua, 'mouseX', cpp.Function.fromStaticFunction(cb_mouseX));
+    trace('[Lua] mouseX registrado');
+
+    trace('[Lua] Registrando mouseY');
     Lua.register(lua, 'mouseY', cpp.Function.fromStaticFunction(cb_mouseY));
+    trace('[Lua] mouseY registrado');
+
+    trace('[Lua] Registrando mousePressed');
     Lua.register(lua, 'mousePressed', cpp.Function.fromStaticFunction(cb_mousePressed));
+    trace('[Lua] mousePressed registrado');
+
+    trace('[Lua] Registrando mouseJustPressed');
     Lua.register(lua, 'mouseJustPressed', cpp.Function.fromStaticFunction(cb_mouseJustPressed));
+    trace('[Lua] mouseJustPressed registrado');
   }
 
   function registerOnlineCallbacks():Void
   {
     #if FEATURE_ONLINE
+    trace('[Lua] Registrando isOnline');
     Lua.register(lua, 'isOnline', cpp.Function.fromStaticFunction(cb_isOnline));
+    trace('[Lua] isOnline registrado');
+
+    trace('[Lua] Registrando getOnlineUserCount');
     Lua.register(lua, 'getOnlineUserCount', cpp.Function.fromStaticFunction(cb_getOnlineUserCount));
+    trace('[Lua] getOnlineUserCount registrado');
+
+    trace('[Lua] Registrando sendOnlineMessage');
     Lua.register(lua, 'sendOnlineMessage', cpp.Function.fromStaticFunction(cb_sendOnlineMessage));
+    trace('[Lua] sendOnlineMessage registrado');
     #end
 
     #if FEATURE_MULTIPLAYER
+    trace('[Lua] Registrando isMultiplayerActive');
     Lua.register(lua, 'isMultiplayerActive', cpp.Function.fromStaticFunction(cb_isMultiplayerActive));
+    trace('[Lua] isMultiplayerActive registrado');
+
+    trace('[Lua] Registrando getLocalModCount');
     Lua.register(lua, 'getLocalModCount', cpp.Function.fromStaticFunction(cb_getLocalModCount));
+    trace('[Lua] getLocalModCount registrado');
     #end
   }
 

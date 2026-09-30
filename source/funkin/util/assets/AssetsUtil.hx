@@ -29,6 +29,7 @@ class AssetsUtil
     'hx' => FunkinAssetType.SCRIPT, // Haxe script
     'hxc' => FunkinAssetType.SCRIPTED_CLASS, // Haxe scripted class
     'hxs' => FunkinAssetType.SCRIPT, // Haxe script
+    'lua' => FunkinAssetType.SCRIPT,
     'ico' => FunkinAssetType.IMAGE, // Windows Icon file
     'jpeg' => FunkinAssetType.IMAGE, // JPEG texture image
     'jpg' => FunkinAssetType.IMAGE, // JPG texture image
