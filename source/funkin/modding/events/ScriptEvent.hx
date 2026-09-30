@@ -695,3 +695,31 @@ class PauseScriptEvent extends ScriptEvent
     this.gitaroo = gitaroo;
   }
 }
+
+/**
+ * An event that is fired when a Codex switches to a different page.
+ */
+class CodexScriptEvent extends ScriptEvent
+{
+  /**
+   * The page the Codex switched away from.
+   */
+  public var previousPage(default, null):String;
+
+  /**
+   * The page the Codex switched to.
+   */
+  public var page(default, null):String;
+
+  public function new(previousPage:String, page:String):Void
+  {
+    super(CODEX_PAGE_SWITCH, false);
+    this.previousPage = previousPage;
+    this.page = page;
+  }
+
+  override public function toString():String
+  {
+    return 'CodexScriptEvent(type=' + type + ', previousPage=' + previousPage + ', page=' + page + ')';
+  }
+}

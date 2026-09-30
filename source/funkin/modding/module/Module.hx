@@ -4,6 +4,7 @@ import funkin.modding.IScriptedClass.IPlayStateScriptedClass;
 import funkin.modding.IScriptedClass.IStateChangingScriptedClass;
 import funkin.modding.IScriptedClass.IFreeplayScriptedClass;
 import funkin.modding.IScriptedClass.ICharacterSelectScriptedClass;
+import funkin.modding.IScriptedClass.ICodexScriptedClass;
 import funkin.modding.events.ScriptEvent;
 import flixel.FlxG;
 import funkin.graphics.FunkinCamera;
@@ -27,7 +28,7 @@ typedef ModuleParams =
  * You may have the module active at all times, or only when another script enables it.
  */
 @:nullSafety
-class Module implements IPlayStateScriptedClass implements IStateChangingScriptedClass implements IFreeplayScriptedClass implements ICharacterSelectScriptedClass
+class Module implements IPlayStateScriptedClass implements IStateChangingScriptedClass implements IFreeplayScriptedClass implements ICharacterSelectScriptedClass implements ICodexScriptedClass
 {
   var elapsedTime:Float = 0.0;
 
@@ -496,6 +497,13 @@ class Module implements IPlayStateScriptedClass implements IStateChangingScripte
    * Called when a character has been confirmed.
    */
   public function onCharacterConfirm(event:CharacterSelectScriptEvent):Void
+  {
+  }
+
+  /**
+   * Called when a Codex switches to a different page.
+   */
+  public function onCodexPageSwitch(event:CodexScriptEvent):Void
   {
   }
 }

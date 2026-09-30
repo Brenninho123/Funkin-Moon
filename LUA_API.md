@@ -285,6 +285,52 @@ Scripts can read and write plain text files through the engine's atomic file sys
 | `isMultiplayerActive` | `isMultiplayerActive()` | Whether a local mod manifest has been built (multiplayer mod sync is active) |
 | `getLocalModCount` | `getLocalModCount()` | Number of mods in the local manifest |
 
+## Debug display
+
+Scripts can add their own lines to the on-screen debug display (toggled with the debug display key) and control the panel. Lines are owned by the script that created them and are removed automatically when it unloads. Two scripts can use the same `id` without clashing.
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `debugDisplaySetLine` | `debugDisplaySetLine(id, text)` | Adds or updates a line. `text` may contain `\n` for several rows. Lines keep the order they were first created in |
+| `debugDisplayRemoveLine` | `debugDisplayRemoveLine(id)` | Removes one of your lines |
+| `debugDisplayHasLine` | `debugDisplayHasLine(id)` | Whether you have a line with this id |
+| `debugDisplayClearLines` | `debugDisplayClearLines()` | Removes all of your lines |
+| `debugDisplayGetMode` | `debugDisplayGetMode()` | `"off"`, `"simple"` or `"advanced"` |
+| `debugDisplaySetMode` | `debugDisplaySetMode(mode)` | Shows or hides the panel for this session. Does not change the saved preference |
+| `debugDisplaySetOpacity` | `debugDisplaySetOpacity(value)` | Background opacity, 0.0–1.0 |
+| `debugDisplaySetOffset` | `debugDisplaySetOffset(x)` | Horizontal offset in pixels |
+| `debugDisplayResetStats` | `debugDisplayResetStats()` | Resets peaks, averages and the stutter counter |
+| `debugDisplayShowPlayState` | `debugDisplayShowPlayState(enabled)` | Toggles the automatic song section |
+
+While a song is playing the panel shows a song section (song, difficulty, BPM, step, beat, health, score, combo, misses, accuracy and the loaded Lua script and error counts). The panel grows to fit extra lines.
+
+```lua
+function onUpdate(elapsed)
+    debugDisplaySetLine("boss", "BOSS HP: " .. getVar("bossHealth"))
+end
+```
+
+## Codex (options menu pages)
+
+The options menu is a Codex of pages. Global mod scripts (Lua files in a mod folder) receive page changes and can move between pages.
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `codexGetPage` | `codexGetPage()` | Current page name, or `""` when no Codex is open |
+| `codexGetPages` | `codexGetPages()` | Table of every page name in the open Codex |
+| `codexHasPage` | `codexHasPage(name)` | Whether the page exists |
+| `codexSetPage` | `codexSetPage(name)` | Switches page. Returns `false` for an unknown page or while the current page is locked (for example a prompt is open) |
+
+Callback: `onCodexPageSwitch(page, previousPage)`.
+
+## Script callbacks
+
+Song scripts (`assets/songs/<songId>/scripts/*.lua`, and `songs/<songId>/scripts/*.lua` or `data/songs/<songId>/scripts/*.lua` inside any enabled mod) are loaded only for that song. Every other `.lua` file inside a mod folder is a global module and stays loaded.
+
+Song script callbacks: `onCreate()`, `onCreatePost()`, `onUpdate(elapsed)`, `onUpdatePost(elapsed)`, `onStepHit(step)`, `onBeatHit(beat)`, `onSongStart()`, `onSongEnd()`, `onPause()`, `onResume()`, `onGameOver()`, `onNoteHit(judgement, combo)`, `onNoteMiss(healthChange)`, `onNoteGhostMiss(direction, playAnim)`, `onNoteIncoming(direction)`, `onNoteHoldDrop()`, `onCountdownStart()`, `onCountdownStep(step)`, `onCountdownEnd()`, `onSongEvent(kind, value)`, `onSongRetry(difficulty)`, `onFocusGained()`, `onFocusLost()` and `onDestroy()`.
+
+Global module scripts receive the engine's script events with the same names and additional menu events such as `onCapsuleSelected(difficulty, variation)`, `onCharacterSelect(characterId)` and `onCodexPageSwitch(page, previousPage)`.
+
 ## Notes for mod authors
 
 - Every getter that depends on an active song (health, score, combo, camera, etc.) returns a safe default (`0`, `""`, `false`) if called outside of `PlayState` — scripts don't need to guard every call with a null check.

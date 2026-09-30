@@ -267,5 +267,10 @@ class LuaModule extends Module
   {
     callLua('onCharacterConfirm', [event.characterId]);
   }
+
+  override public function onCodexPageSwitch(event:CodexScriptEvent):Void
+  {
+    callLua('onCodexPageSwitch', [event.page, event.previousPage]);
+  }
   #end
 }

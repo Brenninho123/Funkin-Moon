@@ -15,6 +15,7 @@ import lime.app.Promise;
 import hx.concurrent.collection.SynchronizedMap;
 #end
 #if FEATURE_LUA_SCRIPTS
+import funkin.lua.LuaScriptPaths;
 import funkin.lua.module.LuaModule;
 #end
 
@@ -281,7 +282,7 @@ class ModuleHandler
       {
         scanLuaDirectory(fullPath, modDir);
       }
-      else if (StringTools.endsWith(entry.toLowerCase(), '.lua'))
+      else if (StringTools.endsWith(entry.toLowerCase(), '.lua') && !LuaScriptPaths.isSongScript(fullPath))
       {
         loadLuaModule(fullPath, modDir);
       }

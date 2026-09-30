@@ -17,6 +17,8 @@ import funkin.play.PlayState;
 import funkin.play.character.BaseCharacter;
 import funkin.play.notes.NoteDirection;
 import funkin.save.Save;
+import funkin.ui.Codex;
+import funkin.ui.debug.FunkinDebugDisplay.DebugDisplayMode;
 import funkin.ui.system.FunkinCosmic;
 import funkin.util.WindowUtil;
 import llua.State;
@@ -251,6 +253,8 @@ class FunkinLua
 
     instances.remove(id);
 
+    if (Main.debugDisplay != null) Main.debugDisplay.removeCustomLinesWithPrefix('$id:');
+
     destroyLuaTexts();
     destroyTimers();
 
@@ -467,6 +471,8 @@ class FunkinLua
     registerTimers();
     registerUtility();
     registerInput();
+    registerDebugDisplay();
+    registerCodex();
     registerOnline();
   }
 
@@ -1179,6 +1185,63 @@ class FunkinLua
     query('mouseY', (s, a) -> FlxG.mouse.screenY);
     query('mousePressed', (s, a) -> FlxG.mouse.pressed);
     query('mouseJustPressed', (s, a) -> FlxG.mouse.justPressed);
+  }
+
+  static function registerDebugDisplay():Void
+  {
+    command('debugDisplaySetLine', (s, a) ->
+    {
+      var lineId:String = argStr(a, 0);
+
+      if (lineId != '' && Main.debugDisplay != null) Main.debugDisplay.setCustomLine('${s.id}:$lineId', argStr(a, 1));
+    });
+    command('debugDisplayRemoveLine', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.removeCustomLine('${s.id}:${argStr(a, 0)}');
+    });
+    command('debugDisplayClearLines', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.removeCustomLinesWithPrefix('${s.id}:');
+    });
+    query('debugDisplayHasLine', (s, a) -> Main.debugDisplay != null && Main.debugDisplay.hasCustomLine('${s.id}:${argStr(a, 0)}'));
+
+    query('debugDisplayGetMode', (s, a) -> Main.debugDisplay != null ? Std.string(Main.debugDisplay.getMode()).toLowerCase() : 'off');
+    command('debugDisplaySetMode', (s, a) ->
+    {
+      var mode:Null<DebugDisplayMode> = switch (argStr(a, 0).toLowerCase())
+      {
+        case 'off': DebugDisplayMode.Off;
+        case 'simple': DebugDisplayMode.Simple;
+        case 'advanced': DebugDisplayMode.Advanced;
+        default: null;
+      };
+
+      if (mode != null && Main.debugDisplay != null) Preferences.setDebugDisplayMode(mode);
+    });
+    command('debugDisplaySetOpacity', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.backgroundOpacity = Math.max(0.0, Math.min(1.0, argNum(a, 0, 0.5)));
+    });
+    command('debugDisplaySetOffset', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.setOffsetX(argNum(a, 0, 10));
+    });
+    command('debugDisplayResetStats', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.resetStats();
+    });
+    command('debugDisplayShowPlayState', (s, a) ->
+    {
+      if (Main.debugDisplay != null) Main.debugDisplay.showPlayStateInfo = argBool(a, 0, true);
+    });
+  }
+
+  static function registerCodex():Void
+  {
+    query('codexGetPage', (s, a) -> Codex.current?.getCurrentPageName() ?? '');
+    query('codexGetPages', (s, a) -> Codex.current?.getPageNames() ?? []);
+    query('codexHasPage', (s, a) -> Codex.current?.hasPage(argStr(a, 0)) ?? false);
+    query('codexSetPage', (s, a) -> Codex.current?.requestPage(argStr(a, 0)) ?? false);
   }
 
   static function registerOnline():Void

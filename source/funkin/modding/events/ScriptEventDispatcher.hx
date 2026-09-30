@@ -1,5 +1,6 @@
 package funkin.modding.events;
 
+import funkin.modding.IScriptedClass.ICodexScriptedClass;
 import funkin.modding.IScriptedClass.IPlayStateScriptedClass;
 import funkin.modding.IScriptedClass;
 import funkin.modding.ScriptGuard;
@@ -364,6 +365,26 @@ class ScriptEventDispatcher
         ScriptEventType.CHARACTER_DESELECTED,
         ScriptEventType.CHARACTER_CONFIRMED
       ].contains(event.type))
+      {
+        return;
+      }
+    }
+
+    if (Std.isOfType(target, ICodexScriptedClass))
+    {
+      var t:ICodexScriptedClass = cast target;
+      switch (event.type)
+      {
+        case CODEX_PAGE_SWITCH:
+          t.onCodexPageSwitch(cast event);
+          return;
+        default: // Continue;
+      }
+    }
+    else
+    {
+      // If the target doesn't support the event, stop trying to dispatch.
+      if (event.type == ScriptEventType.CODEX_PAGE_SWITCH)
       {
         return;
       }

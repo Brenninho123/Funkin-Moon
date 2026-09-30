@@ -2,6 +2,7 @@ package funkin.ui.debug;
 
 import flixel.util.FlxStringUtil;
 import funkin.lowend.FunkinLow;
+import funkin.play.PlayState;
 import funkin.ui.debug.stats.FunkinStatsGraph;
 import funkin.util.MemoryUtil;
 import openfl.display.GradientType;
@@ -31,11 +32,15 @@ class FunkinDebugDisplay extends Sprite
   static final PANEL_CORNER_RADIUS:Float = 10;
   static final ACCENT_BAR_WIDTH:Float = 4;
   static final FADE_SPEED:Float = 6.0;
+  static final EXTRA_LINE_HEIGHT:Float = 14.5;
+  static final EXTRA_MIN_WIDTH:Float = 210;
+  static final EXTRA_TEXT_COLOR:Int = 0xC8D0DA;
 
   public var isAdvanced(default, set):Bool = false;
   public var backgroundOpacity(default, set):Float = 0.5;
   public var targetOpacity:Float = 0.5;
   public var fadeEnabled:Bool = false;
+  public var showPlayStateInfo:Bool = true;
 
   var deltaTimeout:Float;
   var fpsAccumTime:Float;
@@ -59,6 +64,14 @@ class FunkinDebugDisplay extends Sprite
   var taskMemGraph:FunkinStatsGraph;
   var frameTimeGraph:FunkinStatsGraph;
   var infoDisplay:TextField;
+  var extraDisplay:TextField;
+  var customLines:Map<String, String> = new Map();
+  var customLineOrder:Array<String> = [];
+  var lastExtraText:Null<String> = null;
+  var extraLineCount:Int = 0;
+  var baseWidth:Float = 0;
+  var baseHeight:Float = 0;
+  var lastAccentColor:Int = 0x39FF7A;
   var osInfo:String;
   var lastFpsColorTier:Int = -1;
   var fpsHistory:Array<Int> = [];
@@ -173,8 +186,12 @@ class FunkinDebugDisplay extends Sprite
       bgHeightMultiplier = advanced ? 0.9 : 0.25;
     }
 
-    panelWidth = (OUTER_RECT_DIMENSIONS[0] * bgWidthMultiplier) + (INNER_RECT_DIFF * 2);
-    panelHeight = (OUTER_RECT_DIMENSIONS[1] * bgHeightMultiplier) + (INNER_RECT_DIFF * 2);
+    baseWidth = (OUTER_RECT_DIMENSIONS[0] * bgWidthMultiplier) + (INNER_RECT_DIFF * 2);
+    baseHeight = (OUTER_RECT_DIMENSIONS[1] * bgHeightMultiplier) + (INNER_RECT_DIFF * 2);
+    panelWidth = baseWidth;
+    panelHeight = baseHeight;
+    extraLineCount = 0;
+    lastExtraText = null;
 
     background = new Shape();
     drawPanelBackground();
@@ -199,6 +216,9 @@ class FunkinDebugDisplay extends Sprite
       createSimpleElements();
       updateSimpleDisplay();
     }
+
+    createExtraDisplay();
+    refreshExtraDisplay();
   }
 
   function drawPanelBackground():Void
@@ -225,6 +245,8 @@ class FunkinDebugDisplay extends Sprite
 
   function redrawAccentBar(barColor:Int):Void
   {
+    lastAccentColor = barColor;
+
     if (accentBar == null) return;
 
     var g = accentBar.graphics;
@@ -297,6 +319,108 @@ class FunkinDebugDisplay extends Sprite
     addChild(infoDisplay);
   }
 
+  function createExtraDisplay():Void
+  {
+    extraDisplay = new TextField();
+    extraDisplay.x = OTHERS_OFFSET + ACCENT_BAR_WIDTH;
+    extraDisplay.y = baseHeight - INNER_RECT_DIFF;
+    extraDisplay.width = 500;
+    extraDisplay.selectable = false;
+    extraDisplay.mouseEnabled = false;
+    extraDisplay.defaultTextFormat = new TextFormat('FunkinLingLong', 12, EXTRA_TEXT_COLOR, false, false, false, null, null, TextFormatAlign.LEFT);
+    extraDisplay.antiAliasType = NORMAL;
+    extraDisplay.multiline = true;
+    addChild(extraDisplay);
+  }
+
+  function collectExtraLines():Array<String>
+  {
+    var lines:Array<String> = [];
+
+    if (showPlayStateInfo && PlayState.instance != null)
+    {
+      for (line in PlayState.instance.getDebugInfo()) lines.push(line);
+    }
+
+    for (id in customLineOrder)
+    {
+      var text:Null<String> = customLines.get(id);
+
+      if (text == null) continue;
+
+      for (part in text.split('\n')) lines.push(part);
+    }
+
+    return lines;
+  }
+
+  function refreshExtraDisplay():Void
+  {
+    if (extraDisplay == null) return;
+
+    var lines:Array<String> = collectExtraLines();
+    var text:String = lines.join('\n');
+
+    if (text == lastExtraText) return;
+
+    lastExtraText = text;
+    extraDisplay.text = text;
+
+    if (lines.length != extraLineCount)
+    {
+      extraLineCount = lines.length;
+      applyPanelSize();
+    }
+  }
+
+  function applyPanelSize():Void
+  {
+    var extraHeight:Float = extraLineCount > 0 ? (extraLineCount * EXTRA_LINE_HEIGHT) + OTHERS_OFFSET : 0;
+    var newWidth:Float = extraLineCount > 0 ? Math.max(baseWidth, EXTRA_MIN_WIDTH) : baseWidth;
+    var newHeight:Float = baseHeight + extraHeight;
+
+    if (newWidth == panelWidth && newHeight == panelHeight) return;
+
+    panelWidth = newWidth;
+    panelHeight = newHeight;
+
+    drawPanelBackground();
+    redrawAccentBar(lastAccentColor);
+
+    if (statusIndicator != null) statusIndicator.x = panelWidth - 14;
+  }
+
+  public function setCustomLine(id:String, text:String):Void
+  {
+    if (!customLines.exists(id)) customLineOrder.push(id);
+
+    customLines.set(id, text);
+  }
+
+  public function removeCustomLine(id:String):Void
+  {
+    if (customLines.remove(id)) customLineOrder.remove(id);
+  }
+
+  public function removeCustomLinesWithPrefix(prefix:String):Void
+  {
+    for (id in customLineOrder.copy())
+    {
+      if (StringTools.startsWith(id, prefix)) removeCustomLine(id);
+    }
+  }
+
+  public function clearCustomLines():Void
+  {
+    customLines.clear();
+    customLineOrder = [];
+  }
+
+  public function hasCustomLine(id:String):Bool
+  {
+    return customLines.exists(id);
+  }
+
   override function __enterFrame(deltaTime:Float):Void
   {
     updateFade(deltaTime);
@@ -354,6 +478,8 @@ class FunkinDebugDisplay extends Sprite
     {
       updateSimpleDisplay();
     }
+
+    refreshExtraDisplay();
 
     deltaTimeout = 0.0;
   }
@@ -612,6 +738,13 @@ class FunkinDebugDisplay extends Sprite
     if (background != null) background.alpha = value;
 
     return backgroundOpacity = value;
+  }
+
+  public function getMode():DebugDisplayMode
+  {
+    if (parent == null) return DebugDisplayMode.Off;
+
+    return isAdvanced ? DebugDisplayMode.Advanced : DebugDisplayMode.Simple;
   }
 
   public function setOffsetX(value:Float):Void

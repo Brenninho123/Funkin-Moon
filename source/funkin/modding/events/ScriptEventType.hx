@@ -379,6 +379,13 @@ enum abstract ScriptEventType(String) from String to String
   public var DIALOGUE_END = 'DIALOGUE_END';
 
   /**
+   * Called when the options Codex switches to a different page.
+   *
+   * This event is not cancelable.
+   */
+  public var CODEX_PAGE_SWITCH = 'CODEX_PAGE_SWITCH';
+
+  /**
    * Allow for comparing `ScriptEventType` to `String`.
    */
   @:op(A == B)

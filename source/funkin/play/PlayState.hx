@@ -1246,6 +1246,8 @@ class PlayState extends MusicBeatSubState
     updateHealthBar();
     updateScoreText();
 
+    callLuaEvent('onUpdatePost', [elapsed]);
+
     // Handle restarting the song when needed (player death or pressing Retry)
     if (needsReset)
     {
@@ -1739,6 +1741,9 @@ class PlayState extends MusicBeatSubState
 
     // super.dispatchEvent(event) dispatches event to module scripts.
     super.dispatchEvent(event);
+
+    bridgeLuaEvent(event);
+
     // Dispatch event to song script.
     ScriptEventDispatcher.callEvent(currentSong, event);
 
@@ -2705,19 +2710,10 @@ class PlayState extends MusicBeatSubState
     #if FEATURE_LUA_SCRIPTS
     destroyLuaScripts();
 
-    var scriptsPath:String = 'assets/songs/${currentSong.id}/scripts';
-
-    #if sys
-    if (sys.FileSystem.exists(scriptsPath) && sys.FileSystem.isDirectory(scriptsPath))
+    for (scriptPath in funkin.lua.LuaScriptPaths.findSongScripts(currentSong.id))
     {
-      for (file in sys.FileSystem.readDirectory(scriptsPath))
-      {
-        if (!file.toLowerCase().endsWith('.lua')) continue;
-
-        luaScripts.push(new funkin.lua.FunkinLua('${scriptsPath}/${file}'));
-      }
+      luaScripts.push(new funkin.lua.FunkinLua(scriptPath));
     }
-    #end
 
     callLuaEvent('onCreate', []);
     #end
@@ -2726,12 +2722,73 @@ class PlayState extends MusicBeatSubState
   function destroyLuaScripts():Void
   {
     #if FEATURE_LUA_SCRIPTS
+    callLuaEvent('onDestroy', []);
+
     for (script in luaScripts)
     {
       script.destroy();
     }
     luaScripts = [];
     #end
+  }
+
+  function bridgeLuaEvent(event:ScriptEvent):Void
+  {
+    #if FEATURE_LUA_SCRIPTS
+    if (luaScripts.length == 0) return;
+
+    switch (event.type)
+    {
+      case COUNTDOWN_START:
+        callLuaEvent('onCountdownStart', []);
+      case COUNTDOWN_STEP:
+        callLuaEvent('onCountdownStep', [cast(event, CountdownScriptEvent).step]);
+      case COUNTDOWN_END:
+        callLuaEvent('onCountdownEnd', []);
+      case NOTE_INCOMING:
+        callLuaEvent('onNoteIncoming', [cast(event, NoteScriptEvent).note.direction]);
+      case NOTE_HOLD_DROP:
+        callLuaEvent('onNoteHoldDrop', []);
+      case SONG_EVENT:
+        var songEvent:SongEventScriptEvent = cast event;
+        callLuaEvent('onSongEvent', [songEvent.eventData.eventKind, songEvent.eventData.value]);
+      case SONG_RETRY:
+        callLuaEvent('onSongRetry', [cast(event, SongRetryEvent).difficulty]);
+      case FOCUS_GAINED:
+        callLuaEvent('onFocusGained', []);
+      case FOCUS_LOST:
+        callLuaEvent('onFocusLost', []);
+      default:
+    }
+    #end
+  }
+
+  public function getDebugInfo():Array<String>
+  {
+    var conductor:Conductor = Conductor.instance;
+    var tallies = Highscore.tallies;
+    var songId:String = currentSong?.id ?? '?';
+    var variation:String = currentVariation != Constants.DEFAULT_VARIATION ? ' / $currentVariation' : '';
+
+    var info:Array<String> = [
+      'SONG: $songId [$currentDifficulty$variation]',
+      'BPM: ${Math.round(conductor.bpm * 100) / 100}  STEP: ${conductor.currentStep}  BEAT: ${conductor.currentBeat}',
+      'HEALTH: ${Math.round(health / Constants.HEALTH_MAX * 100)}%  SCORE: ${Math.round(songScore)}',
+      'COMBO: ${tallies.combo}  MISS: ${tallies.missed}  ACC: ${Math.round(Highscore.calculateAccuracy(tallies) * 10) / 10}%'
+    ];
+
+    #if FEATURE_LUA_SCRIPTS
+    if (luaScripts.length > 0)
+    {
+      var luaErrors:Int = 0;
+
+      for (script in luaScripts) luaErrors += script.errorCount;
+
+      info.push('LUA: ${luaScripts.length} scripts  ERRORS: $luaErrors');
+    }
+    #end
+
+    return info;
   }
 
   function callLuaEvent(funcName:String, args:Array<Dynamic>):Void

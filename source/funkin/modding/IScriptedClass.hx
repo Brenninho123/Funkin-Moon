@@ -254,6 +254,17 @@ interface ICharacterSelectScriptedClass extends IScriptedClass
 }
 
 /**
+ * Defines a set of callbacks activated by a Codex.
+ */
+interface ICodexScriptedClass extends IScriptedClass
+{
+  /**
+   * Called when a Codex switches to a different page.
+   */
+  public function onCodexPageSwitch(event:CodexScriptEvent):Void;
+}
+
+/**
  * Defines a set of callbacks activated during a dialogue conversation.
  */
 interface IDialogueScriptedClass extends IScriptedClass
