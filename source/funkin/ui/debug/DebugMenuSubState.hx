@@ -1,13 +1,8 @@
 package funkin.ui.debug;
 
-import flixel.math.FlxPoint;
-import flixel.FlxObject;
-import flixel.FlxSprite;
 import flixel.util.FlxColor;
 import funkin.ui.MusicBeatSubState;
-import funkin.ui.FullScreenScaleMode;
 import funkin.audio.FunkinSound;
-import funkin.ui.TextMenuList;
 import funkin.ui.debug.charting.ChartEditorState;
 #if FEATURE_MUSIC_EDITOR
 import funkin.ui.debug.music.MusicEditorState;
@@ -15,25 +10,23 @@ import funkin.ui.debug.music.MusicEditorState;
 import funkin.util.logging.CrashHandler;
 import flixel.addons.transition.FlxTransitionableState;
 import funkin.util.FileUtil;
-import flixel.tweens.FlxTween;
-import flixel.tweens.FlxEase;
-import flixel.text.FlxText;
+#if FEATURE_HAXEUI
+import funkin.graphics.FunkinCamera;
+import funkin.input.Cursor;
+import funkin.ui.debug.DebugMenuView.DebugMenuEntry;
+#end
 #if mobile
 import funkin.mobile.input.ControlsHandler;
-import funkin.util.TouchUtil;
 import funkin.util.SwipeUtil;
-import funkin.util.HapticUtil;
 #end
 
 class DebugMenuSubState extends MusicBeatSubState
 {
-  var items:TextMenuList;
-  var camFocusPoint:FlxObject;
-  #if mobile
-  var touchableItems:Array<
-    {item:TextMenuItem, callback:Void->Void}> = [];
-  var mobileHint:Null<FlxText> = null;
-  #end
+  #if FEATURE_HAXEUI
+  var camMenu:FunkinCamera;
+  var view:DebugMenuView;
+  var closing:Bool = false;
+  var mouseWasVisible:Bool = false;
 
   override function create():Void
   {
@@ -42,64 +35,23 @@ class DebugMenuSubState extends MusicBeatSubState
 
     bgColor = 0x00000000;
 
-    camFocusPoint = new FlxObject(0, 0);
-    add(camFocusPoint);
-
-    FlxG.camera.follow(camFocusPoint, null, 0.06);
-
-    var menuBG = new FlxSprite().loadGraphic(Paths.image('ui/main-menu/menu-desat'));
-    menuBG.color = 0xFF4CAF50;
-    menuBG.setGraphicSize(Std.int(menuBG.width * 1.1 * FullScreenScaleMode.wideScale.x));
-    menuBG.updateHitbox();
-    menuBG.screenCenter();
-    menuBG.scrollFactor.set(0, 0);
-    add(menuBG);
-
-    items = new TextMenuList();
-    items.onChange.add(onMenuChange);
-    add(items);
-
-    FlxTransitionableState.skipNextTransIn = true;
-
-    #if FEATURE_CHART_EDITOR
-    createItem("CHART EDITOR", openChartEditor);
-    #end
-    #if FEATURE_CAMERA_EDITOR
-    createItem("CAMERA EDITOR", openCameraEditor);
-    #end
-    #if FEATURE_POLYMOD_MODS
-    createItem("MOD MENU", openModMenu);
-    #end
-    #if FEATURE_ANIMATION_EDITOR
-    createItem("ANIMATION EDITOR", openAnimationEditor);
-    #end
-    #if FEATURE_STAGE_EDITOR
-    createItem("STAGE EDITOR", openStageEditor);
-    #end
-    #if FEATURE_MUSIC_EDITOR
-    createItem("MUSIC EDITOR", openMusicEditor);
-    #end
-    #if FEATURE_MODCHART_EDITOR
-    createItem("MODCHART EDITOR", openModchartEditor);
-    #end
-    #if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
-    createItem("LUA SCRIPT EDITOR", openLuaScriptEditor);
-    #end
-    #if (sys && !mobile && FEATURE_HAXEUI)
-    createItem("COSMIC EDITOR", openCosmicEditor);
-    #end
-    #if FEATURE_RESULTS_DEBUG
-    createItem("RESULTS SCREEN DEBUG", openTestResultsScreen);
-    #end
-    #if sys
-    createItem("OPEN CRASH LOG FOLDER", openLogFolder);
-    #end
-    onMenuChange(items.members[0]);
-    FlxG.camera.focusOn(new FlxPoint(camFocusPoint.x, camFocusPoint.y + 500));
-
-    #if FEATURE_HAXEUI
     haxe.ui.Toolkit.styleSheet.clear("user");
-    #end
+
+    camMenu = new FunkinCamera('debugMenu');
+    camMenu.bgColor.alpha = 0;
+    FlxG.cameras.add(camMenu, false);
+
+    view = new DebugMenuView(buildEntries());
+    view.cameras = [camMenu];
+    view.scrollFactor.set();
+    view.width = FlxG.width;
+    view.height = FlxG.height;
+    view.onActivate = activateEntry;
+    view.onSelectionMove = () -> FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+    add(view);
+
+    mouseWasVisible = FlxG.mouse.visible;
+    Cursor.show();
 
     #if mobile
     addBackButton(FlxG.width - 230, FlxG.height - 200, FlxColor.WHITE, exitDebugMenu, 1.0);
@@ -108,18 +60,73 @@ class DebugMenuSubState extends MusicBeatSubState
     {
       FunkinSound.playOnce(Paths.sound('cancelMenu'));
     });
-
-    mobileHint = new FlxText(0, FlxG.height - 40, FlxG.width, 'Tap an option to select it - swipe down to go back', 16);
-    mobileHint.alignment = CENTER;
-    mobileHint.color = 0xFFAAAAAA;
-    mobileHint.scrollFactor.set(0, 0);
-    add(mobileHint);
+    #else
+    haxe.ui.Toolkit.callLater(() -> view.focusSearch());
     #end
+
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+    view.playIntro();
   }
 
-  function onMenuChange(selected:TextMenuItem)
+  function buildEntries():Array<DebugMenuEntry>
   {
-    camFocusPoint.setPosition(selected.x + selected.width / 2, selected.y + selected.height / 2);
+    var entries:Array<DebugMenuEntry> = [];
+
+    function addEntry(id:String, title:String, subtitle:String, tag:String, run:Void->Void):Void
+    {
+      entries.push({
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        tag: tag,
+        run: run
+      });
+    }
+
+    #if FEATURE_CHART_EDITOR
+    addEntry('chart', 'Chart Editor', 'Create and edit song charts', 'Editor', openChartEditor);
+    #end
+    #if FEATURE_CAMERA_EDITOR
+    addEntry('camera', 'Camera Editor', 'Edit camera behavior', 'Editor', openCameraEditor);
+    #end
+    #if FEATURE_POLYMOD_MODS
+    addEntry('mods', 'Mod Menu', 'Enable, disable and sort mods', 'Tool', openModMenu);
+    #end
+    #if FEATURE_ANIMATION_EDITOR
+    addEntry('animation', 'Animation Editor', 'Edit character animation offsets', 'Editor', openAnimationEditor);
+    #end
+    #if FEATURE_STAGE_EDITOR
+    addEntry('stage', 'Stage Editor', 'Place and edit stage props', 'Editor', openStageEditor);
+    #end
+    #if FEATURE_MUSIC_EDITOR
+    addEntry('music', 'Music Editor', 'Edit the tempo and time changes of a song', 'Editor', openMusicEditor);
+    #end
+    #if FEATURE_MODCHART_EDITOR
+    addEntry('modchart', 'Modchart Editor', 'Edit modcharts for songs', 'Editor', openModchartEditor);
+    #end
+    #if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
+    addEntry('lua', 'Lua Script Editor', 'Write and test Lua scripts with the Lua Bot', 'Editor', openLuaScriptEditor);
+    #end
+    #if (sys && !mobile)
+    addEntry('cosmic', 'Cosmic Editor', 'Browse and edit game and mod files', 'Editor', openCosmicEditor);
+    #end
+    #if FEATURE_RESULTS_DEBUG
+    addEntry('results', 'Results Screen Debug', 'Preview the results screen', 'Tool', openTestResultsScreen);
+    #end
+    #if sys
+    addEntry('logs', 'Open Crash Log Folder', 'Show the folder with the crash logs', 'Tool', openLogFolder);
+    #end
+
+    return entries;
+  }
+
+  function activateEntry(entry:DebugMenuEntry):Void
+  {
+    if (closing) return;
+
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu'), 0.7);
+
+    entry.run();
   }
 
   override function update(elapsed:Float):Void
@@ -131,13 +138,16 @@ class DebugMenuSubState extends MusicBeatSubState
     catch (e:Dynamic)
     {
       FlxG.log.error('DebugMenuSubState encountered an error and had to close: $e');
-      exitDebugMenu();
+      closeNow();
     }
   }
 
   function updateDebugMenu(elapsed:Float):Void
   {
     super.update(elapsed);
+
+    if (closing) return;
+
     #if mobile
     if (backButton != null)
     {
@@ -145,79 +155,27 @@ class DebugMenuSubState extends MusicBeatSubState
       backButton.enabled = true;
     }
 
-    handleTouchInput();
-    #end
-
-    if (controls.BACK_P)
-    {
-      FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
-      exitDebugMenu();
-    }
-  }
-
-  #if mobile
-  function handleTouchInput():Void
-  {
-    if (TouchUtil.justPressed && !ControlsHandler.usingExternalInputDevice)
-    {
-      for (entry in touchableItems)
-      {
-        if (TouchUtil.overlaps(entry.item, FlxG.camera))
-        {
-          activateTouchedItem(entry.item, entry.callback);
-          break;
-        }
-      }
-    }
-
     if (SwipeUtil.swipeDown && !ControlsHandler.usingExternalInputDevice)
     {
       FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
       exitDebugMenu();
+      return;
     }
-  }
-
-  function activateTouchedItem(item:TextMenuItem, callback:Void->Void):Void
-  {
-    onMenuChange(item);
-
-    HapticUtil.vibrate(0, 0.01, 0.5);
-    FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu'));
-
-    FlxTween.cancelTweensOf(item);
-    FlxTween.tween(item, {
-      "scale.x": 0.92,
-      "scale.y": 0.92
-    }, 0.08, {
-      ease: FlxEase.quadOut,
-      onComplete: (_) ->
-      {
-        FlxTween.tween(item, {
-          "scale.x": 1,
-          "scale.y": 1
-        }, 0.12, {
-          ease: FlxEase.quadOut
-        });
-        callback();
-      }
-    });
-  }
-  #end
-
-  function createItem(name:String, callback:Void->Void, fireInstantly = false):TextMenuItem
-  {
-    var item = items.createItem(0, 100 + items.length * 100, name, BOLD, callback);
-    item.fireInstantly = fireInstantly;
-    item.screenCenter(X);
-
-    #if mobile
-    touchableItems.push({
-      item: item,
-      callback: callback
-    });
     #end
 
-    return item;
+    var keys = FlxG.keys.justPressed;
+    var pad = FlxG.gamepads.lastActive;
+    var searching:Bool = view.searchFocused();
+
+    if (keys.UP || (pad != null && pad.justPressed.DPAD_UP) || (!searching && controls.UI_UP_P)) view.move(-1);
+    else if (keys.DOWN || (pad != null && pad.justPressed.DPAD_DOWN) || (!searching && controls.UI_DOWN_P)) view.move(1);
+    else if (keys.ENTER || (pad != null && pad.justPressed.A) || (!searching && controls.ACCEPT)) view.activate();
+
+    if (keys.ESCAPE || (pad != null && pad.justPressed.B) || (!searching && controls.BACK_P))
+    {
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'));
+      exitDebugMenu();
+    }
   }
 
   function switchToState(stateFactory:Void->flixel.FlxState):Void
@@ -227,6 +185,51 @@ class DebugMenuSubState extends MusicBeatSubState
     FlxG.switchState(stateFactory);
   }
 
+  function exitDebugMenu():Void
+  {
+    if (closing) return;
+
+    closing = true;
+
+    view.playOutro(closeNow);
+  }
+
+  function closeNow():Void
+  {
+    closing = true;
+
+    this.close();
+  }
+
+  override public function destroy():Void
+  {
+    if (view != null)
+    {
+      view.stop();
+      remove(view);
+      view = null;
+    }
+
+    if (camMenu != null)
+    {
+      FlxG.cameras.remove(camMenu);
+      camMenu = null;
+    }
+
+    if (!mouseWasVisible) Cursor.hide();
+
+    super.destroy();
+  }
+  #else
+  override function create():Void
+  {
+    super.create();
+
+    close();
+  }
+  #end
+
+  #if FEATURE_HAXEUI
   #if FEATURE_CHART_EDITOR
   function openChartEditor():Void
   {
@@ -236,23 +239,12 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
-  function openCharSelect():Void
-  {
-    FlxG.switchState(() -> new funkin.ui.charSelect.CharSelectSubState());
-  }
-
   #if FEATURE_ANIMATION_EDITOR
   function openAnimationEditor():Void
   {
     FlxG.switchState(() -> new funkin.ui.debug.anim.DebugBoundingState());
   }
   #end
-
-  function testStickers():Void
-  {
-    openSubState(new funkin.ui.transition.stickers.StickerSubState({
-    }));
-  }
 
   #if FEATURE_STAGE_EDITOR
   function openStageEditor():Void
@@ -296,7 +288,7 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
-  #if (sys && !mobile && FEATURE_HAXEUI)
+  #if (sys && !mobile)
   function openCosmicEditor():Void
   {
     FlxG.switchState(() -> new funkin.ui.debug.cosmic.CosmicEditorState());
@@ -311,19 +303,10 @@ class DebugMenuSubState extends MusicBeatSubState
   #end
 
   #if sys
-  function openLogFolder()
+  function openLogFolder():Void
   {
     FileUtil.openFolder(CrashHandler.LOG_FOLDER);
   }
   #end
-
-  function exitDebugMenu()
-  {
-    this.close();
-  }
-
-  override public function destroy():Void
-  {
-    super.destroy();
-  }
+  #end
 }

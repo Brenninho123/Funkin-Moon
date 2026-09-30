@@ -5,6 +5,8 @@ import funkin.ui.story.StoryMenuState;
 import funkin.data.freeplay.player.PlayerRegistry;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.util.FlxGradient;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 import flixel.math.FlxMath;
 import flixel.text.FlxText;
@@ -170,6 +172,13 @@ class PauseSubState extends MusicBeatSubState
    */
   static final MUSIC_FINAL_VOLUME:Float = 0.75;
 
+  static final ACCENT_COLOR:FlxColor = 0xFF33CCFF;
+  static final SHADE_WIDTH:Int = 760;
+  static final CARD_WIDTH:Int = 480;
+  static final CARD_LINE_HEIGHT:Int = 32;
+  static final OUTRO_SECONDS:Float = 0.18;
+  static final SELECTION_HEIGHT:Int = 82;
+
   static final CHARTER_FADE_DELAY:Float = 15.0;
   static final CHARTER_FADE_DURATION:Float = 0.75;
 
@@ -244,6 +253,39 @@ class PauseSubState extends MusicBeatSubState
    * The semi-transparent black background that appears when the game is paused.
    */
   var background:FunkinSprite;
+
+  /**
+   * A dark gradient behind the menu entries so they stay readable on any stage.
+   */
+  var menuShade:Null<FlxSprite> = null;
+
+  /**
+   * The accent bar next to the selected entry.
+   */
+  var selectionBar:Null<FlxSprite> = null;
+
+  /**
+   * A soft glow behind the selected entry.
+   */
+  var selectionGlow:Null<FlxSprite> = null;
+
+  /**
+   * The translucent card behind the metadata in the top right.
+   */
+  var metadataCard:Null<FlxSprite> = null;
+
+  /**
+   * The accent line on the top of the metadata card.
+   */
+  var metadataLine:Null<FlxSprite> = null;
+
+  /**
+   * The track, fill and label of the song progress bar at the bottom.
+   */
+  var progressTrack:Null<FlxSprite> = null;
+
+  var progressFill:Null<FlxSprite> = null;
+  var progressText:Null<FlxText> = null;
 
   /**
    * The metadata displayed in the top right.
@@ -345,6 +387,8 @@ class PauseSubState extends MusicBeatSubState
   override public function update(elapsed:Float):Void
   {
     super.update(elapsed);
+
+    updateProgress();
 
     handleInputs();
   }
@@ -451,6 +495,11 @@ class PauseSubState extends MusicBeatSubState
     background.scrollFactor.set(0, 0);
     background.updateHitbox();
     add(background);
+
+    menuShade = FlxGradient.createGradientFlxSprite(SHADE_WIDTH, Std.int(camera.height), [0xE6000000, 0x00000000], 1, 0);
+    menuShade.scrollFactor.set(0, 0);
+    menuShade.alpha = 0;
+    add(menuShade);
 
     #if FEATURE_TOUCH_CONTROLS
     pauseButton = FunkinSprite.createSparrow(0, 0, 'ui/pause-button');
@@ -596,6 +645,26 @@ class PauseSubState extends MusicBeatSubState
     metadata.add(offsetTextInfo);
     #end
 
+    #if !FEATURE_TOUCH_CONTROLS
+    var cardRight:Float = 20 + (camera.width - Math.max(40, funkin.ui.FullScreenScaleMode.gameNotchSize.x)) + 10;
+
+    metadataCard = new FlxSprite(cardRight - CARD_WIDTH, 4);
+    metadataCard.makeGraphic(CARD_WIDTH, CARD_LINE_HEIGHT * 5 + 22, FlxColor.BLACK);
+    metadataCard.origin.set(0, 0);
+    metadataCard.scrollFactor.set(0, 0);
+    metadataCard.alpha = 0;
+
+    metadataLine = new FlxSprite(metadataCard.x, metadataCard.y);
+    metadataLine.makeGraphic(CARD_WIDTH, 3, ACCENT_COLOR);
+    metadataLine.scrollFactor.set(0, 0);
+    metadataLine.alpha = 0;
+
+    insert(members.indexOf(metadata), metadataCard);
+    insert(members.indexOf(metadata), metadataLine);
+
+    buildProgress();
+    #end
+
     metadataArtist.alpha = 0;
     metadataPractice.alpha = 0;
     metadataSong.alpha = 0;
@@ -605,6 +674,112 @@ class PauseSubState extends MusicBeatSubState
     offsetTextInfo.alpha = 0;
 
     updateMetadataText();
+  }
+
+  /**
+   * Render the song progress bar along the bottom of the screen.
+   */
+  function buildProgress():Void
+  {
+    var margin:Float = Math.max(90, funkin.ui.FullScreenScaleMode.gameNotchSize.x);
+
+    progressTrack = new FlxSprite(0, camera.height - 8);
+    progressTrack.makeGraphic(Std.int(camera.width), 8, FlxColor.BLACK);
+    progressTrack.scrollFactor.set(0, 0);
+    progressTrack.alpha = 0;
+    add(progressTrack);
+
+    progressFill = new FlxSprite(0, camera.height - 8);
+    progressFill.makeGraphic(Std.int(camera.width), 8, ACCENT_COLOR);
+    progressFill.origin.set(0, 0);
+    progressFill.scale.x = 0;
+    progressFill.scrollFactor.set(0, 0);
+    progressFill.alpha = 0;
+    add(progressFill);
+
+    progressText = new FlxText(margin, camera.height - 44, 400, '');
+    progressText.setFormat(funkin.assets.Paths.font('ui/fonts/VCR OSD Mono'), 20, FlxColor.WHITE, FlxTextAlign.LEFT);
+    progressText.scrollFactor.set(0, 0);
+    progressText.alpha = 0;
+    add(progressText);
+  }
+
+  static function formatTime(milliseconds:Float):String
+  {
+    var total:Int = Std.int(Math.max(0, milliseconds) / 1000);
+    var seconds:Int = total % 60;
+
+    return Std.int(total / 60) + ':' + (seconds < 10 ? '0' : '') + seconds;
+  }
+
+  function progressAvailable():Bool
+  {
+    if (progressTrack == null) return false;
+
+    return (currentMode == Standard || currentMode == Difficulty || currentMode == Charting) && FlxG.sound.music != null && FlxG.sound.music.length > 0;
+  }
+
+  function updateProgress():Void
+  {
+    if (progressTrack == null) return;
+
+    var available:Bool = progressAvailable();
+
+    progressTrack.visible = available;
+    progressFill.visible = available;
+    progressText.visible = available;
+
+    if (!available) return;
+
+    var length:Float = FlxG.sound.music.length;
+    var position:Float = Math.min(length, Math.max(0, Conductor.instance.songPosition - Conductor.instance.combinedOffset));
+
+    progressFill.scale.x = position / length;
+    progressText.text = formatTime(position) + ' / ' + formatTime(length);
+  }
+
+  /**
+   * Place the accent bar and glow next to the selected entry.
+   */
+  function buildSelectionMarker():Void
+  {
+    #if !FEATURE_TOUCH_CONTROLS
+    if (menuEntryText == null || menuEntryText.length == 0) return;
+
+    var margin:Float = Math.max(90, funkin.ui.FullScreenScaleMode.gameNotchSize.x);
+    var entryHeight:Float = SELECTION_HEIGHT;
+    var top:Float = camera.height * 0.48;
+
+    if (selectionGlow == null)
+    {
+      selectionGlow = FlxGradient.createGradientFlxSprite(520, Std.int(entryHeight) + 16, [0x5533CCFF, 0x0033CCFF], 1, 0);
+      selectionGlow.scrollFactor.set(0, 0);
+      selectionGlow.alpha = 0;
+      insert(members.indexOf(menuEntryText), selectionGlow);
+
+      selectionBar = new FlxSprite();
+      selectionBar.makeGraphic(8, Std.int(entryHeight), ACCENT_COLOR);
+      selectionBar.scrollFactor.set(0, 0);
+      selectionBar.alpha = 0;
+      insert(members.indexOf(menuEntryText), selectionBar);
+    }
+
+    selectionGlow.setPosition(margin - 34, top - 8);
+    selectionBar.setPosition(margin - 28, top);
+    #end
+  }
+
+  function pulseSelectionMarker():Void
+  {
+    if (selectionBar == null || justOpened) return;
+
+    FlxTween.cancelTweensOf(selectionBar.scale);
+    selectionBar.scale.y = 0.4;
+    FlxTween.tween(selectionBar.scale, {y: 1}, 0.25, {ease: FlxEase.backOut});
+
+    FlxTween.cancelTweensOf(selectionGlow);
+    selectionGlow.alpha = 0.2;
+    FlxTween.tween(selectionGlow, {alpha: 1}, 0.25, {ease: FlxEase.quartOut});
   }
 
   var charterFadeTween:Null<FlxTween> = null;
@@ -679,6 +854,8 @@ class PauseSubState extends MusicBeatSubState
    */
   function transitionIn():Void
   {
+    fadeExtras(1, 0.6, 0.35);
+
     FlxTween.tween(background, {
       alpha: 0.6
     }, 0.8, {
@@ -722,6 +899,67 @@ class PauseSubState extends MusicBeatSubState
     #else
     transitionMetadataIn();
     #end
+  }
+
+  /**
+   * Fade the decorations in or out.
+   * @param target The target opacity multiplier, 1 is visible and 0 is hidden.
+   * @param seconds How long the fade takes.
+   * @param delay How long to wait before it starts.
+   */
+  function fadeExtras(target:Float, seconds:Float, delay:Float = 0):Void
+  {
+    var extras:Array<{sprite:Null<FlxSprite>, opacity:Float}> = [
+      {sprite: menuShade, opacity: 1},
+      {sprite: selectionGlow, opacity: 1},
+      {sprite: selectionBar, opacity: 1},
+      {sprite: metadataCard, opacity: 0.55},
+      {sprite: metadataLine, opacity: 1},
+      {sprite: progressTrack, opacity: 0.5},
+      {sprite: progressFill, opacity: 1},
+      {sprite: progressText, opacity: 0.85}
+    ];
+
+    for (extra in extras)
+    {
+      if (extra.sprite == null) continue;
+
+      FlxTween.cancelTweensOf(extra.sprite);
+      FlxTween.tween(extra.sprite, {alpha: extra.opacity * target}, seconds, {
+        ease: target > 0 ? FlxEase.quartOut : FlxEase.quadIn,
+        startDelay: delay
+      });
+    }
+  }
+
+  /**
+   * Fade the whole menu out, then run the callback.
+   */
+  function playOutro(done:Void->Void):Void
+  {
+    allowInput = false;
+
+    FlxTween.cancelTweensOf(background);
+    FlxTween.tween(background, {alpha: 0}, OUTRO_SECONDS, {ease: FlxEase.quadIn});
+
+    fadeExtras(0, OUTRO_SECONDS);
+
+    if (menuEntryText != null)
+    {
+      for (text in menuEntryText.members)
+      {
+        FlxTween.cancelTweensOf(text);
+        FlxTween.tween(text, {alpha: 0}, OUTRO_SECONDS, {ease: FlxEase.quadIn});
+      }
+    }
+
+    for (child in metadata.members)
+    {
+      FlxTween.cancelTweensOf(child);
+      FlxTween.tween(child, {alpha: 0}, OUTRO_SECONDS, {ease: FlxEase.quadIn});
+    }
+
+    new FlxTimer().start(OUTRO_SECONDS, (_) -> done());
   }
 
   function transitionMetadataIn():Void
@@ -877,6 +1115,11 @@ class PauseSubState extends MusicBeatSubState
       metadata.visible = visible;
       menuEntryText.visible = visible;
       background.visible = visible;
+
+      for (extra in [menuShade, selectionGlow, selectionBar, metadataCard, metadataLine, progressTrack, progressFill, progressText])
+      {
+        if (extra != null) extra.visible = visible;
+      }
       this.bgColor = visible ? 0x99000000 : 0x00000000; // 60% or fully transparent black
     }
     #end
@@ -902,7 +1145,11 @@ class PauseSubState extends MusicBeatSubState
       if (currentEntry >= currentMenuEntries.length) currentEntry = 0;
     }
 
-    if (currentEntry != prevEntry) FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+    if (currentEntry != prevEntry)
+    {
+      FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+      pulseSelectionMarker();
+    }
 
     for (entryIndex in 0...currentMenuEntries.length)
     {
@@ -958,6 +1205,7 @@ class PauseSubState extends MusicBeatSubState
     resetSelection();
     chooseMenuEntries();
     clearAndAddMenuEntries();
+    buildSelectionMarker();
     updateMetadataText();
     changeSelection();
   }
@@ -1092,6 +1340,8 @@ class PauseSubState extends MusicBeatSubState
   {
     metadataPractice.visible = PlayState.instance?.isPracticeMode ?? false;
 
+    if (metadataCard != null) metadataCard.scale.y = (((metadataPractice.visible ? 5 : 4) * CARD_LINE_HEIGHT) + 22) / ((5 * CARD_LINE_HEIGHT) + 22);
+
     #if FEATURE_TOUCH_CONTROLS
     if (metadata.members[0].y != camera.height - 185 && metadataPractice.visible)
     {
@@ -1130,7 +1380,13 @@ class PauseSubState extends MusicBeatSubState
     #if FEATURE_MOBILE_ADVERTISEMENTS
     AdMobUtil.removeBanner();
     #end
-    state.close();
+    if (!state.allowInput)
+    {
+      state.close();
+      return;
+    }
+
+    state.playOutro(state.close);
   }
 
   /**
