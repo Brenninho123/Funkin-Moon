@@ -29,6 +29,14 @@ These work on the selected notes and each one is a single undo step.
 
 Notes changed by these tools fade in when they are redrawn, which makes it easy to see what moved. Each tool tells you when nothing was selected or nothing changed.
 
+## Debug menu
+
+The debug menu now uses HaxeUI. It opens with a short intro animation (the dim fades in, the panel slides up and its parts appear one after another) and fades out when you leave. Every editor and tool is a row with a short description. Type to filter the list, use Up and Down (or the gamepad D-pad) to pick, Enter or a click to open and Esc to close. On mobile, tap a row or swipe down to go back.
+
+## Animation editor
+
+The animation editor now uses HaxeUI and has playback and frame stepping, undo and redo, character settings, copy and mirror tools for offsets, an onion skin, a check for missing animations and saving into a mod. See [ANIMATION_EDITOR.md](ANIMATION_EDITOR.md).
+
 ## Music editor
 
 The music editor was rebuilt with the same approach as the camera editor and uses HaxeUI like the modchart editor: menus, a properties panel, undo and redo, a zoomable timeline with a waveform, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).
