@@ -1,6 +1,5 @@
 package funkin.ui.debug;
 
-#if !mobile
 import openfl.text.TextField;
 import openfl.text.TextFieldType;
 import openfl.text.TextFormat;
@@ -64,4 +63,3 @@ class EditorText
     }
   }
 }
-#end

@@ -45,6 +45,8 @@ import funkin.play.components.Subtitles;
 import funkin.play.cutscene.dialogue.Conversation;
 import funkin.play.cutscene.VideoCutscene;
 import funkin.play.notes.NoteDirection;
+import funkin.play.modcharts.ModchartLoader;
+import funkin.play.modcharts.ModchartPlayer;
 import funkin.play.notes.notekind.NoteKindManager;
 import funkin.play.notes.notekind.NoteKind;
 import funkin.play.notes.NoteSprite;
@@ -630,6 +632,8 @@ class PlayState extends MusicBeatSubState
    */
   public var camHUD:FunkinCamera;
 
+  public var modchart:Null<ModchartPlayer> = null;
+
   /**
    * The camera which contains, and controls visibility of, the stage and characters.
    */
@@ -941,6 +945,7 @@ class PlayState extends MusicBeatSubState
       initMinimalMode();
     }
     initStrumlines();
+    initModchart();
     initPopups();
 
     #if mobile
@@ -1205,7 +1210,9 @@ class PlayState extends MusicBeatSubState
 
     try
     {
+      restoreModchart();
       updatePlayState(elapsed);
+      applyModchart();
     }
     catch (e:Dynamic)
     {
@@ -1246,6 +1253,31 @@ class PlayState extends MusicBeatSubState
     {
       handleCriticalFailure(e);
     }
+  }
+
+  function initModchart():Void
+  {
+    modchart = null;
+
+    if (!Preferences.modcharts || currentSong == null) return;
+
+    var document = ModchartLoader.load(currentSong.id);
+
+    if (document == null || document.events.length == 0) return;
+
+    modchart = new ModchartPlayer(document);
+    modchart.setCamera(funkin.play.modcharts.ModchartDefs.TARGET_HUD, camHUD);
+    modchart.setCamera(funkin.play.modcharts.ModchartDefs.TARGET_GAME, camGame);
+  }
+
+  function restoreModchart():Void
+  {
+    if (modchart != null) modchart.restore();
+  }
+
+  function applyModchart():Void
+  {
+    if (modchart != null) modchart.apply(Conductor.instance.songPosition, playerStrumline, opponentStrumline);
   }
 
   function updatePlayState(elapsed:Float):Void
@@ -4390,6 +4422,9 @@ class PlayState extends MusicBeatSubState
   {
     if (cleanedUp) return;
     cleanedUp = true;
+
+    restoreModchart();
+    modchart = null;
 
     #if FEATURE_ONLINE
     if (isMultiplayerHost && MultiplayerServer.instance != null)

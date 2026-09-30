@@ -140,6 +140,7 @@ class Save implements ConsoleClass implements ISerializable
         debugDisplayBGOpacity: 50,
         debugDisplayOffsetX: 10,
         subtitles: true,
+        modcharts: true,
         hapticsMode: 'All',
         hapticsIntensityMultiplier: 1,
         controlsScheme: FunkinHitboxControlSchemes.Arrows,
@@ -147,6 +148,7 @@ class Save implements ConsoleClass implements ISerializable
         vsyncMode: 'Off',
         strumlineBackgroundOpacity: 0,
         autoFullscreen: false,
+        displayRatio: '21:9',
         globalOffset: 0,
         audioVisualOffset: 0,
         unlockedFramerate: false,
@@ -1489,6 +1491,12 @@ typedef SaveDataOptions =
   var subtitles:Bool;
 
   /**
+   * If enabled, songs that ship a modchart apply it during gameplay.
+   * @default `true`
+   */
+  var modcharts:Bool;
+
+  /**
    * If enabled, haptic feedback will be enabled.
    * @default `All`
    */
@@ -1530,6 +1538,12 @@ typedef SaveDataOptions =
    * @default `true`
    */
   var autoFullscreen:Bool;
+
+  /**
+   * The widest screen ratio the game stretches to on desktop.
+   * @default `21:9`
+   */
+  var displayRatio:String;
 
   /**
    * Offset the user's inputs by this many ms.

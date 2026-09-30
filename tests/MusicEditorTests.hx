@@ -227,6 +227,37 @@ class MusicEditorTests
     check('compound undoes in reverse', work.points.length == count && work.toJson() == before);
     check('labels are reported', history.nextRedoLabel() == 'Two points');
 
+    Sys.println('move merging');
+
+    var mover:MusicEditorDocument = newDocument();
+    var mergeHistory:MusicEditorHistory = new MusicEditorHistory();
+    var movable:MusicPoint = mover.points[1];
+    var startTime:Float = movable.time;
+    var stamp:Float = 0.0;
+
+    mergeHistory.clock = () -> stamp;
+    mergeHistory.perform(new MovePointCommand(movable, startTime, startTime + 1), mover);
+    stamp += 0.1;
+    mergeHistory.perform(new MovePointCommand(movable, startTime + 1, startTime + 2), mover);
+    stamp += 0.1;
+    mergeHistory.perform(new MovePointCommand(movable, startTime + 2, startTime + 3), mover);
+    check('nudges merge into one history entry', mergeHistory.undoCount == 1);
+    mergeHistory.undo(mover);
+    check('undo returns to the original time', movable.time == startTime);
+    mergeHistory.redo(mover);
+    check('redo applies the last nudge', movable.time == startTime + 3);
+
+    Sys.println('typed input');
+
+    check('bpm text', MusicEditorDocument.parseBpmText(' 128.5 ') == 128.5 && MusicEditorDocument.parseBpmText('abc') == null && MusicEditorDocument.parseBpmText('0') == null && MusicEditorDocument.parseBpmText('1000') == null);
+    var signature = MusicEditorDocument.parseSignatureText('7 / 8');
+    check('signature text', signature != null && signature.num == 7 && signature.den == 8 && MusicEditorDocument.parseSignatureText('4') == null && MusicEditorDocument.parseSignatureText('0/4') == null);
+    check('signature denominator snaps to a power of two', MusicEditorDocument.parseSignatureText('4/5').den == 8);
+    check('time text as seconds', MusicEditorDocument.parseTimeText('12.5') == 12500);
+    check('time text as clock', MusicEditorDocument.parseTimeText('1:05.5') == 65500);
+    check('time text as milliseconds', MusicEditorDocument.parseTimeText('750ms') == 750);
+    check('time text rejects junk', MusicEditorDocument.parseTimeText('1:2:3') == null && MusicEditorDocument.parseTimeText('x') == null && MusicEditorDocument.parseTimeText('') == null);
+
     Sys.println('metadata export');
 
     var exported:MusicEditorDocument = newDocument();

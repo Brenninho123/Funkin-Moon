@@ -476,6 +476,27 @@ class Preferences
     return value;
   }
 
+  public static var displayRatio(get, set):String;
+
+  static function get_displayRatio():String
+  {
+    return Save?.instance?.options?.displayRatio ?? '21:9';
+  }
+
+  static function set_displayRatio(value:String):String
+  {
+    var save:Save = Save.instance;
+
+    save.options.displayRatio = value;
+    commit('displayRatio');
+
+    #if desktop
+    funkin.ui.FullScreenScaleMode.applyDisplayRatio(value);
+    #end
+
+    return value;
+  }
+
   public static var globalOffset(get, set):Int;
 
   static function get_globalOffset():Int
@@ -744,6 +765,23 @@ class Preferences
     Main.debugDisplay.setOffsetX(value);
   }
 
+  public static var modcharts(get, set):Bool;
+
+  static function get_modcharts():Bool
+  {
+    return Save?.instance?.options?.modcharts ?? true;
+  }
+
+  static function set_modcharts(value:Bool):Bool
+  {
+    var save:Save = Save.instance;
+
+    save.options.modcharts = value;
+    commit('modcharts');
+
+    return value;
+  }
+
   public static var subtitles(get, set):Bool;
 
   static function get_subtitles():Bool
@@ -857,6 +895,8 @@ class Preferences
     hapticsIntensityMultiplier = 1;
     autoPause = true;
     autoFullscreen = true;
+    displayRatio = '21:9';
+    modcharts = true;
     globalOffset = 0;
     vsyncMode = lime.ui.WindowVSyncMode.OFF;
     unlockedFramerate = false;

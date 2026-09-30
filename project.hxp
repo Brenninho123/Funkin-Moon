@@ -144,6 +144,7 @@ class Project extends HXProject
   static final FEATURE_CAMERA_EDITOR:FeatureFlag = "FEATURE_CAMERA_EDITOR";
 
   static final FEATURE_MUSIC_EDITOR:FeatureFlag = "FEATURE_MUSIC_EDITOR";
+  static final FEATURE_MODCHART_EDITOR:FeatureFlag = "FEATURE_MODCHART_EDITOR";
   static final FEATURE_TOUCH_CONTROLS:FeatureFlag = "FEATURE_TOUCH_CONTROLS";
   static final FEATURE_TOUCH_HERE_TO_PLAY:FeatureFlag = "FEATURE_TOUCH_HERE_TO_PLAY";
   static final FEATURE_MACOS_GESTURES:FeatureFlag = "FEATURE_MACOS_GESTURES";
@@ -507,10 +508,11 @@ class Project extends HXProject
     FEATURE_STAGE_EDITOR.apply(this, editorsEnabled);
     FEATURE_CAMERA_EDITOR.apply(this, editorsEnabled);
     FEATURE_MUSIC_EDITOR.apply(this, editorsEnabled);
+    FEATURE_MODCHART_EDITOR.apply(this, editorsEnabled);
     FEATURE_HAXEUI.apply(
       this, FEATURE_ANIMATION_EDITOR.isEnabled(
         this
-      ) || FEATURE_CHART_EDITOR.isEnabled(this) || FEATURE_STAGE_EDITOR.isEnabled(this) || FEATURE_CAMERA_EDITOR.isEnabled(this)
+      ) || FEATURE_CHART_EDITOR.isEnabled(this) || FEATURE_STAGE_EDITOR.isEnabled(this) || FEATURE_CAMERA_EDITOR.isEnabled(this) || FEATURE_MODCHART_EDITOR.isEnabled(this)
     );
 
     FEATURE_LAG_ADJUSTMENT.apply(this, !isWeb());
@@ -713,6 +715,11 @@ class Project extends HXProject
       if (FEATURE_CAMERA_EDITOR.isEnabled(this))
       {
         addHaxeMacro("include('funkin.ui.debug.cameraeditor')");
+      }
+
+      if (FEATURE_MODCHART_EDITOR.isEnabled(this))
+      {
+        addHaxeMacro("include('funkin.ui.debug.modcharteditor')");
       }
 
       addHaxeMacro("include('funkin.ui.haxeui')");

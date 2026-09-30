@@ -3,6 +3,8 @@ package funkin.ui.debug.music;
 import flixel.FlxSprite;
 import flixel.group.FlxGroup;
 import flixel.text.FlxText;
+import funkin.audio.waveform.WaveformData;
+import openfl.geom.Rectangle;
 import funkin.ui.debug.music.MusicEditorDocument.MusicGridLine;
 import funkin.ui.debug.music.MusicEditorDocument.MusicPoint;
 
@@ -17,7 +19,6 @@ class MusicEditorTimeline extends FlxGroup
   static inline var MARKER_LABEL_POOL:Int = 30;
   static inline var ZOOM_SMOOTHING:Float = 16.0;
   static inline var FOLLOW_SMOOTHING:Float = 9.0;
-  static inline var MARKER_HIT_RADIUS:Float = 9.0;
   static final NICE_INTERVALS:Array<Float> = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000];
 
   public var left(default, null):Float;
@@ -27,6 +28,7 @@ class MusicEditorTimeline extends FlxGroup
   public var viewStartMs(default, null):Float = 0.0;
   public var msPerPixel(default, null):Float = 1.0;
   public var lengthMs(default, null):Float = 1.0;
+  public var hitRadius:Float = 9.0;
 
   var targetMsPerPixel:Float = 1.0;
   var pivotMs:Float = 0.0;
@@ -38,6 +40,11 @@ class MusicEditorTimeline extends FlxGroup
   var background:FlxSprite;
   var rulerBackground:FlxSprite;
   var laneBackground:FlxSprite;
+  var waveSprite:FlxSprite;
+  var waveform:Null<WaveformData> = null;
+  var loopStart:Null<Float> = null;
+  var loopEnd:Null<Float> = null;
+  var waveRect:Rectangle = new Rectangle();
   var playhead:FlxSprite;
   var playheadCap:FlxSprite;
   var rects:Array<FlxSprite> = [];
@@ -61,6 +68,14 @@ class MusicEditorTimeline extends FlxGroup
     add(background);
     add(rulerBackground);
     add(laneBackground);
+
+    var waveHeight:Int = Std.int(height - RULER_HEIGHT - MARKER_LANE_HEIGHT);
+
+    waveSprite = new FlxSprite(left, top + RULER_HEIGHT);
+    waveSprite.makeGraphic(Std.int(width), waveHeight, 0x00000000, true);
+    waveSprite.scrollFactor.set(0, 0);
+    waveSprite.visible = false;
+    add(waveSprite);
 
     for (i in 0...RECT_POOL)
     {
@@ -128,6 +143,20 @@ class MusicEditorTimeline extends FlxGroup
     rect.color = color;
     rect.alpha = alpha;
     rect.visible = true;
+  }
+
+  public function setWaveform(data:Null<WaveformData>):Void
+  {
+    waveform = data;
+    waveSprite.visible = data != null;
+    layoutDirty = true;
+  }
+
+  public function setLoop(start:Null<Float>, end:Null<Float>):Void
+  {
+    loopStart = start;
+    loopEnd = end;
+    layoutDirty = true;
   }
 
   public function maxMsPerPixel():Float
@@ -277,7 +306,7 @@ class MusicEditorTimeline extends FlxGroup
   public function markerAt(x:Float, document:MusicEditorDocument):Int
   {
     var nearest:Int = -1;
-    var best:Float = MARKER_HIT_RADIUS;
+    var best:Float = hitRadius;
 
     for (index in 0...document.points.length)
     {
@@ -313,9 +342,65 @@ class MusicEditorTimeline extends FlxGroup
     var gridBottom:Float = top + height - MARKER_LANE_HEIGHT;
     var gridHeight:Float = gridBottom - gridTop;
 
+    drawWaveform();
     drawRuler(endMs);
+    drawLoop(gridTop, gridHeight);
     drawGrid(document, endMs, subdivisions, gridTop, gridHeight);
     drawMarkers(document, selectedIndex, previewIndex, previewTime, gridTop);
+  }
+
+  function drawWaveform():Void
+  {
+    if (waveform == null) return;
+
+    var data:WaveformData = waveform;
+    var channel = data.channel(0);
+    var bitmap = waveSprite.pixels;
+    var columns:Int = Std.int(width);
+    var middle:Float = bitmap.height / 2;
+    var scale:Float = middle / (data.maxSampleValue() / 2);
+    var pointsPerMs:Float = data.pointsPerSecond() / 1000.0;
+
+    bitmap.lock();
+    waveRect.setTo(0, 0, bitmap.width, bitmap.height);
+    bitmap.fillRect(waveRect, 0x00000000);
+
+    for (column in 0...columns)
+    {
+      var startPoint:Int = Std.int((viewStartMs + column * msPerPixel) * pointsPerMs);
+      var endPoint:Int = Std.int((viewStartMs + (column + 1) * msPerPixel) * pointsPerMs);
+
+      if (startPoint >= data.length) break;
+
+      if (endPoint <= startPoint) endPoint = startPoint + 1;
+      if (endPoint > data.length) endPoint = data.length;
+
+      var low:Int = channel.minSampleRange(startPoint, endPoint);
+      var high:Int = channel.maxSampleRange(startPoint, endPoint);
+      var yTop:Float = middle - high * scale;
+      var bottom:Float = middle - low * scale;
+
+      waveRect.setTo(column, yTop, 1, Math.max(1.0, bottom - yTop));
+      bitmap.fillRect(waveRect, 0xB0356A9A);
+    }
+
+    bitmap.unlock();
+    waveSprite.pixels = bitmap;
+  }
+
+  function drawLoop(gridTop:Float, gridHeight:Float):Void
+  {
+    if (loopStart == null && loopEnd == null) return;
+
+    var from:Float = loopStart != null ? timeToX(loopStart) : left;
+    var to:Float = loopEnd != null ? timeToX(loopEnd) : left + width;
+    var clippedFrom:Float = Math.max(left, from);
+    var clippedTo:Float = Math.min(left + width, to);
+
+    if (clippedTo > clippedFrom) useRect(clippedFrom, gridTop, clippedTo - clippedFrom, gridHeight, 0xFF2ECC71, 0.14);
+
+    if (loopStart != null && from >= left && from <= left + width) useRect(from, gridTop, 2, gridHeight, 0xFF2ECC71, 0.9);
+    if (loopEnd != null && to >= left && to <= left + width) useRect(to - 1, gridTop, 2, gridHeight, 0xFFE67E22, 0.9);
   }
 
   function drawRuler(endMs:Float):Void

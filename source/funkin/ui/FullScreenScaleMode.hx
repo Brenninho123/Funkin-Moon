@@ -16,6 +16,8 @@ import extension.androidtools.os.Build;
 import extension.androidtools.Tools;
 #end
 
+using StringTools;
+
 class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
 {
   /**
@@ -124,6 +126,12 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
     super();
 
     instance = this;
+
+    #if desktop
+    var savedRatio:FlxPoint = parseDisplayRatio(funkin.Preferences.displayRatio);
+    maxAspectRatio.copyFrom(savedRatio);
+    savedRatio.put();
+    #end
 
     // Required so we can check on which axis the game is wide on.
     if (FlxG.stage != null) updateGameSize(FlxG.stage.stageWidth, FlxG.stage.stageHeight);
@@ -531,6 +539,40 @@ class FullScreenScaleMode extends flixel.system.scaleModes.BaseScaleMode
         wideScale.set(FlxG.width / FlxG.initialWidth, 1);
       }
     }
+  }
+
+  public static function parseDisplayRatio(value:Null<String>):FlxPoint
+  {
+    var normalized:String = value == null ? '21:9' : value.trim();
+
+    if (normalized == 'Auto') return FlxPoint.get(64, 9);
+
+    var parts:Array<String> = normalized.split(':');
+
+    if (parts.length == 2)
+    {
+      var width:Float = Std.parseFloat(parts[0]);
+      var height:Float = Std.parseFloat(parts[1]);
+
+      if (!Math.isNaN(width) && !Math.isNaN(height) && width > 0 && height > 0 && width >= height) return FlxPoint.get(width, height);
+    }
+
+    return FlxPoint.get(21, 9);
+  }
+
+  public static function applyDisplayRatio(value:String):Void
+  {
+    var ratio:FlxPoint = parseDisplayRatio(value);
+
+    maxAspectRatio.copyFrom(ratio);
+    ratio.put();
+
+    if (instance == null || FlxG.stage == null) return;
+
+    mustAwait = false;
+    instance.onMeasure(FlxG.stage.stageWidth, FlxG.stage.stageHeight);
+
+    FlxG.signals.gameResized.dispatch(FlxG.stage.stageWidth, FlxG.stage.stageHeight);
   }
 
   function updateSupported(Width:Int, Height:Int):Bool

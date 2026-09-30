@@ -211,6 +211,10 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     {
       Preferences.zoomCamera = value;
     }, Preferences.zoomCamera);
+    createPrefItemCheckbox('Modcharts', 'When enabled, songs with a modchart move and rotate the strumlines and cameras. Turn it off if the movement bothers you.', function(value:Bool):Void
+    {
+      Preferences.modcharts = value;
+    }, Preferences.modcharts);
     createPrefItemCheckbox('Subtitles', 'When enabled, subtitles appear during some songs and cutscenes.', function(value:Bool):Void
     {
       Preferences.subtitles = value;
@@ -242,6 +246,19 @@ class PreferencesMenu extends Page<OptionsState.OptionsMenuPageName>
     {
       Preferences.autoFullscreen = value;
     }, Preferences.autoFullscreen);
+    #end
+
+    #if desktop
+    createPrefItemEnum('Screen Ratio', 'The widest screen shape the game stretches to. Auto fills any monitor, including ultrawide ones. 16:9 keeps black bars.', [
+      '16:9' => '16:9',
+      '20:9' => '20:9',
+      '21:9' => '21:9',
+      '32:9' => '32:9',
+      'Auto' => 'Auto'
+    ], function(key:String, value:String):Void
+    {
+      Preferences.displayRatio = value;
+    }, Preferences.displayRatio);
     #end
 
     #if !(mobile || web)

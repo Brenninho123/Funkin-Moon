@@ -1,6 +1,5 @@
 package funkin.ui.debug;
 
-#if !mobile
 import flixel.FlxSprite;
 import flixel.group.FlxSpriteGroup;
 import flixel.text.FlxText;
@@ -9,11 +8,15 @@ import flixel.util.FlxColor;
 class EditorButton extends FlxSpriteGroup
 {
   public var onClick:Null<Void->Void> = null;
+  public var triggerOnRelease:Bool = false;
   public var selected(default, set):Bool = false;
 
   var background:FlxSprite;
   var label:FlxText;
   var idleColor:FlxColor;
+  var pressing:Bool = false;
+  var dragged:Bool = false;
+  var pressStartY:Float = 0.0;
 
   public function new(x:Float, y:Float, width:Int, height:Int, text:String, alignLeft:Bool = false, idleColor:FlxColor = 0xFF2A2F38)
   {
@@ -53,7 +56,26 @@ class EditorButton extends FlxSpriteGroup
 
     background.color = selected ? 0xFF3B6EA8 : (hovered ? 0xFF3A414D : idleColor);
 
-    if (hovered && FlxG.mouse.justPressed && onClick != null) onClick();
+    if (!triggerOnRelease)
+    {
+      if (hovered && FlxG.mouse.justPressed && onClick != null) onClick();
+      return;
+    }
+
+    if (hovered && FlxG.mouse.justPressed)
+    {
+      pressing = true;
+      dragged = false;
+      pressStartY = FlxG.mouse.viewY;
+    }
+
+    if (pressing && FlxG.mouse.pressed && Math.abs(FlxG.mouse.viewY - pressStartY) > 12.0) dragged = true;
+
+    if (pressing && FlxG.mouse.justReleased)
+    {
+      pressing = false;
+
+      if (!dragged && hovered && onClick != null) onClick();
+    }
   }
 }
-#end

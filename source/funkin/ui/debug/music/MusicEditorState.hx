@@ -4,11 +4,15 @@ import flixel.FlxSprite;
 import flixel.group.FlxGroup;
 import flixel.text.FlxText;
 import funkin.audio.FunkinSound;
+import funkin.audio.waveform.WaveformDataParser;
 import funkin.data.song.SongData.SongMetadata;
 import funkin.data.song.SongRegistry;
 import funkin.graphics.FunkinCamera;
 import funkin.input.Cursor;
 import funkin.ui.MusicBeatState;
+import funkin.ui.debug.common.EditorTouch;
+import funkin.ui.debug.common.EditorTouchBar;
+import funkin.ui.debug.common.EditorTouchBar.TouchAction;
 import funkin.ui.debug.music.MusicEditorCommands;
 import funkin.ui.debug.music.MusicEditorDocument.MusicPoint;
 import funkin.ui.system.FunkinCosmic;
@@ -36,11 +40,89 @@ class MusicEditorState extends MusicBeatState
   static inline var MAX_BEAT_DOTS:Int = 32;
   static inline var BACKUP_SLOTS:Int = 3;
 
+  static final TOUCH_PAGES:Array<Array<TouchAction>> = [
+    [
+      {id: 'play', label: 'PLAY'},
+      {id: 'add', label: 'ADD'},
+      {id: 'remove', label: 'DELETE'},
+      {id: 'undo', label: 'UNDO'},
+      {id: 'redo', label: 'REDO'},
+      {id: 'save', label: 'SAVE'},
+      {id: 'bpm_up', label: 'BPM +', repeat: true},
+      {id: 'bpm_down', label: 'BPM -', repeat: true},
+      {id: 'num_up', label: 'BEATS +'},
+      {id: 'num_down', label: 'BEATS -'},
+      {id: 'prev_point', label: '< POINT'},
+      {id: 'next_point', label: 'POINT >'},
+      {id: 'step_back', label: '< STEP', repeat: true},
+      {id: 'step_forward', label: 'STEP >', repeat: true},
+      {id: 'tap', label: 'TAP'},
+      {id: 'more', label: 'MORE'}
+    ],
+    [
+      {id: 'zoom_in', label: 'ZOOM +'},
+      {id: 'zoom_out', label: 'ZOOM -'},
+      {id: 'fit', label: 'FIT'},
+      {id: 'snap', label: 'SNAP'},
+      {id: 'snap_finer', label: 'FINER'},
+      {id: 'snap_coarser', label: 'COARSER'},
+      {id: 'metronome', label: 'METRO'},
+      {id: 'rate_down', label: 'SLOWER'},
+      {id: 'rate_up', label: 'FASTER'},
+      {id: 'half', label: 'BPM / 2'},
+      {id: 'double', label: 'BPM x 2'},
+      {id: 'loop_in', label: 'LOOP IN'},
+      {id: 'loop_out', label: 'LOOP OUT'},
+      {id: 'loop_toggle', label: 'LOOP'},
+      {id: 'loop_clear', label: 'NO LOOP'},
+      {id: 'more', label: 'MORE'}
+    ],
+    [
+      {id: 'prompt_bpm', label: 'TYPE BPM'},
+      {id: 'prompt_signature', label: 'TYPE SIG'},
+      {id: 'prompt_time', label: 'JUMP TO'},
+      {id: 'prompt_move', label: 'MOVE TO'},
+      {id: 'nudge_back', label: '< 1 MS', repeat: true},
+      {id: 'nudge_forward', label: '1 MS >', repeat: true},
+      {id: 'open', label: 'OPEN'},
+      {id: 'export', label: 'EXPORT'},
+      {id: 'import', label: 'IMPORT'},
+      {id: 'copy', label: 'COPY'},
+      {id: 'paste', label: 'PASTE'},
+      {id: 'backup', label: 'BACKUP'},
+      {id: 'autosave', label: 'AUTOSAVE'},
+      {id: 'help', label: 'HELP'},
+      {id: 'exit', label: 'EXIT'},
+      {id: 'more', label: 'MORE'}
+    ]
+  ];
+
+  static final KEYPAD_ACTIONS:Array<TouchAction> = [
+    {id: 'key:7', label: '7'},
+    {id: 'key:8', label: '8'},
+    {id: 'key:9', label: '9'},
+    {id: 'key:del', label: 'DEL', repeat: true},
+    {id: 'key:4', label: '4'},
+    {id: 'key:5', label: '5'},
+    {id: 'key:6', label: '6'},
+    {id: 'key:.', label: '.'},
+    {id: 'key:1', label: '1'},
+    {id: 'key:2', label: '2'},
+    {id: 'key:3', label: '3'},
+    {id: 'key::', label: ':'},
+    {id: 'key:0', label: '0'},
+    {id: 'key:/', label: '/'},
+    {id: 'key:ms', label: 'MS'},
+    {id: 'key:ok', label: 'OK'},
+    {id: 'key:cancel', label: 'CANCEL'}
+  ];
+
   static final SNAP_OPTIONS:Array<Int> = [1, 2, 3, 4, 6, 8, 12, 16];
   static final HELP_LINES:Array<String> = [
     'PLAYBACK',
     '  Space           play / pause',
     '  Left / Right    step one grid line  (Shift: one measure)',
+    '  I / O / L       loop start / loop end / loop on-off  (Shift+L clears)',
     '  Home / End      start / end of the song',
     '  - / +           playback speed',
     '  M               metronome',
@@ -52,6 +134,10 @@ class MusicEditorState extends MusicBeatState
     '  Up / Down       BPM +-1   (Shift +-5, Ctrl +-0.1)',
     '  Alt+Up / Down   numerator     (Alt+Shift: denominator)',
     '  T               tap tempo',
+    '  H / D           halve / double the BPM',
+    '  B / N           type a BPM / a time signature',
+    '  J               jump to a typed time  (Shift+J: move the point)',
+    '  Alt+Left/Right  nudge the point 1 ms  (Shift: 10 ms)',
     '  Drag marker     move a point  (Right click: remove)',
     '  Double click    add a point in the marker lane',
     '',
@@ -116,6 +202,22 @@ class MusicEditorState extends MusicBeatState
   var exitTimer:Float = 0.0;
   var backupSlot:Int = 0;
 
+  var touchBar:EditorTouchBar;
+  var keypadBar:EditorTouchBar;
+  var touchPage:Int = 0;
+  var overlayAge:Float = 0.0;
+  var lastTouchEnabled:Bool = false;
+
+  var loopStart:Null<Float> = null;
+  var loopEnd:Null<Float> = null;
+  var loopEnabled:Bool = false;
+
+  var promptGroup:FlxGroup;
+  var promptTitle:FlxText;
+  var promptText:FlxText;
+  var promptKind:String = '';
+  var promptBuffer:String = '';
+
   var dragIndex:Int = -1;
   var dragPoint:Null<MusicPoint> = null;
   var dragOriginalTime:Float = 0.0;
@@ -146,6 +248,10 @@ class MusicEditorState extends MusicBeatState
     editorCam = new FunkinCamera('musicEditor');
     FlxG.cameras.reset(editorCam);
     FlxG.camera.bgColor = 0xFF0E1013;
+    editorCam.x = Math.max(0.0, Math.floor((FlxG.width - 1280) / 2));
+    editorCam.y = Math.max(0.0, Math.floor((FlxG.height - 720) / 2));
+    editorCam.width = 1280;
+    editorCam.height = 720;
 
     mountStorage();
 
@@ -159,8 +265,11 @@ class MusicEditorState extends MusicBeatState
     timeline = new MusicEditorTimeline(20, 548, 1240, 148);
     add(timeline);
 
+    buildTouch();
+
     buildHelp();
     buildPicker();
+    buildPrompt();
 
     toasts = new MusicEditorToasts(640, 496);
     add(toasts);
@@ -289,6 +398,152 @@ class MusicEditorState extends MusicBeatState
     add(pickerGroup);
   }
 
+  function buildTouch():Void
+  {
+    touchBar = new EditorTouchBar(editorCam);
+    touchBar.originX = editorCam.x;
+    touchBar.originY = editorCam.y;
+    touchBar.onAction = runAction;
+    add(touchBar);
+
+    layoutTouchPage();
+
+    keypadBar = new EditorTouchBar(editorCam);
+    keypadBar.originX = editorCam.x;
+    keypadBar.originY = editorCam.y;
+    keypadBar.onAction = runAction;
+    keypadBar.layout(KEYPAD_ACTIONS, 340, 450, 600, 4, 44.0);
+    keypadBar.visible = false;
+    add(keypadBar);
+
+    applyTouchMode();
+  }
+
+  function layoutTouchPage():Void
+  {
+    touchBar.layout(TOUCH_PAGES[touchPage], 786, 366, 470, 4, 38.0, 5.0);
+  }
+
+  function applyTouchMode():Void
+  {
+    lastTouchEnabled = EditorTouch.enabled;
+
+    timeline.hitRadius = lastTouchEnabled ? 24.0 : 9.0;
+    touchBar.exists = lastTouchEnabled;
+  }
+
+  function overlayVisible():Bool
+  {
+    return helpGroup.visible || pickerGroup.visible || promptGroup.visible;
+  }
+
+  function nextTouchPage():Void
+  {
+    touchPage = (touchPage + 1) % TOUCH_PAGES.length;
+    layoutTouchPage();
+  }
+
+  public function runAction(id:String):Void
+  {
+    if (StringTools.startsWith(id, 'key:'))
+    {
+      runKeypad(id.substr(4));
+      return;
+    }
+
+    if (!songLoaded && id != 'more' && id != 'exit' && id != 'help') return;
+
+    switch (id)
+    {
+      case 'play': togglePlayback();
+      case 'add': addPointAt(currentTime());
+      case 'remove': removeSelected();
+      case 'undo': undo();
+      case 'redo': redo();
+      case 'save': saveDocument();
+      case 'bpm_up': changeBpm(1.0);
+      case 'bpm_down': changeBpm(-1.0);
+      case 'num_up': changeNumerator(1);
+      case 'num_down': changeNumerator(-1);
+      case 'prev_point':
+        selectRelative(-1);
+        seekTo(selected.time);
+      case 'next_point':
+        selectRelative(1);
+        seekTo(selected.time);
+      case 'step_back': seekTo(document.stepGrid(currentTime(), -1, subdivisions));
+      case 'step_forward': seekTo(document.stepGrid(currentTime(), 1, subdivisions));
+      case 'tap': tapTempo();
+      case 'more': nextTouchPage();
+      case 'zoom_in': timeline.zoomAt(0.8, timeline.timeToX(currentTime()));
+      case 'zoom_out': timeline.zoomAt(1.25, timeline.timeToX(currentTime()));
+      case 'fit': timeline.fitToSong();
+      case 'snap': toggleSnap();
+      case 'snap_finer': changeSnap(1);
+      case 'snap_coarser': changeSnap(-1);
+      case 'metronome': toggleMetronome();
+      case 'rate_down': changeRate(-0.25);
+      case 'rate_up': changeRate(0.25);
+      case 'half': changeBpmBy(0.5, 'Halve BPM');
+      case 'double': changeBpmBy(2.0, 'Double BPM');
+      case 'loop_in': setLoopStart();
+      case 'loop_out': setLoopEnd();
+      case 'loop_toggle': toggleLoop();
+      case 'loop_clear': clearLoop();
+      case 'prompt_bpm': openPrompt('bpm');
+      case 'prompt_signature': openPrompt('signature');
+      case 'prompt_time': openPrompt('time');
+      case 'prompt_move': openPrompt('move');
+      case 'nudge_back': nudgeSelected(-1.0);
+      case 'nudge_forward': nudgeSelected(1.0);
+      case 'open': openPicker();
+      case 'export': exportFile();
+      case 'import': importFile();
+      case 'copy': copyToClipboard(false);
+      case 'paste': pasteFromClipboard();
+      case 'backup': loadBackup();
+      case 'autosave': restoreAutosave();
+      case 'help': helpGroup.visible = true;
+      case 'exit': requestExit();
+      default:
+    }
+  }
+
+  function runKeypad(key:String):Void
+  {
+    if (!promptGroup.visible) return;
+
+    switch (key)
+    {
+      case 'del': erasePromptText();
+      case 'ok': submitPrompt();
+      case 'cancel': closePrompt();
+      case 'ms': typePromptText('ms');
+      default: typePromptText(key);
+    }
+  }
+
+  function buildPrompt():Void
+  {
+    promptGroup = new FlxGroup();
+
+    promptGroup.add(solid(0, 0, 1280, 720, 0xFF000000, 0.7));
+    promptGroup.add(solid(340, 250, 600, 190, 0xFF1B1F27));
+
+    promptTitle = label(360, 268, 560, 16, 0xFF39FF7A);
+    promptText = label(360, 320, 560, 36, 0xFFFFFFFF);
+
+    var hint:FlxText = label(360, 400, 560, 12, 0xFF6B7789);
+    hint.text = 'Enter apply   Backspace erase   Esc cancel';
+
+    promptGroup.add(promptTitle);
+    promptGroup.add(promptText);
+    promptGroup.add(hint);
+
+    promptGroup.visible = false;
+    add(promptGroup);
+  }
+
   function saveFileName(id:String):String
   {
     return ~/[^A-Za-z0-9_\-]/g.replace(id, '_') + '.json';
@@ -318,6 +573,11 @@ class MusicEditorState extends MusicBeatState
     tapTimes = [];
     dragPoint = null;
     scrubbing = false;
+    loopStart = null;
+    loopEnd = null;
+    loopEnabled = false;
+    timeline.setLoop(null, null);
+    timeline.setWaveform(null);
 
     var source:String = loadPoints(id);
 
@@ -338,6 +598,7 @@ class MusicEditorState extends MusicBeatState
         timeline.fitToSong(true);
         FlxG.sound.music.pause();
         FlxG.sound.music.pitch = playbackRate;
+        loadWaveform();
         songLoaded = true;
         version++;
       }
@@ -410,6 +671,18 @@ class MusicEditorState extends MusicBeatState
     var savedTime:Float = saved != null && FunkinCosmic.exists(saved) ? FunkinCosmic.getModifiedTime(saved) : 0.0;
 
     if (autoTime > savedTime) toasts.show('An autosave is newer than your file. Ctrl+Shift+R restores it.', MusicEditorToasts.WARNING);
+  }
+
+  function loadWaveform():Void
+  {
+    try
+    {
+      timeline.setWaveform(WaveformDataParser.interpretFlxSound(FlxG.sound.music));
+    }
+    catch (e:Dynamic)
+    {
+      timeline.setWaveform(null);
+    }
   }
 
   function currentTime():Float
@@ -759,6 +1032,30 @@ class MusicEditorState extends MusicBeatState
 
   function updatePicker():Void
   {
+    overlayAge += FlxG.elapsed;
+
+    var tapAccept:Bool = false;
+
+    if (overlayAge > 0.3 && FlxG.mouse.justPressed)
+    {
+      var x:Float = mouseX();
+      var y:Float = mouseY();
+
+      if (x < 420 || x > 860 || y < 60 || y > 660)
+      {
+        pickerGroup.visible = false;
+        return;
+      }
+
+      var row:Int = Std.int((y - 116) / 30);
+
+      if (row >= 0 && row < PICKER_ROWS && pickerOffset + row < pickerIds.length)
+      {
+        pickerIndex = pickerOffset + row;
+        tapAccept = true;
+      }
+    }
+
     if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.F1)
     {
       pickerGroup.visible = false;
@@ -773,7 +1070,7 @@ class MusicEditorState extends MusicBeatState
 
     refreshPicker();
 
-    if (FlxG.keys.justPressed.ENTER && pickerIds.length > 0)
+    if ((FlxG.keys.justPressed.ENTER || tapAccept) && pickerIds.length > 0)
     {
       var chosen:String = pickerIds[pickerIndex];
 
@@ -807,17 +1104,30 @@ class MusicEditorState extends MusicBeatState
 
     if (exitTimer > 0.0) exitTimer -= elapsed;
 
+    updateTouch(elapsed);
+
     if (pickerGroup.visible)
     {
       updatePicker();
       return;
     }
 
-    if (helpGroup.visible)
+    if (promptGroup.visible)
     {
-      if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.F1) helpGroup.visible = false;
+      updatePrompt();
       return;
     }
+
+    if (helpGroup.visible)
+    {
+      overlayAge += elapsed;
+
+      if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.F1 || (overlayAge > 0.3 && FlxG.mouse.justPressed)) helpGroup.visible = false;
+
+      return;
+    }
+
+    overlayAge = 0.0;
 
     handleKeys();
     handleMouse();
@@ -834,8 +1144,65 @@ class MusicEditorState extends MusicBeatState
 
     if (isPlaying()) timeline.follow(time);
 
+    if (loopEnabled && loopEnd != null && isPlaying() && time >= loopEnd) seekTo(loopStart != null ? loopStart : 0.0);
+
     updateBeat(time, elapsed);
     updateView(time);
+  }
+
+  function mouseX():Float
+  {
+    return FlxG.mouse.screenX - editorCam.x;
+  }
+
+  function mouseY():Float
+  {
+    return FlxG.mouse.screenY - editorCam.y;
+  }
+
+  function updateTouch(elapsed:Float):Void
+  {
+    if (FlxG.keys.justPressed.F10) EditorTouch.toggleForced();
+
+    if (EditorTouch.enabled != lastTouchEnabled) applyTouchMode();
+
+    touchBar.visible = EditorTouch.enabled && !overlayVisible();
+
+    if (!EditorTouch.enabled)
+    {
+      keypadBar.visible = false;
+      return;
+    }
+
+    EditorTouch.update(elapsed);
+
+    if (overlayVisible()) return;
+
+    if (EditorTouch.twoFingers)
+    {
+      var centerX:Float = EditorTouch.centerX - editorCam.x;
+
+      if (EditorTouch.pinchRatio != 1.0) timeline.zoomAt(1.0 / EditorTouch.pinchRatio, centerX);
+      if (EditorTouch.panX != 0.0) timeline.scrollByPixels(-EditorTouch.panX);
+    }
+
+    if (EditorTouch.longPressed)
+    {
+      var x:Float = EditorTouch.longPressX - editorCam.x;
+      var y:Float = EditorTouch.longPressY - editorCam.y;
+
+      if (timeline.contains(x, y))
+      {
+        var index:Int = timeline.markerAt(x, document);
+
+        if (index > 0)
+        {
+          dragPoint = null;
+          scrubbing = false;
+          removeAt(index);
+        }
+      }
+    }
   }
 
   function handleKeys():Void
@@ -882,8 +1249,25 @@ class MusicEditorState extends MusicBeatState
     if (keys.justPressed.HOME) seekTo(0.0);
     if (keys.justPressed.END) seekTo(document.lengthMs);
 
-    if (keys.justPressed.LEFT) seekTo(shift ? stepMeasure(-1) : document.stepGrid(currentTime(), -1, subdivisions));
-    if (keys.justPressed.RIGHT) seekTo(shift ? stepMeasure(1) : document.stepGrid(currentTime(), 1, subdivisions));
+    var horizontal:Int = (keys.justPressed.RIGHT ? 1 : 0) - (keys.justPressed.LEFT ? 1 : 0);
+
+    if (horizontal != 0)
+    {
+      if (alt) nudgeSelected(horizontal * (shift ? 10.0 : 1.0));
+      else if (shift) seekTo(stepMeasure(horizontal));
+      else
+        seekTo(document.stepGrid(currentTime(), horizontal, subdivisions));
+    }
+
+    var vertical:Int = (keys.justPressed.UP ? 1 : 0) - (keys.justPressed.DOWN ? 1 : 0);
+
+    if (vertical != 0)
+    {
+      if (alt && shift) changeDenominator(vertical);
+      else if (alt) changeNumerator(vertical);
+      else
+        changeBpm(vertical * (ctrl ? 0.1 : (shift ? 5.0 : 1.0)));
+    }
 
     if (ctrl) return;
 
@@ -903,29 +1287,20 @@ class MusicEditorState extends MusicBeatState
       seekTo(selected.time);
     }
 
-    var vertical:Int = (keys.justPressed.UP ? 1 : 0) - (keys.justPressed.DOWN ? 1 : 0);
-
-    if (vertical != 0)
-    {
-      if (alt && shift)
-      {
-        var den:Int = vertical > 0 ? selected.den * 2 : Std.int(selected.den / 2);
-
-        editSelected(selected.bpm, selected.num, den, 'Change denominator');
-      }
-      else if (alt)
-      {
-        editSelected(selected.bpm, selected.num + vertical, selected.den, 'Change numerator');
-      }
-      else
-      {
-        var step:Float = keys.pressed.CONTROL ? 0.1 : (shift ? 5.0 : 1.0);
-
-        editSelected(selected.bpm + vertical * step, selected.num, selected.den, 'Change BPM');
-      }
-    }
-
     if (keys.justPressed.T) tapTempo();
+    if (keys.justPressed.H) changeBpmBy(0.5, 'Halve BPM');
+    if (keys.justPressed.D) changeBpmBy(2.0, 'Double BPM');
+    if (keys.justPressed.B) openPrompt('bpm');
+    if (keys.justPressed.N) openPrompt('signature');
+    if (keys.justPressed.J) openPrompt(shift ? 'move' : 'time');
+    if (keys.justPressed.I) setLoopStart();
+    if (keys.justPressed.O) setLoopEnd();
+    if (keys.justPressed.L)
+    {
+      if (shift) clearLoop();
+      else
+        toggleLoop();
+    }
     if (keys.justPressed.M) toggleMetronome();
     if (keys.justPressed.G) toggleSnap();
     if (keys.justPressed.F) timeline.fitToSong();
@@ -935,6 +1310,225 @@ class MusicEditorState extends MusicBeatState
     if (keys.justPressed.PERIOD) changeSnap(1);
     if (keys.justPressed.MINUS) changeRate(-0.25);
     if (keys.justPressed.PLUS) changeRate(0.25);
+  }
+
+  function changeBpm(delta:Float):Void
+  {
+    editSelected(selected.bpm + delta, selected.num, selected.den, 'Change BPM');
+  }
+
+  function changeBpmBy(factor:Float, description:String):Void
+  {
+    editSelected(selected.bpm * factor, selected.num, selected.den, description);
+  }
+
+  function changeNumerator(delta:Int):Void
+  {
+    editSelected(selected.bpm, selected.num + delta, selected.den, 'Change numerator');
+  }
+
+  function changeDenominator(direction:Int):Void
+  {
+    var den:Int = direction > 0 ? selected.den * 2 : Std.int(selected.den / 2);
+
+    editSelected(selected.bpm, selected.num, den, 'Change denominator');
+  }
+
+  function snappedTime(time:Float):Float
+  {
+    return snapEnabled ? document.snap(time, subdivisions) : time;
+  }
+
+  function setLoopStart():Void
+  {
+    var time:Float = snappedTime(currentTime());
+
+    loopStart = time;
+
+    if (loopEnd != null && loopEnd <= time) loopEnd = null;
+
+    loopEnabled = loopEnd != null;
+    timeline.setLoop(loopStart, loopEnd);
+    lastRefreshKey = '';
+    toasts.show('Loop start at ' + MusicEditorTimeline.formatTime(time, true), MusicEditorToasts.SUCCESS);
+  }
+
+  function setLoopEnd():Void
+  {
+    var time:Float = snappedTime(currentTime());
+
+    if (loopStart != null && time <= loopStart)
+    {
+      toasts.show('The loop end must be after the loop start', MusicEditorToasts.WARNING);
+      return;
+    }
+
+    loopEnd = time;
+    loopEnabled = true;
+    timeline.setLoop(loopStart, loopEnd);
+    lastRefreshKey = '';
+    toasts.show('Loop end at ' + MusicEditorTimeline.formatTime(time, true), MusicEditorToasts.SUCCESS);
+  }
+
+  function toggleLoop():Void
+  {
+    if (loopEnd == null)
+    {
+      toasts.show('Set a loop end first (O)', MusicEditorToasts.WARNING);
+      return;
+    }
+
+    loopEnabled = !loopEnabled;
+    lastRefreshKey = '';
+    toasts.show('Loop ' + (loopEnabled ? 'on' : 'off'), MusicEditorToasts.INFO);
+  }
+
+  function clearLoop():Void
+  {
+    loopStart = null;
+    loopEnd = null;
+    loopEnabled = false;
+    timeline.setLoop(null, null);
+    lastRefreshKey = '';
+    toasts.show('Loop cleared', MusicEditorToasts.INFO);
+  }
+
+  function movePointTo(time:Float):Void
+  {
+    var index:Int = selectedIndex();
+
+    if (index <= 0)
+    {
+      toasts.show('The first point stays at 0', MusicEditorToasts.ERROR);
+      return;
+    }
+
+    var lower:Float = document.points[index - 1].time + 1.0;
+    var upper:Float = index + 1 < document.points.length ? document.points[index + 1].time - 1.0 : document.lengthMs;
+    var target:Float = Math.max(lower, Math.min(upper, time));
+
+    if (target == selected.time) return;
+
+    perform(new MovePointCommand(selected, selected.time, target));
+    timeline.ensureVisible(target);
+  }
+
+  function nudgeSelected(delta:Float):Void
+  {
+    movePointTo(selected.time + delta);
+  }
+
+  function openPrompt(kind:String):Void
+  {
+    promptKind = kind;
+    promptBuffer = '';
+
+    promptTitle.text = switch (kind)
+    {
+      case 'bpm': 'SET THE BPM OF THE SELECTED POINT';
+      case 'signature': 'SET THE TIME SIGNATURE  (for example 3/4)';
+      case 'move': 'MOVE THE SELECTED POINT TO  (12.5, 1:05.5 or 750ms)';
+      default: 'JUMP TO  (12.5, 1:05.5 or 750ms)';
+    };
+
+    promptGroup.visible = true;
+    refreshPrompt();
+    keypadBar.visible = EditorTouch.enabled;
+
+    FlxG.stage.window.textInputEnabled = true;
+    FlxG.stage.window.onTextInput.add(onPromptText);
+  }
+
+  function closePrompt():Void
+  {
+    promptGroup.visible = false;
+    keypadBar.visible = false;
+
+    FlxG.stage.window.onTextInput.remove(onPromptText);
+    FlxG.stage.window.textInputEnabled = false;
+  }
+
+  function refreshPrompt():Void
+  {
+    promptText.text = promptBuffer + '_';
+  }
+
+  function onPromptText(text:String):Void
+  {
+    if (!promptGroup.visible) return;
+
+    for (i in 0...text.length)
+    {
+      var character:String = text.charAt(i);
+
+      if (promptBuffer.length < 24 && '0123456789.:/ ms'.indexOf(character) >= 0) promptBuffer += character;
+    }
+
+    refreshPrompt();
+  }
+
+  public function typePromptText(text:String):Void
+  {
+    if (promptGroup.visible) onPromptText(text);
+  }
+
+  public function erasePromptText():Void
+  {
+    if (!promptGroup.visible || promptBuffer.length == 0) return;
+
+    promptBuffer = promptBuffer.substr(0, promptBuffer.length - 1);
+    refreshPrompt();
+  }
+
+  public function submitPrompt():Void
+  {
+    var text:String = promptBuffer;
+    var kind:String = promptKind;
+
+    closePrompt();
+
+    switch (kind)
+    {
+      case 'bpm':
+        var bpm:Null<Float> = MusicEditorDocument.parseBpmText(text);
+
+        if (bpm == null) toasts.show('That is not a valid BPM', MusicEditorToasts.ERROR);
+        else
+          editSelected(bpm, selected.num, selected.den, 'Set BPM');
+      case 'signature':
+        var signature = MusicEditorDocument.parseSignatureText(text);
+
+        if (signature == null) toasts.show('Use a signature such as 3/4', MusicEditorToasts.ERROR);
+        else
+          editSelected(selected.bpm, signature.num, signature.den, 'Set time signature');
+      case 'move':
+        var moveTime:Null<Float> = MusicEditorDocument.parseTimeText(text);
+
+        if (moveTime == null) toasts.show('That is not a valid time', MusicEditorToasts.ERROR);
+        else
+          movePointTo(moveTime);
+      default:
+        var jumpTime:Null<Float> = MusicEditorDocument.parseTimeText(text);
+
+        if (jumpTime == null) toasts.show('That is not a valid time', MusicEditorToasts.ERROR);
+        else
+        {
+          seekTo(jumpTime);
+          timeline.ensureVisible(jumpTime);
+        }
+    }
+  }
+
+  function updatePrompt():Void
+  {
+    if (FlxG.keys.justPressed.ESCAPE)
+    {
+      closePrompt();
+      return;
+    }
+
+    if (FlxG.keys.justPressed.BACKSPACE) erasePromptText();
+    if (FlxG.keys.justPressed.ENTER) submitPrompt();
   }
 
   function togglePlayback():Void
@@ -976,8 +1570,12 @@ class MusicEditorState extends MusicBeatState
 
   function handleMouse():Void
   {
-    var x:Float = FlxG.mouse.screenX;
-    var y:Float = FlxG.mouse.screenY;
+    if (EditorTouch.gestureActive) return;
+
+    var x:Float = mouseX();
+    var y:Float = mouseY();
+
+    if (touchBar.contains(x, y)) return;
     var over:Bool = timeline.contains(x, y);
 
     if (over && FlxG.mouse.wheel != 0)
@@ -1129,7 +1727,7 @@ class MusicEditorState extends MusicBeatState
     timeline.setPlayhead(time);
 
     var previewIndex:Int = dragPoint != null && dragMoved ? dragIndex : -1;
-    var key:String = version + '|' + Std.int(time / 50) + '|' + selectedIndex() + '|' + snapIndex + snapEnabled + '|' + previewIndex + '|' + Std.int(dragTime) + '|' + history.dirty + '|' + isPlaying() + '|' + metronome + '|' + playbackRate + '|' + songLoaded;
+    var key:String = (loopEnabled ? 'L' : 'l') + (loopStart != null ? Std.string(loopStart) : '-') + (loopEnd != null ? Std.string(loopEnd) : '-') + version + '|' + Std.int(time / 50) + '|' + selectedIndex() + '|' + snapIndex + snapEnabled + '|' + previewIndex + '|' + Std.int(dragTime) + '|' + history.dirty + '|' + isPlaying() + '|' + metronome + '|' + playbackRate + '|' + songLoaded;
 
     timeline.refresh(document, version, selectedIndex(), snapEnabled ? subdivisions : 1, previewIndex, dragTime);
 
@@ -1147,7 +1745,7 @@ class MusicEditorState extends MusicBeatState
 
     titleText.text = 'MUSIC EDITOR  -  ' + songId + (history.dirty ? ' *' : '');
     statusText.text = (isPlaying() ? 'PLAYING' : 'PAUSED') + '   ' + MusicEditorTimeline.formatTime(time, true) + ' / ' + MusicEditorTimeline.formatTime(document.lengthMs, false) + '   snap '
-      + (snapEnabled ? '1/' + subdivisions : 'off') + '   metronome ' + (metronome ? 'on' : 'off') + '   speed x' + playbackRate + (songLoaded ? '' : '   loading audio...');
+      + (snapEnabled ? '1/' + subdivisions : 'off') + '   metronome ' + (metronome ? 'on' : 'off') + '   speed x' + playbackRate + (loopEnd != null ? '   loop ' + (loopEnabled ? 'on' : 'off') : '') + (songLoaded ? '' : '   loading audio...');
 
     measureText.text = 'MEASURE ' + document.measureNumberAt(time);
     bpmText.text = MusicEditorTimeline.formatBpm(point.bpm) + ' BPM   ' + point.num + '/' + point.den;

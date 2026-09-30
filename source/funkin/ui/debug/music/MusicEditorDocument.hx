@@ -354,6 +354,51 @@ class MusicEditorDocument
     return null;
   }
 
+  public static function parseBpmText(text:String):Null<Float>
+  {
+    var trimmed:String = StringTools.trim(text);
+
+    if (!~/^[0-9]+(\.[0-9]+)?$/.match(trimmed)) return null;
+
+    var value:Float = Std.parseFloat(trimmed);
+
+    return value >= MIN_BPM && value <= MAX_BPM ? value : null;
+  }
+
+  public static function parseSignatureText(text:String):Null<{num:Int, den:Int}>
+  {
+    var pattern:EReg = ~/^([0-9]+)\s*\/\s*([0-9]+)$/;
+
+    if (!pattern.match(StringTools.trim(text))) return null;
+
+    var num:Int = Std.parseInt(pattern.matched(1));
+    var den:Int = Std.parseInt(pattern.matched(2));
+
+    if (num < 1 || num > 32 || den < 1 || den > 32) return null;
+
+    return {num: num, den: clampDenominator(den)};
+  }
+
+  public static function parseTimeText(text:String):Null<Float>
+  {
+    var trimmed:String = StringTools.trim(text).toLowerCase();
+
+    if (StringTools.endsWith(trimmed, 'ms'))
+    {
+      var millis:String = StringTools.trim(trimmed.substr(0, trimmed.length - 2));
+
+      return ~/^[0-9]+(\.[0-9]+)?$/.match(millis) ?Std.parseFloat(millis) : null;
+    }
+
+    var clock:EReg = ~/^([0-9]+):([0-9]{1,2}(\.[0-9]+)?)$/;
+
+    if (clock.match(trimmed)) return (Std.parseFloat(clock.matched(1)) * 60.0 + Std.parseFloat(clock.matched(2))) * 1000.0;
+
+    if (~/^[0-9]+(\.[0-9]+)?$/.match(trimmed)) return Std.parseFloat(trimmed) * 1000.0;
+
+    return null;
+  }
+
   public function issues():Array<String>
   {
     var found:Array<String> = [];

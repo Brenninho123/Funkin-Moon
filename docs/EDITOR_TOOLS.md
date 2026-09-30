@@ -32,3 +32,15 @@ Notes changed by these tools fade in when they are redrawn, which makes it easy 
 ## Music editor
 
 The music editor was rebuilt with the same approach as the camera editor: undo and redo, a zoomable timeline, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).
+
+## Modchart editor
+
+A new HaxeUI editor builds strumline and camera effects with a live preview and a timeline. See [MODCHART_EDITOR.md](MODCHART_EDITOR.md).
+
+## Screen ratio and fullscreen
+
+On desktop, **Screen Ratio** in Preferences sets the widest screen shape the game stretches to (16:9, 20:9, 21:9, 32:9 or Auto). The default is 21:9, which covers ultrawide monitors, and Auto fills any monitor. F11 and Alt+Enter toggle fullscreen on top of the normal fullscreen key. Leaving fullscreen restores the previous window size and position and keeps the window inside the display.
+
+## Touch support
+
+The music editor, the Lua script editor and the modchart editor work with touch input. Pinch to zoom a timeline, drag with two fingers to scroll it and long press a marker or block to delete it. Press F10 in the music editor or the modchart editor to try the touch layout with a mouse. On mobile the debug menu is opened from Options.

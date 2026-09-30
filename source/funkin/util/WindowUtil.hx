@@ -97,6 +97,39 @@ class WindowUtil
    */
   public static var windowExit:FlxTypedSignal<Int->Void> = new FlxTypedSignal<Int->Void>();
 
+  static var windowedBounds:Null<{x:Int, y:Int, width:Int, height:Int}> = null;
+
+  public static function toggleFullscreen():Void
+  {
+    var window:lime.ui.Window = openfl.Lib.application.window;
+
+    if (!window.fullscreen)
+    {
+      windowedBounds = {x: window.x, y: window.y, width: window.width, height: window.height};
+      window.fullscreen = true;
+      return;
+    }
+
+    window.fullscreen = false;
+
+    var bounds = windowedBounds;
+
+    if (bounds == null) return;
+
+    var display:Null<lime.system.Display> = window.display;
+    var maxWidth:Int = display != null ? Std.int(display.bounds.width) : bounds.width;
+    var maxHeight:Int = display != null ? Std.int(display.bounds.height) : bounds.height;
+
+    if (bounds.width >= maxWidth || bounds.height >= maxHeight)
+    {
+      bounds.width = Std.int(Math.min(bounds.width, maxWidth * 0.8));
+      bounds.height = Std.int(Math.min(bounds.height, maxHeight * 0.8));
+    }
+
+    window.resize(bounds.width, bounds.height);
+    window.move(bounds.x, bounds.y);
+  }
+
   /**
    * Wires up FlxSignals that happen based on window activity.
    * For example, we can run a callback when the window is closed.
@@ -134,8 +167,14 @@ class WindowUtil
 
         if (e.keyCode == key)
         {
-          openfl.Lib.application.window.fullscreen = !openfl.Lib.application.window.fullscreen;
+          toggleFullscreen();
+          return;
         }
+      }
+
+      if (e.keyCode == openfl.ui.Keyboard.F11 || (e.altKey && e.keyCode == openfl.ui.Keyboard.ENTER))
+      {
+        toggleFullscreen();
       }
     });
     #end

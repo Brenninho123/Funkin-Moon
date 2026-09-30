@@ -114,6 +114,19 @@ class MovePointCommand extends MusicEditorCommand
   {
     return 'Move point to ' + Math.round(newTime) + ' ms';
   }
+
+  override public function merge(other:MusicEditorCommand):Bool
+  {
+    if (!Std.isOfType(other, MovePointCommand)) return false;
+
+    var move:MovePointCommand = cast other;
+
+    if (move.point != point) return false;
+
+    newTime = move.newTime;
+
+    return true;
+  }
 }
 
 class EditPointCommand extends MusicEditorCommand

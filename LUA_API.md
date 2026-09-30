@@ -475,7 +475,7 @@ Global module scripts receive the engine's script events with the same names and
 
 ## Script editor
 
-The debug menu has a **LUA SCRIPT EDITOR** entry (desktop builds). It lists every `.lua` file under `assets/songs` and the mods folder, and edits them in place.
+The debug menu has a **LUA SCRIPT EDITOR** entry (desktop and mobile builds). It lists every `.lua` file under `assets/songs` and the mods folder, and edits them in place.
 
 | Key | Action |
 | --- | --- |
@@ -483,8 +483,20 @@ The debug menu has a **LUA SCRIPT EDITOR** entry (desktop builds). It lists ever
 | F5 / F6 | Run / stop the current buffer |
 | F7 | Check syntax and jump to the error line |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| Tab | Insert two spaces |
-| Esc | Leave (press twice to discard unsaved changes) |
+| Tab | Insert two spaces, or accept the highlighted completion |
+| Enter | New line that keeps the indentation and adds a level after `then`, `do`, `else`, `repeat` and function headers |
+| Ctrl+F / Ctrl+H | Find and replace. Enter and F3 go to the next match, Shift+F3 to the previous one. The Aa button makes the search case sensitive and ALL replaces every match |
+| Ctrl+G | Go to a line |
+| Ctrl+/ | Comment or uncomment the selected lines |
+| Ctrl+D / Ctrl+Shift+K | Duplicate or delete the selected lines |
+| Alt+Up / Alt+Down | Move the selected lines |
+| Ctrl+Space | Show completions (they also appear while you type three letters). Ctrl+N and Ctrl+P choose, clicking a row accepts it |
+| Ctrl+Plus / Ctrl+Minus, A+ / A- | Change the font size |
+| Esc | Close the completion list or the find bar, then leave (press twice to discard unsaved changes) |
+
+Completions include every Lua function of the engine, the Lua keywords and snippets. Typing `onBeatHit`, `onNoteHit`, `for`, `ifelse` and similar names offers a full template with the cursor inside. A syntax error marks its line number in red and moves the cursor there.
+
+On a touch screen the buttons and the script list are larger, the list scrolls by dragging and the on-screen keyboard is used for typing. The UNDO, REDO, FIND, GOTO and CMT buttons replace the keyboard shortcuts.
 
 Running a buffer creates a temporary script, calls `onCreate()` once and `onUpdate(elapsed)` every frame. Song callbacks are not available there, and error dialogs are replaced by console messages. Scripts that are already loaded by the game keep running the previous version until they are reloaded.
 

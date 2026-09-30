@@ -40,6 +40,28 @@ The music editor edits the time changes (BPM and time signature points) of a son
 | F1 | Help |
 | Esc | Exit (press twice when there are unsaved changes) |
 
+## More tools
+
+| Shortcut | Action |
+| --- | --- |
+| I / O / L | Set the loop start, set the loop end, turn the loop on or off (Shift+L clears it). The region is drawn on the timeline |
+| H / D | Halve or double the BPM of the selected point |
+| B / N | Type a BPM or a time signature for the selected point |
+| J / Shift+J | Type a time to jump to, or to move the selected point to |
+| Alt+Left / Right | Nudge the selected point 1 ms (Shift: 10 ms). Repeated nudges are one undo step |
+
+The timeline draws the waveform of the song. Times can be typed as seconds (`12.5`), as a clock (`1:05.5`) or in milliseconds (`750ms`).
+
+## Touch
+
+The editor works on phones and tablets. On a device with a touch screen, or after pressing F10 on a computer, a panel of large buttons appears under the properties with three pages of actions (playback and points, view and tempo, typing and files). Typing a value opens a number pad.
+
+- Drag a marker to move it and drag the ruler to scrub.
+- Pinch to zoom the timeline and drag with two fingers to scroll it.
+- Long press a marker to remove it.
+- Tap a song in the picker, and tap anywhere on the help to close it.
+- The editor is centered when the screen is wider than 16:9.
+
 ## Mouse
 
 - Click or drag on the timeline to scrub. Snapping applies unless Alt is held.

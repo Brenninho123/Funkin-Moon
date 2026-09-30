@@ -1,6 +1,6 @@
 package funkin.ui.haxeui.components.editors;
 
-#if (FEATURE_CHART_EDITOR || FEATURE_CAMERA_EDITOR)
+#if (FEATURE_CHART_EDITOR || FEATURE_CAMERA_EDITOR || FEATURE_MODCHART_EDITOR)
 import funkin.data.song.SongRegistry;
 import funkin.play.song.Song;
 import funkin.util.SortUtil;
