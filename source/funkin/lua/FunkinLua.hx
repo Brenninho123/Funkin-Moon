@@ -2,6 +2,11 @@ package funkin.lua;
 
 #if FEATURE_LUA_SCRIPTS
 import haxe.Json;
+import flixel.FlxBasic;
+import flixel.FlxSprite;
+import flixel.FlxState;
+import flixel.tweens.FlxEase;
+import flixel.tweens.FlxTween;
 import flixel.input.keyboard.FlxKey;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
@@ -40,6 +45,8 @@ class FunkinLua
   static inline var SAVE_MOUNT:String = 'lua';
   static inline var SANDBOX:String = 'os.execute=nil os.exit=nil os.remove=nil os.rename=nil os.tmpname=nil io=nil package.loadlib=nil';
 
+  public static var logSink:Null<String->String->String->Void> = null;
+
   static var handlers:Map<String, LuaHandler> = new Map();
   static var instances:Map<Int, FunkinLua> = new Map();
   static var sharedVariables:Map<String, Dynamic> = new Map();
@@ -51,24 +58,28 @@ class FunkinLua
   public var scriptName:String;
   public var closed:Bool = false;
   public var errorCount(default, null):Int = 0;
+  public var showDialogs:Bool = true;
 
   var id:Int = 0;
   var luaTexts:Map<String, FlxText> = new Map();
+  var luaSprites:Map<String, FlxSprite> = new Map();
+  var activeTweens:Map<String, FlxTween> = new Map();
   var activeTimers:Map<String, FlxTimer> = new Map();
   var reportedFunctions:Map<String, Bool> = new Map();
   var timerCounter:Int = 0;
 
-  public function new(scriptPath:String)
+  public function new(scriptPath:String, ?source:String, showDialogs:Bool = true)
   {
     scriptName = scriptPath;
+    this.showDialogs = showDialogs;
 
     lua = LuaL.newstate();
 
     if (lua == null)
     {
-      FlxG.log.error('FunkinLua: Could not create a Lua state for $scriptName');
+      emit('error', 'FunkinLua: Could not create a Lua state for $scriptName');
 
-      WindowUtil.showError('Lua Initialization Error',
+      showDialog('Lua Initialization Error',
         'Could not initialize the Lua interpreter.\n\nScript:\n$scriptName\n\nThe Lua state could not be created.\nReport bugs or share suggestions by creating an issue on our GitHub:\nhttps://github.com/Brenninho123/Funkin-Moon');
 
       closed = true;
@@ -91,9 +102,11 @@ class FunkinLua
       Lua.addCallback(lua, name);
     }
 
+    LuaL.dostring(lua, 'print=debugPrint');
+
     setDefaultVariables();
 
-    if (LuaL.dofile(lua, scriptPath) != 0)
+    if (runChunk(source) != 0)
     {
       reportLoadError();
       destroy();
@@ -101,6 +114,69 @@ class FunkinLua
     }
 
     Lua.settop(lua, 0);
+  }
+
+  function runChunk(source:Null<String>):Int
+  {
+    if (source == null) return LuaL.dofile(lua, scriptName);
+
+    var status:Int = LuaL.loadbuffer(lua, source, '=' + scriptName);
+
+    return status != 0 ? status : Lua.pcall(lua, 0, 0, 0);
+  }
+
+  public static function getApiNames():Array<String>
+  {
+    setupDispatcher();
+
+    var names:Array<String> = [for (name in handlers.keys()) name];
+
+    names.sort((a, b) -> a < b ? -1 : (a > b ? 1 : 0));
+
+    return names;
+  }
+
+  public static function checkSyntax(source:String):Null<String>
+  {
+    var state:LuaState = LuaL.newstate();
+
+    if (state == null) return 'Could not create a Lua state';
+
+    var message:Null<String> = null;
+
+    if (LuaL.loadbuffer(state, source, '=script') != 0)
+    {
+      message = Lua.tostring(state, -1) ?? 'Unknown syntax error';
+    }
+
+    Lua.close(state);
+
+    return message;
+  }
+
+  static function emit(level:String, message:String):Void
+  {
+    switch (level)
+    {
+      case 'warn':
+        FlxG.log.warn(message);
+      case 'error':
+        FlxG.log.error(message);
+      default:
+        FlxG.log.add(message);
+    }
+  }
+
+  function log(level:String, message:String):Void
+  {
+    emit(level, message);
+
+    if (logSink != null) logSink(scriptName, level, message);
+  }
+
+  function showDialog(title:String, message:String):Void
+  {
+    if (showDialogs) WindowUtil.showError(title, message);
   }
 
   function setDefaultVariables():Void
@@ -218,19 +294,19 @@ class FunkinLua
   {
     errorCount++;
 
-    FlxG.log.error('[$scriptName] $funcName: $message');
+    log('error', '[$scriptName] $funcName: $message');
 
     if (!reportedFunctions.exists(funcName))
     {
       reportedFunctions.set(funcName, true);
 
-      WindowUtil.showError('Lua Script Error',
+      showDialog('Lua Script Error',
         'Script: $scriptName\n\nFunction: $funcName\n\nError:\n$message\n\nReport bugs or share suggestions by creating an issue on our GitHub:\nhttps://github.com/Brenninho123/Funkin-Moon');
     }
 
     if (errorCount >= MAX_ERRORS)
     {
-      FlxG.log.error('[$scriptName] Too many errors, script disabled');
+      log('error', '[$scriptName] Too many errors, script disabled');
       destroy();
     }
   }
@@ -241,9 +317,9 @@ class FunkinLua
 
     var message:String = takeErrorMessage('Unknown Lua load error');
 
-    FlxG.log.error('[$scriptName] $message');
+    log('error', '[$scriptName] $message');
 
-    WindowUtil.showError('Lua Script Load Error',
+    showDialog('Lua Script Load Error',
       'Failed to load the Lua script.\n\nScript:\n$scriptName\n\nError:\n$message\n\nReport bugs or share suggestions by creating an issue on our GitHub:\nhttps://github.com/Brenninho123/Funkin-Moon');
   }
 
@@ -256,6 +332,8 @@ class FunkinLua
     if (Main.debugDisplay != null) Main.debugDisplay.removeCustomLinesWithPrefix('$id:');
 
     destroyLuaTexts();
+    destroyLuaSprites();
+    destroyTweens();
     destroyTimers();
 
     Lua.close(lua);
@@ -270,6 +348,166 @@ class FunkinLua
     {
       removeLuaText(textId);
     }
+  }
+
+  function destroyLuaSprites():Void
+  {
+    for (spriteId in [for (key in luaSprites.keys()) key])
+    {
+      removeLuaSprite(spriteId);
+    }
+  }
+
+  function removeLuaSprite(spriteId:String):Void
+  {
+    var sprite:Null<FlxSprite> = luaSprites.get(spriteId);
+
+    if (sprite == null) return;
+
+    detachObject(sprite);
+
+    sprite.destroy();
+
+    luaSprites.remove(spriteId);
+  }
+
+  function destroyTweens():Void
+  {
+    for (tween in activeTweens)
+    {
+      tween.cancel();
+    }
+
+    activeTweens.clear();
+  }
+
+  function cancelTween(tweenId:String):Void
+  {
+    var tween:Null<FlxTween> = activeTweens.get(tweenId);
+
+    if (tween == null) return;
+
+    tween.cancel();
+
+    activeTweens.remove(tweenId);
+  }
+
+  function resolveObject(name:String):Null<Dynamic>
+  {
+    var sprite:Null<FlxSprite> = luaSprites.get(name);
+
+    if (sprite != null) return sprite;
+
+    var text:Null<FlxText> = luaTexts.get(name);
+
+    if (text != null) return text;
+
+    switch (name.toLowerCase())
+    {
+      case 'boyfriend' | 'bf' | 'player' | 'girlfriend' | 'gf' | 'dad' | 'opponent':
+        return resolveCharacter(name);
+      case 'camgame':
+        return PlayState.instance?.camGame;
+      case 'camhud':
+        return PlayState.instance?.camHUD;
+      case 'game' | 'playstate':
+        return PlayState.instance;
+      default:
+        return null;
+    }
+  }
+
+  function resolveTarget(path:String):Null<Dynamic>
+  {
+    var parts:Array<String> = path.split('.');
+    var current:Null<Dynamic> = resolveObject(parts[0]);
+
+    for (i in 1...parts.length)
+    {
+      if (current == null || parts[i] == '' || StringTools.startsWith(parts[i], '_')) return null;
+
+      current = Reflect.getProperty(current, parts[i]);
+    }
+
+    return current;
+  }
+
+  function resolvePathOwner(path:String):Null<{owner:Dynamic, field:String}>
+  {
+    var parts:Array<String> = path.split('.');
+
+    if (parts.length < 2) return null;
+
+    for (part in parts)
+    {
+      if (part == '' || StringTools.startsWith(part, '_')) return null;
+    }
+
+    var current:Null<Dynamic> = resolveObject(parts[0]);
+
+    for (i in 1...parts.length - 1)
+    {
+      if (current == null) return null;
+
+      current = Reflect.getProperty(current, parts[i]);
+    }
+
+    return current == null ? null : {owner: current, field: parts[parts.length - 1]};
+  }
+
+  static function isPlainValue(value:Dynamic):Bool
+  {
+    return value != null && (Std.isOfType(value, Bool) || Std.isOfType(value, Float) || Std.isOfType(value, String));
+  }
+
+  static function resolveEase(name:String):Float->Float
+  {
+    var ease:Dynamic = Reflect.field(FlxEase, name);
+
+    return Reflect.isFunction(ease) ? ease : FlxEase.linear;
+  }
+
+  static function attachObject(object:FlxBasic, cameraName:String, inFront:Bool = true):Void
+  {
+    var play:Null<PlayState> = PlayState.instance;
+    var host:FlxState = play != null ? play : FlxG.state;
+
+    if (host == null) return;
+
+    var camera = resolveCamera(cameraName);
+
+    if (camera != null) object.cameras = [camera];
+
+    if (inFront) host.add(object);
+    else
+      host.insert(0, object);
+  }
+
+  static function detachObject(object:FlxBasic):Void
+  {
+    if (PlayState.instance != null) PlayState.instance.remove(object, true);
+
+    if (FlxG.state != null) FlxG.state.remove(object, true);
+  }
+
+  static function findScript(name:String):Null<FunkinLua>
+  {
+    for (script in instances)
+    {
+      if (script.closed) continue;
+
+      if (script.scriptName == name || StringTools.endsWith(script.scriptName, '/$name') || StringTools.endsWith(script.scriptName, '/$name.lua'))
+      {
+        return script;
+      }
+    }
+
+    return null;
+  }
+
+  static function unsignedColor(color:Int):Float
+  {
+    return color < 0 ? color + 4294967296.0 : color;
   }
 
   function destroyTimers():Void
@@ -288,7 +526,7 @@ class FunkinLua
 
     if (text == null) return;
 
-    if (FlxG.state != null) FlxG.state.remove(text, true);
+    detachObject(text);
 
     text.destroy();
 
@@ -471,6 +709,11 @@ class FunkinLua
     registerTimers();
     registerUtility();
     registerInput();
+    registerSprites();
+    registerTweens();
+    registerProperties();
+    registerScripts();
+    registerAdvancedUtility();
     registerDebugDisplay();
     registerCodex();
     registerOnline();
@@ -504,7 +747,7 @@ class FunkinLua
     }
     catch (e:Dynamic)
     {
-      FlxG.log.error('[${script.scriptName}] $name: $e');
+      script.log('error', '[${script.scriptName}] $name: $e');
       return 0;
     }
 
@@ -697,9 +940,9 @@ class FunkinLua
 
   static function registerCore():Void
   {
-    command('debugPrint', (s, a) -> FlxG.log.add(joinArgs(a)));
-    command('logWarn', (s, a) -> FlxG.log.warn(joinArgs(a)));
-    command('logError', (s, a) -> FlxG.log.error(joinArgs(a)));
+    command('debugPrint', (s, a) -> s.log('info', joinArgs(a)));
+    command('logWarn', (s, a) -> s.log('warn', joinArgs(a)));
+    command('logError', (s, a) -> s.log('error', joinArgs(a)));
 
     query('getSongName', (s, a) -> PlayState.instance?.currentSong?.id ?? '');
     query('getSongId', (s, a) -> PlayState.instance?.currentSong?.id ?? '');
@@ -926,14 +1169,7 @@ class FunkinLua
     {
       var text:Null<FlxText> = s.luaTexts.get(argStr(a, 0));
 
-      if (text == null || FlxG.state == null) return;
-
-      if (PlayState.instance != null && Std.isOfType(FlxG.state, PlayState) && PlayState.instance.camHUD != null)
-      {
-        text.cameras = [PlayState.instance.camHUD];
-      }
-
-      FlxG.state.add(text);
+      if (text != null) attachObject(text, argStr(a, 1, 'hud'));
     });
     command('removeLuaText', (s, a) -> s.removeLuaText(argStr(a, 0)));
     query('hasLuaText', (s, a) -> s.luaTexts.exists(argStr(a, 0)));
@@ -1185,6 +1421,264 @@ class FunkinLua
     query('mouseY', (s, a) -> FlxG.mouse.screenY);
     query('mousePressed', (s, a) -> FlxG.mouse.pressed);
     query('mouseJustPressed', (s, a) -> FlxG.mouse.justPressed);
+  }
+
+  static function registerSprites():Void
+  {
+    command('makeSprite', (s, a) ->
+    {
+      var spriteId:String = argStr(a, 0);
+
+      if (spriteId == '') return;
+
+      s.removeLuaSprite(spriteId);
+
+      var sprite:FlxSprite = new FlxSprite(argNum(a, 2), argNum(a, 3));
+      var key:String = argStr(a, 1);
+
+      if (key != '' && Assets.exists(Paths.image(key)))
+      {
+        sprite.loadGraphic(Paths.image(key));
+      }
+      else
+      {
+        if (key != '') s.log('warn', 'makeSprite: image not found: $key');
+
+        sprite.makeGraphic(1, 1, FlxColor.TRANSPARENT);
+      }
+
+      s.luaSprites.set(spriteId, sprite);
+    });
+    command('makeAnimatedSprite', (s, a) ->
+    {
+      var spriteId:String = argStr(a, 0);
+
+      if (spriteId == '') return;
+
+      s.removeLuaSprite(spriteId);
+
+      var sprite:FlxSprite = new FlxSprite(argNum(a, 2), argNum(a, 3));
+      var key:String = argStr(a, 1);
+
+      try
+      {
+        sprite.frames = Paths.getSparrowAtlas(key);
+      }
+      catch (e:Dynamic)
+      {
+        s.log('warn', 'makeAnimatedSprite: could not load atlas: $key');
+        sprite.makeGraphic(1, 1, FlxColor.TRANSPARENT);
+      }
+
+      s.luaSprites.set(spriteId, sprite);
+    });
+    command('makeColorSprite', (s, a) ->
+    {
+      var spriteId:String = argStr(a, 0);
+
+      if (spriteId == '') return;
+
+      s.removeLuaSprite(spriteId);
+
+      var sprite:FlxSprite = new FlxSprite(argNum(a, 4), argNum(a, 5));
+
+      sprite.makeGraphic(Std.int(Math.max(1, argInt(a, 1, 1))), Std.int(Math.max(1, argInt(a, 2, 1))), argColor(a, 3));
+
+      s.luaSprites.set(spriteId, sprite);
+    });
+    command('addSprite', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite != null) attachObject(sprite, argStr(a, 1, 'game'), argBool(a, 2, true));
+    });
+    command('removeSprite', (s, a) -> s.removeLuaSprite(argStr(a, 0)));
+    query('hasSprite', (s, a) -> s.luaSprites.exists(argStr(a, 0)));
+
+    command('spriteAddAnimation', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite != null && sprite.frames != null)
+      {
+        sprite.animation.addByPrefix(argStr(a, 1), argStr(a, 2), argInt(a, 3, 24), argBool(a, 4, false));
+      }
+    });
+    command('spritePlayAnimation', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite != null && sprite.animation.exists(argStr(a, 1))) sprite.animation.play(argStr(a, 1), argBool(a, 2, false));
+    });
+    command('screenCenterSprite', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite == null) return;
+
+      switch (argStr(a, 1, 'xy').toLowerCase())
+      {
+        case 'x':
+          sprite.screenCenter(flixel.util.FlxAxes.X);
+        case 'y':
+          sprite.screenCenter(flixel.util.FlxAxes.Y);
+        default:
+          sprite.screenCenter();
+      }
+    });
+    command('setSpriteGraphicSize', (s, a) ->
+    {
+      var sprite:Null<FlxSprite> = s.luaSprites.get(argStr(a, 0));
+
+      if (sprite == null) return;
+
+      sprite.setGraphicSize(argInt(a, 1, Std.int(sprite.width)), argInt(a, 2, 0));
+      sprite.updateHitbox();
+    });
+  }
+
+  static function registerTweens():Void
+  {
+    command('doTween', (s, a) ->
+    {
+      var tweenId:String = argStr(a, 0);
+      var target:Null<Dynamic> = s.resolveTarget(argStr(a, 1));
+      var values:Dynamic = a.length > 2 ? a[2] : null;
+
+      if (tweenId == '' || target == null || values == null || !Reflect.isObject(values) || Std.isOfType(values, Array)) return;
+
+      s.cancelTween(tweenId);
+
+      var tween:FlxTween = FlxTween.tween(target, values, Math.max(0.0, argNum(a, 3, 1.0)), {
+        ease: resolveEase(argStr(a, 4, 'linear')),
+        onComplete: (_) ->
+        {
+          s.activeTweens.remove(tweenId);
+
+          if (!s.closed) s.call('onTweenCompleted', [tweenId]);
+        }
+      });
+
+      s.activeTweens.set(tweenId, tween);
+    });
+    command('cancelTween', (s, a) -> s.cancelTween(argStr(a, 0)));
+    query('hasTween', (s, a) -> s.activeTweens.exists(argStr(a, 0)));
+    query('easeValue', (s, a) -> resolveEase(argStr(a, 0, 'linear'))(Math.max(0.0, Math.min(1.0, argNum(a, 1)))));
+    command('fadeCamera', (s, a) ->
+    {
+      var camera = resolveCamera(argStr(a, 3, 'game'));
+
+      if (camera != null) camera.fade(argColor(a, 0, FlxColor.BLACK), argNum(a, 1, 1.0), argBool(a, 2, false));
+    });
+  }
+
+  static function registerProperties():Void
+  {
+    query('getProperty', (s, a) ->
+    {
+      var target = s.resolvePathOwner(argStr(a, 0));
+
+      if (target == null) return null;
+
+      var value:Dynamic = Reflect.getProperty(target.owner, target.field);
+
+      return isPlainValue(value) ? value : null;
+    });
+    command('setProperty', (s, a) ->
+    {
+      var target = s.resolvePathOwner(argStr(a, 0));
+
+      if (target == null || a.length < 2 || !isPlainValue(a[1])) return;
+
+      var value:Dynamic = a[1];
+
+      if (Std.isOfType(value, Float) && Math.abs(value) > 2147483647.0) value = toInt32(value);
+
+      Reflect.setProperty(target.owner, target.field, value);
+    });
+    query('objectExists', (s, a) -> s.resolveObject(argStr(a, 0)) != null);
+  }
+
+  static function registerScripts():Void
+  {
+    query('callScript', (s, a) ->
+    {
+      var target:Null<FunkinLua> = findScript(argStr(a, 0));
+
+      return target == null || target == s ? null : target.call(argStr(a, 1), a.slice(2));
+    });
+    query('hasScript', (s, a) -> findScript(argStr(a, 0)) != null);
+    query('getScriptNames', (s, a) -> [for (script in instances) if (!script.closed) script.scriptName]);
+  }
+
+  static function registerAdvancedUtility():Void
+  {
+    query('colorFromRGB', (s, a) -> unsignedColor(FlxColor.fromRGB(argInt(a, 0), argInt(a, 1), argInt(a, 2), argInt(a, 3, 255))));
+    query('colorLerp', (s, a) -> unsignedColor(FlxColor.interpolate(argColor(a, 0), argColor(a, 1), Math.max(0.0, Math.min(1.0, argNum(a, 2))))));
+    query('getTime', (s, a) -> haxe.Timer.stamp());
+    query('getTicks', (s, a) -> FlxG.game.ticks);
+
+    query('stringStartsWith', (s, a) -> StringTools.startsWith(argStr(a, 0), argStr(a, 1)));
+    query('stringEndsWith', (s, a) -> StringTools.endsWith(argStr(a, 0), argStr(a, 1)));
+    query('stringJoin', (s, a) ->
+    {
+      var items:Dynamic = a.length > 0 ? a[0] : null;
+
+      return Std.isOfType(items, Array) ? [for (item in (cast items : Array<Dynamic>)) Std.string(item)].join(argStr(a, 1)) : '';
+    });
+    query('stringPad', (s, a) ->
+    {
+      var value:String = argStr(a, 0);
+      var length:Int = argInt(a, 1);
+      var fill:String = argStr(a, 2, ' ');
+      var left:Bool = argBool(a, 3, true);
+
+      if (fill == '') return value;
+
+      while (value.length < length) value = left ? fill + value : value + fill;
+
+      return value;
+    });
+    query('tableKeys', (s, a) ->
+    {
+      var value:Dynamic = a.length > 0 ? a[0] : null;
+
+      var keys:Array<Dynamic> = [];
+
+      if (Std.isOfType(value, Array))
+      {
+        for (i in 0...(cast value : Array<Dynamic>).length) keys.push(i + 1);
+      }
+      else if (value != null && Reflect.isObject(value))
+      {
+        for (field in Reflect.fields(value)) keys.push(field);
+      }
+
+      return keys;
+    });
+
+    query('saveExists', (s, a) ->
+    {
+      var path:Null<String> = saveFilePath(argStr(a, 0));
+
+      return path != null && FunkinCosmic.exists(path);
+    });
+    query('saveDelete', (s, a) ->
+    {
+      var path:Null<String> = saveFilePath(argStr(a, 0));
+
+      return path != null && FunkinCosmic.deleteFile(path);
+    });
+    query('saveList', (s, a) ->
+    {
+      #if sys
+      var path:Null<String> = saveFilePath(argStr(a, 0, '.'));
+
+      return path != null && sys.FileSystem.exists(path) && sys.FileSystem.isDirectory(path) ? sys.FileSystem.readDirectory(path) : [];
+      #else
+      return [];
+      #end
+    });
   }
 
   static function registerDebugDisplay():Void

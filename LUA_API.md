@@ -285,6 +285,93 @@ Scripts can read and write plain text files through the engine's atomic file sys
 | `isMultiplayerActive` | `isMultiplayerActive()` | Whether a local mod manifest has been built (multiplayer mod sync is active) |
 | `getLocalModCount` | `getLocalModCount()` | Number of mods in the local manifest |
 
+## Sprites
+
+Sprites belong to the script that created them and are destroyed when it unloads. They can be tweened and edited with `setProperty`.
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `makeSprite` | `makeSprite(id, image, x, y)` | Creates a static sprite from an image asset. A missing image gives a transparent 1x1 sprite and a warning |
+| `makeAnimatedSprite` | `makeAnimatedSprite(id, image, x, y)` | Creates a sprite from a Sparrow atlas |
+| `makeColorSprite` | `makeColorSprite(id, width, height, color, x, y)` | Creates a solid color rectangle |
+| `addSprite` | `addSprite(id, camera, inFront)` | Adds the sprite to the scene. `camera` is `"game"` (default) or `"hud"`; `inFront` defaults to `true` |
+| `removeSprite` | `removeSprite(id)` | Removes and destroys the sprite |
+| `hasSprite` | `hasSprite(id)` | Whether the sprite exists |
+| `spriteAddAnimation` | `spriteAddAnimation(id, name, prefix, fps, loop)` | Adds an atlas animation by frame prefix (24 fps, no loop by default) |
+| `spritePlayAnimation` | `spritePlayAnimation(id, name, force)` | Plays an animation |
+| `screenCenterSprite` | `screenCenterSprite(id, axes)` | Centers the sprite. `axes` is `"x"`, `"y"` or `"xy"` (default) |
+| `setSpriteGraphicSize` | `setSpriteGraphicSize(id, width, height)` | Resizes the sprite graphic and updates its hitbox. A `height` of 0 keeps the aspect ratio |
+
+`addLuaText` also takes a camera now: `addLuaText(id, camera)`, `"hud"` by default.
+
+## Properties
+
+`getProperty` and `setProperty` read and write fields with a dotted path. The first segment is one of:
+
+- a sprite or text id created by your script
+- a character: `"boyfriend"`/`"bf"`/`"player"`, `"girlfriend"`/`"gf"`, `"dad"`/`"opponent"`
+- `"camGame"` or `"camHUD"`
+- `"game"` (the current `PlayState`)
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `getProperty` | `getProperty(path)` | Returns a number, string or boolean, or `nil` if the path does not exist or is not a plain value |
+| `setProperty` | `setProperty(path, value)` | Sets a number, string or boolean. Path segments starting with `_` are rejected |
+| `objectExists` | `objectExists(name)` | Whether the first path segment resolves |
+
+```lua
+setProperty("bf.x", getProperty("bf.x") + 40)
+setProperty("camHUD.alpha", 0.5)
+setProperty("game.health", 1.0)
+```
+
+## Tweens
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `doTween` | `doTween(id, target, values, duration, ease)` | Tweens numeric fields of `target` (an object name as above, or a path such as `"logo.scale"`) to the numbers in the `values` table. `ease` is any `FlxEase` name, `"linear"` by default |
+| `cancelTween` | `cancelTween(id)` | Cancels a tween |
+| `hasTween` | `hasTween(id)` | Whether the tween is still running |
+| `easeValue` | `easeValue(ease, t)` | Evaluates an easing function at `t` (0.0–1.0) |
+| `fadeCamera` | `fadeCamera(color, duration, fadeIn, camera)` | Fades a camera to or from a color |
+
+Callback: `onTweenCompleted(id)`.
+
+```lua
+makeColorSprite("flash", 1280, 720, 0xFFFFFF, 0, 0)
+addSprite("flash", "hud")
+doTween("flashOut", "flash", {alpha = 0}, 0.6, "quadOut")
+
+function onTweenCompleted(id)
+    if id == "flashOut" then removeSprite("flash") end
+end
+```
+
+## Cross-script calls
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `callScript` | `callScript(script, functionName, ...)` | Calls a global function in another loaded script and returns its result. `script` is the file name or path |
+| `hasScript` | `hasScript(script)` | Whether the script is loaded |
+| `getScriptNames` | `getScriptNames()` | Table of loaded script paths |
+
+## More utilities
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `colorFromRGB` | `colorFromRGB(r, g, b, a)` | Builds a color number (`a` defaults to 255) |
+| `colorLerp` | `colorLerp(a, b, t)` | Interpolates between two colors |
+| `getTime` | `getTime()` | Seconds from the system clock, for measuring durations |
+| `getTicks` | `getTicks()` | Milliseconds since the game started |
+| `stringStartsWith` / `stringEndsWith` | `stringStartsWith(value, prefix)` | Prefix / suffix test |
+| `stringJoin` | `stringJoin(table, separator)` | Joins a table into a string |
+| `stringPad` | `stringPad(value, length, fill, left)` | Pads to `length` (space, left side by default) |
+| `tableKeys` | `tableKeys(table)` | Keys of a table (indices for arrays) |
+| `saveExists` / `saveDelete` | `saveExists(path)` | Existence check / delete inside the script data folder |
+| `saveList` | `saveList(directory)` | Lists a directory inside the script data folder |
+
+`print` is now an alias of `debugPrint`, so it shows up in the log and in the script editor console.
+
 ## Debug display
 
 Scripts can add their own lines to the on-screen debug display (toggled with the debug display key) and control the panel. Lines are owned by the script that created them and are removed automatically when it unloads. Two scripts can use the same `id` without clashing.
