@@ -1,18 +1,33 @@
 package funkin.ui.debug.cosmic;
 
-#if (sys && !mobile)
+#if (sys && !mobile && FEATURE_HAXEUI)
 import flixel.FlxSprite;
-import flixel.text.FlxText;
-import haxe.Json;
-import haxe.io.Bytes;
-import haxe.io.Path;
+import funkin.graphics.FunkinCamera;
 import funkin.input.Cursor;
+import funkin.modding.ModDoctor;
 import funkin.modding.PolymodHandler;
-import funkin.ui.MusicBeatState;
-import funkin.ui.debug.EditorButton;
+import funkin.ui.debug.common.EditorTouch;
+import funkin.ui.debug.cosmic.CosmicRestoreDialog.CosmicBackup;
 import funkin.ui.debug.EditorText;
 import funkin.ui.system.FunkinCosmic;
 import funkin.ui.system.FunkinCosmic.FunkinCosmicWatcher;
+import funkin.ui.title.TitleConfig;
+import haxe.Json;
+import haxe.io.Bytes;
+import haxe.io.Path;
+import haxe.ui.backend.flixel.UIState;
+import haxe.ui.containers.dialogs.Dialog;
+import haxe.ui.containers.dialogs.Dialog.DialogButton;
+import haxe.ui.containers.dialogs.Dialogs;
+import haxe.ui.containers.dialogs.MessageBox.MessageBoxType;
+import haxe.ui.containers.windows.WindowManager;
+import haxe.ui.core.Screen;
+import haxe.ui.events.MouseEvent;
+import haxe.ui.events.UIEvent;
+import haxe.ui.focus.FocusManager;
+import haxe.ui.notifications.NotificationManager;
+import haxe.ui.notifications.NotificationType;
+import openfl.display.BitmapData;
 import openfl.events.Event;
 import openfl.events.KeyboardEvent;
 import openfl.text.TextField;
@@ -38,28 +53,19 @@ typedef CosmicEntry =
   var size:Int;
 }
 
-class CosmicEditorState extends MusicBeatState
+@:build(haxe.ui.ComponentBuilder.build('assets/exclude/ui/editors/cosmic-editor/main-view.xml'))
+class CosmicEditorState extends UIState
 {
-  static final LIST_X:Float = 8;
-  static final LIST_Y:Float = 80;
-  static final LIST_WIDTH:Int = 290;
-  static final LIST_ROW_HEIGHT:Int = 20;
-  static final LIST_ROWS:Int = 20;
-  static final EDITOR_X:Float = 306;
-  static final EDITOR_Y:Float = 80;
   static final GUTTER_WIDTH:Float = 52;
-  static final EDITOR_WIDTH:Float = 966;
-  static final EDITOR_HEIGHT:Float = 400;
-  static final CONSOLE_Y:Float = 490;
-  static final CONSOLE_HEIGHT:Float = 222;
+  static final MIN_FONT_SIZE:Int = 11;
+  static final MAX_FONT_SIZE:Int = 26;
   static final MAX_CONSOLE_LINES:Int = 600;
   static final MAX_HIGHLIGHT_LENGTH:Int = 60000;
   static final MAX_TEXT_BYTES:Int = 1024 * 1024;
   static final MAX_CHECKSUM_BYTES:Int = 8 * 1024 * 1024;
   static final MAX_UNDO:Int = 200;
-  static final CONFIRM_SECONDS:Float = 4.0;
-  static final DOUBLE_CLICK_SECONDS:Float = 0.4;
   static final BACKUP_SLOTS_SHOWN:Int = 5;
+  static final META_TEMPLATE:String = '{\n  "title": "%TITLE%",\n  "description": "A new mod.",\n  "contributors": [\n    {\n      "name": "Your name"\n    }\n  ],\n  "api_version": "%API%",\n  "mod_version": "1.0.0",\n  "license": "All Rights Reserved"\n}\n';
 
   static final NUMBER_PATTERN:EReg = ~/\b(0[xX][0-9a-fA-F]+|[0-9]+\.?[0-9]*)\b/g;
   static final LUA_KEYWORDS:EReg = ~/\b(and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while)\b/g;
@@ -72,22 +78,34 @@ class CosmicEditorState extends MusicBeatState
   static final XML_COMMENT:EReg = ~/<!--[\s\S]*?-->/g;
   static final POSITION_PATTERN:EReg = ~/position ([0-9]+)/;
   static final LINE_PATTERN:EReg = ~/^[^:]*:([0-9]+):/;
+  static final REGEX_ESCAPE:EReg = ~/[.*+?^$|(){}\[\]\\]/g;
+  static final MOD_ID_PATTERN:EReg = ~/^[A-Za-z0-9_\-]+$/;
 
   var roots:Array<CosmicRoot> = [];
   var rootIndex:Int = 0;
   var relDir:String = '';
   var entries:Array<CosmicEntry> = [];
-  var listOffset:Int = 0;
   var selectedName:String = '';
-  var lastClickTime:Float = 0;
-  var rows:Array<EditorButton> = [];
 
   var editor:TextField;
   var gutter:TextField;
-  var pathField:TextField;
-  var nameField:TextField;
   var console:TextField;
-  var statusText:FlxText;
+
+  var camBackdrop:FunkinCamera;
+  var camUI:FunkinCamera;
+  var editorSnapshot:FlxSprite;
+  var gutterSnapshot:FlxSprite;
+  var consoleSnapshot:FlxSprite;
+  var overlayShown:Bool = false;
+  var lastLayout:String = '';
+  var lastNativeFocus:Bool = false;
+  var lastHaxeFocus:Bool = false;
+  var updatingList:Bool = true;
+  var touchMode:Bool = false;
+  var fontSize:Int = 15;
+  var findVisible:Bool = false;
+  var findCase:Bool = false;
+  var matchFormat:TextFormat = new TextFormat(null, null, 0xFFE066, true);
 
   var baseFormat:TextFormat;
   var numberFormat:TextFormat = new TextFormat(null, null, 0xD19A66);
@@ -114,64 +132,89 @@ class CosmicEditorState extends MusicBeatState
   var gutterLines:Int = -1;
   var consoleLines:Int = 0;
   var lastStatus:String = '';
-  var armedAction:String = '';
-  var armedUntil:Float = 0;
+  var dialogOpen:Bool = false;
+  var exitDialog:Null<Dialog> = null;
 
   override function create():Void
   {
+    WindowManager.instance.reset();
+
+    camBackdrop = new FunkinCamera('cosmicEditorBackdrop');
+    camBackdrop.bgColor = 0xFF14161A;
+    camUI = new FunkinCamera('cosmicEditorUI');
+    camUI.bgColor.alpha = 0;
+
+    FlxG.cameras.reset(camBackdrop);
+    FlxG.cameras.add(camUI, false);
+    FlxG.cameras.setDefaultDrawTarget(camBackdrop, true);
+
+    persistentUpdate = false;
+
     super.create();
 
-    add(new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF14161A));
+    root.scrollFactor.set();
+    root.cameras = [camUI];
+    root.width = FlxG.width;
+    root.height = FlxG.height;
 
-    var title:FlxText = new FlxText(16, 10, 0, 'COSMIC EDITOR', 22);
-    title.color = 0xFF9B8CFF;
-    add(title);
+    menubar.height = 35;
 
-    var nameLabel:FlxText = new FlxText(786, 14, 0, 'name:', 14);
-    nameLabel.color = 0xFFAAB2BF;
-    add(nameLabel);
+    WindowManager.instance.container = root;
+    Screen.instance.addComponent(root);
 
-    statusText = new FlxText(1050, 14, 222, '', 14);
-    statusText.alignment = RIGHT;
-    statusText.color = 0xFFAAB2BF;
-    add(statusText);
+    touchMode = EditorTouch.enabled;
+    fontSize = touchMode ? 18 : 15;
 
-    baseFormat = new TextFormat(EditorText.resolveFontName(), 15, 0xD4D8E0, false, false, false, null, null, TextFormatAlign.LEFT);
+    baseFormat = new TextFormat(EditorText.resolveFontName(), fontSize, 0xD4D8E0, false, false, false, null, null, TextFormatAlign.LEFT);
 
-    pathField = EditorText.createField(baseFormat, 210, 10, 560, 26, true, false);
-    nameField = EditorText.createField(baseFormat, 840, 10, 200, 26, true, false);
-    gutter = EditorText.createField(baseFormat, EDITOR_X, EDITOR_Y, GUTTER_WIDTH, EDITOR_HEIGHT, false, true);
+    gutter = EditorText.createField(baseFormat, 0, 0, GUTTER_WIDTH, 100, false, true);
     gutter.backgroundColor = 0x16181D;
     gutter.selectable = false;
     gutter.mouseEnabled = false;
-    gutter.defaultTextFormat = new TextFormat(baseFormat.font, 15, 0x5C6370, false, false, false, null, null, TextFormatAlign.RIGHT);
-    editor = EditorText.createField(baseFormat, EDITOR_X + GUTTER_WIDTH, EDITOR_Y, EDITOR_WIDTH - GUTTER_WIDTH, EDITOR_HEIGHT, true, true);
-    console = EditorText.createField(baseFormat, 8, CONSOLE_Y, 1264, CONSOLE_HEIGHT, false, true);
+    gutter.defaultTextFormat = new TextFormat(baseFormat.font, fontSize, 0x5C6370, false, false, false, null, null, TextFormatAlign.RIGHT);
+    editor = EditorText.createField(baseFormat, 0, 0, 400, 100, true, true);
+    console = EditorText.createField(baseFormat, 0, 0, 400, 100, false, true);
     console.backgroundColor = 0x101216;
 
     editor.addEventListener(Event.CHANGE, onEditorChange);
     editor.addEventListener(Event.SCROLL, onEditorScroll);
     editor.addEventListener(KeyboardEvent.KEY_DOWN, onEditorKeyDown);
-    pathField.addEventListener(KeyboardEvent.KEY_DOWN, onPathKeyDown);
 
-    createButtons();
+    editorSnapshot = new FlxSprite();
+    gutterSnapshot = new FlxSprite();
+    consoleSnapshot = new FlxSprite();
 
-    for (i in 0...LIST_ROWS)
+    for (snapshot in [gutterSnapshot, editorSnapshot, consoleSnapshot])
     {
-      var row:EditorButton = new EditorButton(LIST_X, LIST_Y + (i * LIST_ROW_HEIGHT), LIST_WIDTH, LIST_ROW_HEIGHT - 1, '', true, 0xFF1B1E24);
-      row.visible = false;
-      rows.push(row);
-      add(row);
+      snapshot.scrollFactor.set(0, 0);
+      snapshot.cameras = [camBackdrop];
+      snapshot.visible = false;
+      add(snapshot);
     }
+
+    registerInputEvents();
 
     Cursor.show();
 
     mountRoots();
     setReadOnly(true);
-    refreshList();
 
-    logLine('info', 'Cosmic editor ready. Double click to open, Ctrl+S save, F5 reload, F7 check, Ctrl+Z undo, Esc exit.');
-    logLine('info', 'Files stay inside the mounted roots (' + [for (root in roots) root.label].join(', ') + '). Saves keep backups you can bring back with RESTORE.');
+    for (item in roots) rootPicker.dataSource.add({text: item.label});
+
+    rootPicker.selectedIndex = 0;
+
+    refreshList();
+    updatingList = false;
+
+    logLine('info', 'Cosmic editor ready. Double click opens, Ctrl+S saves, F5 reloads, F7 checks, F8 runs the Mod Doctor, F1 opens the guide, Esc leaves.');
+    logLine('info', 'Files stay inside the mounted roots (' + [for (item in roots) item.label].join(', ') + '). Saves keep backups you can bring back from File > Restore a Backup.');
+
+    haxe.ui.Toolkit.callLater(() ->
+    {
+      var focused = FocusManager.instance.focus;
+
+      if (focused != null) focused.focus = false;
+    });
   }
 
   function mountRoots():Void
@@ -188,37 +231,208 @@ class CosmicEditorState extends MusicBeatState
       {mount: 'cosmic-data', label: 'DATA', path: storage}
     ];
 
-    for (root in roots) FunkinCosmic.mount(root.mount, root.path);
+    for (item in roots) FunkinCosmic.mount(item.mount, item.path);
   }
 
-  function createButtons():Void
+  override function update(elapsed:Float):Void
   {
-    var buttons:Array<{label:String, action:Void->Void}> = [
-      {label: 'UP', action: goUp},
-      {label: 'ROOT', action: nextRoot},
-      {label: 'SAVE', action: save},
-      {label: 'RELOAD', action: reload},
-      {label: 'NEW FILE', action: createFile},
-      {label: 'NEW DIR', action: createDirectory},
-      {label: 'RENAME', action: renameSelected},
-      {label: 'COPY', action: copySelected},
-      {label: 'DELETE', action: deleteSelected},
-      {label: 'RESTORE', action: restoreBackup},
-      {label: 'INFO', action: showInfo},
-      {label: 'EXIT', action: requestExit}
-    ];
+    updateLayout();
 
-    for (i in 0...buttons.length)
+    super.update(elapsed);
+
+    changeClock += elapsed;
+
+    updateOverlay();
+    arbitrateFocus();
+    handleShortcuts();
+
+    if (highlightTimer > 0)
     {
-      var button:EditorButton = new EditorButton(8 + (i * 103), 44, 97, 26, buttons[i].label);
-      button.onClick = buttons[i].action;
-      add(button);
+      highlightTimer -= elapsed;
+
+      if (highlightTimer <= 0) applyHighlight();
     }
+
+    statusTimer += elapsed;
+
+    if (statusTimer >= 0.1)
+    {
+      statusTimer = 0;
+      updateStatus();
+    }
+  }
+
+  function placeField(field:TextField, x:Float, y:Float, width:Float, height:Float):Void
+  {
+    field.x = x;
+    field.y = y;
+    field.width = Math.max(40, width);
+    field.height = Math.max(24, height);
+  }
+
+  function updateLayout():Void
+  {
+    if (editorArea.width <= 0 || consoleArea.width <= 0) return;
+
+    var key:String = [
+      editorArea.screenLeft,
+      editorArea.screenTop,
+      editorArea.width,
+      editorArea.height,
+      consoleArea.screenLeft,
+      consoleArea.screenTop,
+      consoleArea.width,
+      consoleArea.height
+    ].join(',');
+
+    if (key == lastLayout) return;
+
+    lastLayout = key;
+
+    placeField(gutter, editorArea.screenLeft, editorArea.screenTop, GUTTER_WIDTH, editorArea.height);
+    placeField(editor, editorArea.screenLeft + GUTTER_WIDTH, editorArea.screenTop, editorArea.width - GUTTER_WIDTH, editorArea.height);
+    placeField(console, consoleArea.screenLeft, consoleArea.screenTop, consoleArea.width, consoleArea.height);
+
+    if (overlayShown) captureSnapshots();
+  }
+
+  function overlayOpen():Bool
+  {
+    for (component in Screen.instance.rootComponents)
+    {
+      if (component == root) continue;
+
+      var name:String = Type.getClassName(Type.getClass(component));
+
+      if (name.indexOf('Notification') >= 0 || name.indexOf('ToolTip') >= 0) continue;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  function captureSnapshot(field:TextField, sprite:FlxSprite):Void
+  {
+    var width:Int = Std.int(field.width);
+    var height:Int = Std.int(field.height);
+
+    if (width <= 0 || height <= 0) return;
+
+    var bitmap:BitmapData = new BitmapData(width, height, false, 0x1B1E24);
+
+    bitmap.draw(field);
+
+    sprite.pixels = bitmap;
+    sprite.x = field.x;
+    sprite.y = field.y;
+  }
+
+  function captureSnapshots():Void
+  {
+    captureSnapshot(gutter, gutterSnapshot);
+    captureSnapshot(editor, editorSnapshot);
+    captureSnapshot(console, consoleSnapshot);
+  }
+
+  function updateOverlay():Void
+  {
+    var open:Bool = overlayOpen();
+
+    if (open == overlayShown) return;
+
+    overlayShown = open;
+
+    if (open) captureSnapshots();
+
+    for (field in [gutter, editor, console]) field.visible = !open;
+
+    for (snapshot in [gutterSnapshot, editorSnapshot, consoleSnapshot]) snapshot.visible = open;
+  }
+
+  function arbitrateFocus():Void
+  {
+    var haxeFocus:Bool = FocusManager.instance.focus != null;
+    var nativeFocus:Bool = FlxG.stage.focus == editor;
+
+    if (nativeFocus && !lastNativeFocus && haxeFocus)
+    {
+      FocusManager.instance.focus.focus = false;
+      haxeFocus = false;
+    }
+    else if (haxeFocus && !lastHaxeFocus && nativeFocus)
+    {
+      FlxG.stage.focus = null;
+      nativeFocus = false;
+    }
+
+    lastNativeFocus = nativeFocus;
+    lastHaxeFocus = haxeFocus;
+  }
+
+  function isTypingInUI():Bool
+  {
+    var focused = FocusManager.instance.focus;
+
+    return focused != null
+      && (Std.isOfType(focused, haxe.ui.components.TextField) || Std.isOfType(focused, haxe.ui.components.NumberStepper)
+        || Std.isOfType(focused, haxe.ui.components.DropDown));
+  }
+
+  function handleShortcuts():Void
+  {
+    if (dialogOpen) return;
+
+    var keys = FlxG.keys;
+    var ctrl:Bool = keys.pressed.CONTROL;
+    var shift:Bool = keys.pressed.SHIFT;
+    var typing:Bool = isTypingInUI();
+    var inEditor:Bool = FlxG.stage.focus == editor;
+
+    if (keys.justPressed.F1)
+    {
+      openGuide();
+      return;
+    }
+
+    if (ctrl && keys.justPressed.S) save();
+    else if (keys.justPressed.F5) reload();
+    else if (keys.justPressed.F7) check();
+    else if (keys.justPressed.F8) openModDoctor();
+    else if (keys.justPressed.ESCAPE)
+    {
+      if (findVisible) closeFind();
+      else if (typing)
+        FocusManager.instance.focus.focus = false;
+      else
+        requestExit();
+    }
+    else if (typing)
+    {
+      return;
+    }
+    else if (ctrl && keys.justPressed.Z) undo();
+    else if (ctrl && keys.justPressed.Y) redo();
+    else if (ctrl && keys.justPressed.F) openFind(false);
+    else if (ctrl && keys.justPressed.H) openFind(true);
+    else if (ctrl && keys.justPressed.G) focusGoto();
+    else if (ctrl && keys.justPressed.PLUS) changeFontSize(1);
+    else if (ctrl && keys.justPressed.MINUS) changeFontSize(-1);
+    else if (keys.justPressed.F4) findNext(shift ? -1 : 1);
+    else if (keys.justPressed.F3) showInfo();
+    else if (keys.justPressed.F2 && !inEditor) renameSelected();
+    else if (keys.justPressed.DELETE && !inEditor) deleteSelected();
+    else if (keys.justPressed.ENTER && !inEditor && fileList.focus) openSelected();
   }
 
   function currentRoot():CosmicRoot
   {
     return roots[rootIndex];
+  }
+
+  function rootPrefix():String
+  {
+    return currentRoot().label + ':/';
   }
 
   function dirPath():Null<String>
@@ -238,7 +452,7 @@ class CosmicEditorState extends MusicBeatState
 
   function displayName(name:String):String
   {
-    return currentRoot().label + ':/' + childRel(name);
+    return rootPrefix() + childRel(name);
   }
 
   static function isValidName(name:String):Bool
@@ -253,75 +467,34 @@ class CosmicEditorState extends MusicBeatState
     return true;
   }
 
-  function confirm(action:String, message:String):Bool
+  function toast(message:String, type:NotificationType = NotificationType.Info):Void
   {
-    var now:Float = haxe.Timer.stamp();
-
-    if (armedAction == action && now < armedUntil)
-    {
-      armedAction = '';
-      return true;
-    }
-
-    armedAction = action;
-    armedUntil = now + CONFIRM_SECONDS;
-
-    logLine('warn', message);
-
-    return false;
+    NotificationManager.instance.addNotification({
+      title: switch (type)
+      {
+        case NotificationType.Success: 'Done';
+        case NotificationType.Warning: 'Careful';
+        case NotificationType.Error: 'Error';
+        default: 'Cosmic Editor';
+      },
+      body: message,
+      type: type,
+      expiryMs: Constants.NOTIFICATION_DISMISS_TIME
+    });
   }
 
-  function guardDiscard():Bool
+  function fail(message:String):Void
   {
-    return !dirty || confirm('discard', 'Unsaved changes. Repeat the action within ' + Std.int(CONFIRM_SECONDS) + ' seconds to discard them.');
+    logLine('error', message);
+    toast(message, NotificationType.Error);
   }
 
-  override function update(elapsed:Float):Void
+  function formatSize(size:Int):String
   {
-    super.update(elapsed);
+    if (size < 1024) return size + ' B';
+    if (size < 1024 * 1024) return Std.int(size / 102.4) / 10 + ' KB';
 
-    changeClock += elapsed;
-
-    handleShortcuts();
-    handleListWheel();
-
-    if (highlightTimer > 0)
-    {
-      highlightTimer -= elapsed;
-
-      if (highlightTimer <= 0) applyHighlight();
-    }
-
-    statusTimer += elapsed;
-
-    if (statusTimer >= 0.1)
-    {
-      statusTimer = 0;
-      updateStatus();
-    }
-  }
-
-  function handleShortcuts():Void
-  {
-    var ctrl:Bool = FlxG.keys.pressed.CONTROL;
-
-    if (ctrl && FlxG.keys.justPressed.S) save();
-    else if (ctrl && FlxG.keys.justPressed.Z) undo();
-    else if (ctrl && FlxG.keys.justPressed.Y) redo();
-    else if (FlxG.keys.justPressed.F5) reload();
-    else if (FlxG.keys.justPressed.F7) check();
-    else if (FlxG.keys.justPressed.ESCAPE) requestExit();
-  }
-
-  function handleListWheel():Void
-  {
-    if (FlxG.mouse.wheel == 0) return;
-
-    if (FlxG.mouse.x < LIST_X || FlxG.mouse.x > LIST_X + LIST_WIDTH || FlxG.mouse.y < LIST_Y || FlxG.mouse.y > LIST_Y + (LIST_ROWS * LIST_ROW_HEIGHT)) return;
-
-    listOffset = Std.int(Math.max(0, Math.min(entries.length - LIST_ROWS, listOffset - FlxG.mouse.wheel)));
-
-    refreshRows();
+    return Std.int(size / 104857.6) / 10 + ' MB';
   }
 
   function refreshList():Void
@@ -332,7 +505,7 @@ class CosmicEditorState extends MusicBeatState
 
     if (directory == null || !FunkinCosmic.isDirectory(directory))
     {
-      logLine('error', 'Cannot open ' + currentRoot().label + ':/' + relDir);
+      logLine('error', 'Cannot open ' + rootPrefix() + relDir);
       relDir = '';
       directory = dirPath();
     }
@@ -365,51 +538,66 @@ class CosmicEditorState extends MusicBeatState
       return left < right ? -1 : (left > right ? 1 : 0);
     });
 
-    listOffset = 0;
-    pathField.text = currentRoot().label + ':/' + relDir;
+    pathInput.text = rootPrefix() + relDir;
 
-    refreshRows();
+    renderList();
   }
 
-  function refreshRows():Void
+  function renderList():Void
   {
-    for (i in 0...LIST_ROWS)
+    var filter:String = listFilter.text != null ? listFilter.text.toLowerCase() : '';
+    var previous:Bool = updatingList;
+
+    updatingList = true;
+
+    fileList.dataSource.clear();
+
+    var selectedIndex:Int = -1;
+    var count:Int = 0;
+
+    for (entry in entries)
     {
-      var row:EditorButton = rows[i];
-      var index:Int = listOffset + i;
+      if (filter != '' && entry.name.toLowerCase().indexOf(filter) < 0) continue;
 
-      if (index >= entries.length)
-      {
-        row.visible = false;
-        row.onClick = null;
-        continue;
-      }
+      var label:String = entry.isDir ? '[D]  ' + entry.name : '       ' + entry.name + '   ' + formatSize(entry.size);
 
-      var entry:CosmicEntry = entries[index];
-      var label:String = (entry.isDir ? '[D] ' : '    ') + entry.name;
+      fileList.dataSource.add({text: label, name: entry.name, isDir: entry.isDir});
 
-      row.visible = true;
-      row.setLabel(label.length > 36 ? label.substr(0, 34) + '..' : label);
-      row.selected = entry.name == selectedName;
-      row.onClick = () -> clickEntry(entry);
+      if (entry.name == selectedName) selectedIndex = count;
+
+      count++;
     }
+
+    if (selectedIndex >= 0) fileList.selectedIndex = selectedIndex;
+
+    updatingList = previous;
   }
 
-  function clickEntry(entry:CosmicEntry):Void
+  function selectedEntry():Null<CosmicEntry>
   {
-    var now:Float = haxe.Timer.stamp();
-    var doubleClick:Bool = selectedName == entry.name && now - lastClickTime < DOUBLE_CLICK_SECONDS;
+    for (entry in entries)
+    {
+      if (entry.name == selectedName) return entry;
+    }
 
-    lastClickTime = now;
-    selectedName = entry.name;
-
-    refreshRows();
-
-    if (doubleClick) openEntry(entry);
+    return null;
   }
 
-  function openEntry(entry:CosmicEntry):Void
+  function selectedPath():Null<String>
   {
+    return selectedName == '' ? null : childPath(selectedName);
+  }
+
+  function openSelected():Void
+  {
+    var entry:Null<CosmicEntry> = selectedEntry();
+
+    if (entry == null)
+    {
+      logLine('warn', 'Select a file or folder first.');
+      return;
+    }
+
     if (entry.isDir)
     {
       enterDirectory(childRel(entry.name));
@@ -418,7 +606,7 @@ class CosmicEditorState extends MusicBeatState
 
     var path:Null<String> = childPath(entry.name);
 
-    if (path != null && guardDiscard()) openFile(path, displayName(entry.name));
+    if (path != null) confirmDiscard(() -> openFile(path, displayName(entry.name)));
   }
 
   function enterDirectory(rel:String):Void
@@ -427,7 +615,7 @@ class CosmicEditorState extends MusicBeatState
 
     if (path == null || !FunkinCosmic.isDirectory(path))
     {
-      logLine('error', 'Not a folder: ' + currentRoot().label + ':/' + rel);
+      logLine('error', 'Not a folder: ' + rootPrefix() + rel);
       return;
     }
 
@@ -451,9 +639,11 @@ class CosmicEditorState extends MusicBeatState
     refreshList();
   }
 
-  function nextRoot():Void
+  function switchRoot(index:Int):Void
   {
-    rootIndex = (rootIndex + 1) % roots.length;
+    if (index < 0 || index >= roots.length || index == rootIndex) return;
+
+    rootIndex = index;
     relDir = '';
     selectedName = '';
 
@@ -462,11 +652,9 @@ class CosmicEditorState extends MusicBeatState
     logLine('info', 'Root ' + currentRoot().label + ' = ' + currentRoot().path);
   }
 
-  function onPathKeyDown(event:KeyboardEvent):Void
+  function submitPath():Void
   {
-    if (event.keyCode != Keyboard.ENTER) return;
-
-    var text:String = StringTools.trim(pathField.text);
+    var text:String = StringTools.trim(pathInput.text);
     var colon:Int = text.indexOf(':');
 
     if (colon < 0)
@@ -484,30 +672,56 @@ class CosmicEditorState extends MusicBeatState
     {
       if (roots[i].label != label) continue;
 
-      var previousRoot:Int = rootIndex;
-      var previousDir:String = relDir;
-
-      rootIndex = i;
-
       var path:Null<String> = FunkinCosmic.resolve(roots[i].mount, rel);
 
       if (path == null || !FunkinCosmic.isDirectory(path))
       {
-        rootIndex = previousRoot;
-        relDir = previousDir;
         logLine('error', 'Not a folder: ' + text);
-        pathField.text = currentRoot().label + ':/' + relDir;
+        pathInput.text = rootPrefix() + relDir;
         return;
       }
 
+      rootIndex = i;
       relDir = rel;
       selectedName = '';
+
+      updatingList = true;
+      rootPicker.selectedIndex = i;
+      updatingList = false;
 
       refreshList();
       return;
     }
 
-    logLine('error', 'Unknown root ' + label + '. Roots: ' + [for (root in roots) root.label].join(', '));
+    logLine('error', 'Unknown root ' + label + '. Roots: ' + [for (item in roots) item.label].join(', '));
+  }
+
+  function registerInputEvents():Void
+  {
+    pathInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) submitPath();
+    });
+
+    findInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) findNext(event.shiftKey ? -1 : 1);
+    });
+
+    replaceInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) replaceCurrent();
+    });
+
+    gotoInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) submitGoto();
+    });
+
+    fileList.registerEvent(haxe.ui.events.MouseEvent.DBL_CLICK, function(_):Void
+    {
+      openSelected();
+    });
   }
 
   function setReadOnly(value:Bool):Void
@@ -531,6 +745,12 @@ class CosmicEditorState extends MusicBeatState
 
     refreshGutter();
     applyHighlight();
+    updateFileLabel();
+  }
+
+  function updateFileLabel():Void
+  {
+    fileLabel.text = currentFile == null ? 'No file open' : currentLabel + (dirty ? '  *' : '') + (readOnly ? '  (read only)' : '');
   }
 
   static function languageFor(path:String):String
@@ -551,7 +771,7 @@ class CosmicEditorState extends MusicBeatState
 
     if (size < 0)
     {
-      logLine('error', 'Cannot read ' + label);
+      fail('Cannot read ' + label);
       return;
     }
 
@@ -564,7 +784,7 @@ class CosmicEditorState extends MusicBeatState
     if (size > MAX_TEXT_BYTES)
     {
       setEditorText('');
-      logLine('warn', label + ' is ' + size + ' bytes, larger than the 1 MB limit for editing. Use INFO for details.');
+      logLine('warn', label + ' is ' + size + ' bytes, larger than the 1 MB limit for editing. Use File Info for details.');
       return;
     }
 
@@ -573,7 +793,7 @@ class CosmicEditorState extends MusicBeatState
     if (bytes == null)
     {
       currentFile = null;
-      logLine('error', 'Could not read ' + label);
+      fail('Could not read ' + label);
       return;
     }
 
@@ -582,7 +802,7 @@ class CosmicEditorState extends MusicBeatState
       if (bytes.get(i) == 0)
       {
         setEditorText('');
-        logLine('warn', label + ' is a binary file (' + size + ' bytes) and cannot be edited as text. Use INFO for details.');
+        logLine('warn', label + ' is a binary file (' + size + ' bytes) and cannot be edited as text. Use File Info for details.');
         return;
       }
     }
@@ -627,7 +847,7 @@ class CosmicEditorState extends MusicBeatState
 
     selfMtime = modified;
 
-    logLine('warn', currentLabel + ' changed on disk. Press F5 or RELOAD to load the new version.');
+    logLine('warn', currentLabel + ' changed on disk. Press F5 or Reload to load the new version.');
   }
 
   function reload():Void
@@ -638,16 +858,17 @@ class CosmicEditorState extends MusicBeatState
       return;
     }
 
-    if (!guardDiscard()) return;
+    var path:String = currentFile;
+    var label:String = currentLabel;
 
-    openFile(currentFile, currentLabel);
+    confirmDiscard(() -> openFile(path, label));
   }
 
   function save():Void
   {
     if (currentFile == null || readOnly)
     {
-      logLine('error', 'Nothing to save. Open a text file first.');
+      fail('Nothing to save. Open a text file first.');
       return;
     }
 
@@ -655,35 +876,58 @@ class CosmicEditorState extends MusicBeatState
 
     if (usesCrlf) text = text.split('\n').join('\r\n');
 
-    var problem:Null<String> = validate(editor.text);
+    var problems:Array<String> = validate(editor.text);
 
     if (!FunkinCosmic.writeTextAtomic(currentFile, text, true))
     {
-      logLine('error', 'Could not write ' + currentLabel);
+      fail('Could not write ' + currentLabel);
       return;
     }
 
     dirty = false;
     selfMtime = FunkinCosmic.getModifiedTime(currentFile);
 
+    updateFileLabel();
     logLine('ok', 'Saved ' + currentLabel + ' (previous version kept as .bak1)');
+    toast('Saved ' + currentLabel, NotificationType.Success);
 
-    if (problem != null) logLine('warn', 'Saved with a syntax problem: ' + problem);
+    for (problem in problems) logLine(StringTools.startsWith(problem, 'ERROR') ? 'error' : 'warn', problem);
+
+    if (problems.length > 0) toast('Saved with ' + problems.length + ' problem' + (problems.length == 1 ? '' : 's') + '. See the console.', NotificationType.Warning);
   }
 
-  function validate(text:String):Null<String>
+  function fileName():String
   {
+    return currentFile == null ? '' : Path.withoutDirectory(currentFile).toLowerCase();
+  }
+
+  function validate(text:String):Array<String>
+  {
+    var problems:Array<String> = [];
+
     switch (language)
     {
       case 'json':
+        var parsed:Bool = true;
+
         try
         {
           Json.parse(text);
         }
         catch (e:Dynamic)
         {
+          parsed = false;
           jumpToPosition(Std.string(e));
-          return Std.string(e);
+          problems.push('ERROR ' + Std.string(e));
+        }
+
+        if (parsed && fileName() == '_polymod_meta.json')
+        {
+          for (item in ModDoctor.validateMeta(text)) problems.push(item.level.toUpperCase() + ' ' + item.message);
+        }
+        else if (parsed && fileName() == 'title-screen.json')
+        {
+          for (line in TitleConfig.parse(text).describeIssues()) problems.push(line);
         }
       case 'xml':
         try
@@ -692,7 +936,7 @@ class CosmicEditorState extends MusicBeatState
         }
         catch (e:Dynamic)
         {
-          return Std.string(e);
+          problems.push('ERROR ' + Std.string(e));
         }
       #if FEATURE_LUA_SCRIPTS
       case 'lua':
@@ -701,13 +945,13 @@ class CosmicEditorState extends MusicBeatState
         if (message != null)
         {
           jumpToLine(message);
-          return message;
+          problems.push('ERROR ' + message);
         }
       #end
       default:
     }
 
-    return null;
+    return problems;
   }
 
   function jumpToPosition(message:String):Void
@@ -739,7 +983,7 @@ class CosmicEditorState extends MusicBeatState
   {
     if (currentFile == null || readOnly)
     {
-      logLine('error', 'Open a text file first.');
+      fail('Open a text file first.');
       return;
     }
 
@@ -749,164 +993,184 @@ class CosmicEditorState extends MusicBeatState
       return;
     }
 
-    var problem:Null<String> = validate(editor.text);
+    var problems:Array<String> = validate(editor.text);
 
-    if (problem == null) logLine('ok', 'Syntax OK');
-    else logLine('error', problem);
-  }
-
-  function selectedPath():Null<String>
-  {
-    return selectedName == '' ? null : childPath(selectedName);
-  }
-
-  function selectedEntry():Null<CosmicEntry>
-  {
-    for (entry in entries)
+    if (problems.length == 0)
     {
-      if (entry.name == selectedName) return entry;
+      logLine('ok', 'Syntax OK');
+      toast('Syntax OK', NotificationType.Success);
+      return;
     }
 
-    return null;
+    for (problem in problems) logLine(StringTools.startsWith(problem, 'ERROR') ? 'error' : 'warn', problem);
+
+    toast(problems[0], NotificationType.Error);
+  }
+
+  function askName(title:String, prompt:String, initial:String, done:String->Void):Void
+  {
+    var dialog:CosmicNameDialog = new CosmicNameDialog(title, prompt, initial, function(text:String):Void
+    {
+      dialogOpen = false;
+      done(StringTools.trim(text));
+    });
+
+    dialogOpen = true;
+    dialog.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    dialog.showDialog(true);
+  }
+
+  function targetFree(name:String):Null<String>
+  {
+    if (!isValidName(name))
+    {
+      fail('"' + name + '" is not a valid name.');
+      return null;
+    }
+
+    var path:Null<String> = childPath(name);
+
+    if (path == null || FunkinCosmic.exists(path))
+    {
+      fail(displayName(name) + ' already exists or is outside the root.');
+      return null;
+    }
+
+    return path;
   }
 
   function createFile():Void
   {
-    var name:String = StringTools.trim(nameField.text);
-
-    if (!isValidName(name))
+    askName('New File', 'Name of the new file in ' + rootPrefix() + relDir, '', function(name:String):Void
     {
-      logLine('error', 'Type a valid file name in the name field first.');
-      return;
-    }
+      var path:Null<String> = targetFree(name);
 
-    var path:Null<String> = childPath(name);
+      if (path == null) return;
 
-    if (path == null || FunkinCosmic.exists(path))
-    {
-      logLine('error', displayName(name) + ' already exists or is outside the root.');
-      return;
-    }
+      confirmDiscard(() ->
+      {
+        if (!FunkinCosmic.writeTextAtomic(path, '', false))
+        {
+          fail('Could not create ' + displayName(name));
+          return;
+        }
 
-    if (!guardDiscard()) return;
+        selectedName = name;
 
-    if (!FunkinCosmic.writeTextAtomic(path, '', false))
-    {
-      logLine('error', 'Could not create ' + displayName(name));
-      return;
-    }
-
-    selectedName = name;
-
-    refreshList();
-    openFile(path, displayName(name));
+        refreshList();
+        openFile(path, displayName(name));
+      });
+    });
   }
 
   function createDirectory():Void
   {
-    var name:String = StringTools.trim(nameField.text);
-
-    if (!isValidName(name))
+    askName('New Folder', 'Name of the new folder in ' + rootPrefix() + relDir, '', function(name:String):Void
     {
-      logLine('error', 'Type a valid folder name in the name field first.');
-      return;
-    }
+      var path:Null<String> = targetFree(name);
 
-    var path:Null<String> = childPath(name);
+      if (path == null) return;
 
-    if (path == null || FunkinCosmic.exists(path))
-    {
-      logLine('error', displayName(name) + ' already exists or is outside the root.');
-      return;
-    }
+      if (!FunkinCosmic.createDirectory(path))
+      {
+        fail('Could not create ' + displayName(name));
+        return;
+      }
 
-    if (!FunkinCosmic.createDirectory(path))
-    {
-      logLine('error', 'Could not create ' + displayName(name));
-      return;
-    }
+      selectedName = name;
 
-    selectedName = name;
-
-    refreshList();
-    logLine('ok', 'Created ' + displayName(name));
+      refreshList();
+      logLine('ok', 'Created ' + displayName(name));
+    });
   }
 
   function renameSelected():Void
   {
     var source:Null<String> = selectedPath();
-    var name:String = StringTools.trim(nameField.text);
 
-    if (source == null || !isValidName(name))
+    if (source == null)
     {
-      logLine('error', 'Select an entry and type the new name in the name field.');
+      fail('Select an entry to rename.');
       return;
     }
 
-    var target:Null<String> = childPath(name);
+    var oldName:String = selectedName;
 
-    if (target == null || FunkinCosmic.exists(target))
+    askName('Rename', 'New name for ' + displayName(oldName), oldName, function(name:String):Void
     {
-      logLine('error', displayName(name) + ' already exists or is outside the root.');
-      return;
-    }
+      if (name == oldName) return;
 
-    var wasOpen:Bool = source == currentFile;
+      var target:Null<String> = targetFree(name);
 
-    if (wasOpen && !guardDiscard()) return;
+      if (target == null) return;
 
-    if (!FunkinCosmic.moveFile(source, target, false))
-    {
-      logLine('error', 'Could not rename ' + displayName(selectedName));
-      return;
-    }
+      var wasOpen:Bool = source == currentFile;
 
-    logLine('ok', 'Renamed ' + displayName(selectedName) + ' to ' + name);
+      var apply:Void->Void = function():Void
+      {
+        if (!FunkinCosmic.moveFile(source, target, false))
+        {
+          fail('Could not rename ' + displayName(oldName));
+          return;
+        }
 
-    if (wasOpen) closeFile();
+        logLine('ok', 'Renamed ' + displayName(oldName) + ' to ' + name);
 
-    selectedName = name;
+        if (wasOpen) closeFile();
 
-    refreshList();
+        selectedName = name;
+
+        refreshList();
+      };
+
+      if (wasOpen) confirmDiscard(apply);
+      else
+        apply();
+    });
   }
 
   function copySelected():Void
   {
     var source:Null<String> = selectedPath();
     var entry:Null<CosmicEntry> = selectedEntry();
-    var name:String = StringTools.trim(nameField.text);
 
-    if (source == null || entry == null || !isValidName(name))
+    if (source == null || entry == null)
     {
-      logLine('error', 'Select a file and type the name of the copy in the name field.');
+      fail('Select a file to duplicate.');
       return;
     }
 
     if (entry.isDir)
     {
-      logLine('error', 'Copying folders is not supported.');
+      fail('Copying folders is not supported.');
       return;
     }
 
-    var target:Null<String> = childPath(name);
+    var oldName:String = entry.name;
+    var extension:String = Path.extension(oldName);
+    var suggestion:String = extension == '' ? oldName + '-copy' : Path.withoutExtension(oldName) + '-copy.' + extension;
 
-    if (target == null || FunkinCosmic.exists(target))
+    askName('Duplicate', 'Name of the copy of ' + displayName(oldName), suggestion, function(name:String):Void
     {
-      logLine('error', displayName(name) + ' already exists or is outside the root.');
-      return;
-    }
+      var target:Null<String> = targetFree(name);
 
-    if (!FunkinCosmic.copyFile(source, target, false))
-    {
-      logLine('error', 'Could not copy to ' + displayName(name));
-      return;
-    }
+      if (target == null) return;
 
-    logLine('ok', 'Copied ' + displayName(selectedName) + ' to ' + name);
+      if (!FunkinCosmic.copyFile(source, target, false))
+      {
+        fail('Could not copy to ' + displayName(name));
+        return;
+      }
 
-    selectedName = name;
+      logLine('ok', 'Copied ' + displayName(oldName) + ' to ' + name);
 
-    refreshList();
+      selectedName = name;
+
+      refreshList();
+    });
   }
 
   function deleteSelected():Void
@@ -916,80 +1180,101 @@ class CosmicEditorState extends MusicBeatState
 
     if (path == null || entry == null)
     {
-      logLine('error', 'Select a file or folder to delete.');
+      fail('Select a file or folder to delete.');
+      return;
+    }
+
+    if (relDir == '' && (currentRoot().label == 'GAME' || currentRoot().label == 'DATA'))
+    {
+      fail('Top level entries of ' + currentRoot().label + ' are protected. Open the folder and delete items inside it.');
       return;
     }
 
     var label:String = displayName(entry.name);
+    var isDir:Bool = entry.isDir;
 
-    if (relDir == '' && (currentRoot().label == 'GAME' || currentRoot().label == 'DATA'))
+    dialogOpen = true;
+
+    Dialogs.messageBox('Delete ' + label + (isDir ? ' and everything inside it?' : '?') + '\n\nThis cannot be undone.', 'Delete', MessageBoxType.TYPE_YESNO, true,
+      function(button:DialogButton):Void
+      {
+        dialogOpen = false;
+
+        if (button != DialogButton.YES) return;
+
+        var deleted:Bool = isDir ? FunkinCosmic.deleteDirectory(path, true) : FunkinCosmic.deleteFile(path);
+
+        if (!deleted)
+        {
+          fail('Could not delete ' + label);
+          return;
+        }
+
+        if (path == currentFile) closeFile();
+
+        logLine('ok', 'Deleted ' + label);
+
+        selectedName = '';
+
+        refreshList();
+      });
+  }
+
+  function backupsOf(path:String):Array<CosmicBackup>
+  {
+    var backups:Array<CosmicBackup> = [];
+
+    for (slot in 1...BACKUP_SLOTS_SHOWN + 1)
     {
-      logLine('error', 'Top level entries of ' + currentRoot().label + ' are protected. Open the folder and delete items inside it.');
-      return;
+      var backup:String = path + '.bak' + slot;
+
+      if (!FunkinCosmic.exists(backup)) continue;
+
+      backups.push({
+        slot: slot,
+        text: 'Slot ' + slot + '   ' + formatSize(FunkinCosmic.getFileSize(backup)) + '   ' + Date.fromTime(FunkinCosmic.getModifiedTime(backup)).toString()
+      });
     }
 
-    if (!confirm('delete:' + path, 'Click DELETE again within ' + Std.int(CONFIRM_SECONDS) + ' seconds to delete ' + label + (entry.isDir ? ' and everything inside it.' : '.'))) return;
-
-    var deleted:Bool = entry.isDir ? FunkinCosmic.deleteDirectory(path, true) : FunkinCosmic.deleteFile(path);
-
-    if (!deleted)
-    {
-      logLine('error', 'Could not delete ' + label);
-      return;
-    }
-
-    if (path == currentFile) closeFile();
-
-    logLine('ok', 'Deleted ' + label);
-
-    selectedName = '';
-
-    refreshList();
+    return backups;
   }
 
   function restoreBackup():Void
   {
     if (currentFile == null || readOnly)
     {
-      logLine('error', 'Open a text file first.');
-      return;
-    }
-
-    var slot:Int = Std.int(Math.max(1, Std.parseInt(StringTools.trim(nameField.text)) ?? 1));
-
-    if (!FunkinCosmic.exists(currentFile + '.bak' + slot))
-    {
-      logLine('error', currentLabel + ' has no backup in slot ' + slot + '. Type a slot number in the name field (INFO lists them).');
-      return;
-    }
-
-    if (!confirm('restore', 'This replaces ' + currentLabel + ' with backup slot ' + slot + '. Click RESTORE again within ' + Std.int(CONFIRM_SECONDS) + ' seconds.')) return;
-
-    if (!FunkinCosmic.restoreBackup(currentFile, slot))
-    {
-      logLine('error', 'Could not restore slot ' + slot);
+      fail('Open a text file first.');
       return;
     }
 
     var path:String = currentFile;
     var label:String = currentLabel;
 
-    openFile(path, label);
+    var dialog:CosmicRestoreDialog = new CosmicRestoreDialog(label, backupsOf(path), function(slot:Int):Void
+    {
+      dialogOpen = false;
 
-    logLine('ok', 'Restored backup slot ' + slot);
+      if (!FunkinCosmic.restoreBackup(path, slot))
+      {
+        fail('Could not restore slot ' + slot);
+        return;
+      }
+
+      openFile(path, label);
+      logLine('ok', 'Restored backup slot ' + slot);
+    });
+
+    dialogOpen = true;
+    dialog.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    dialog.showDialog(true);
   }
 
-  function showInfo():Void
+  function describe(path:String):String
   {
-    var path:Null<String> = selectedPath() ?? currentFile;
-
-    if (path == null)
-    {
-      logLine('error', 'Select a file or folder first.');
-      return;
-    }
-
-    logLine('info', 'Path: ' + path);
+    var lines:Array<String> = ['Path: ' + path];
 
     if (FunkinCosmic.isDirectory(path))
     {
@@ -1001,35 +1286,180 @@ class CosmicEditorState extends MusicBeatState
       }
       catch (e:Dynamic) {}
 
-      logLine('info', 'Folder with ' + count + ' entries');
-      return;
+      lines.push('Folder with ' + count + ' entries');
+      return lines.join('\n');
     }
 
     var size:Int = FunkinCosmic.getFileSize(path);
 
-    logLine('info', 'Size: ' + size + ' bytes');
-    logLine('info', 'Modified: ' + Date.fromTime(FunkinCosmic.getModifiedTime(path)).toString());
+    lines.push('Size: ' + size + ' bytes');
+    lines.push('Modified: ' + Date.fromTime(FunkinCosmic.getModifiedTime(path)).toString());
 
-    if (size >= 0 && size <= MAX_CHECKSUM_BYTES) logLine('info', 'MD5: ' + (FunkinCosmic.checksum(path) ?? 'unavailable'));
+    if (size >= 0 && size <= MAX_CHECKSUM_BYTES) lines.push('MD5: ' + (FunkinCosmic.checksum(path) ?? 'unavailable'));
 
-    var backups:Array<String> = [];
+    var backups:Array<CosmicBackup> = backupsOf(path);
 
-    for (slot in 1...BACKUP_SLOTS_SHOWN + 1)
+    lines.push(backups.length == 0 ? 'Backups: none' : 'Backups:');
+
+    for (backup in backups) lines.push('  ' + backup.text);
+
+    return lines.join('\n');
+  }
+
+  function showInfo():Void
+  {
+    var path:Null<String> = selectedPath() ?? currentFile;
+
+    if (path == null)
     {
-      var backup:String = path + '.bak' + slot;
-
-      if (FunkinCosmic.exists(backup)) backups.push('slot ' + slot + ' (' + FunkinCosmic.getFileSize(backup) + ' bytes, ' + Date.fromTime(FunkinCosmic.getModifiedTime(backup)).toString() + ')');
+      fail('Select a file or folder first.');
+      return;
     }
 
-    logLine('info', backups.length == 0 ? 'Backups: none' : 'Backups: ' + backups.join('; '));
+    showReport('File Info', describe(path));
+  }
+
+  function showReport(title:String, content:String):Void
+  {
+    var dialog:CosmicInfoDialog = new CosmicInfoDialog(title, content);
+
+    dialogOpen = true;
+    dialog.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    dialog.showDialog(true);
+  }
+
+  function openGuide():Void
+  {
+    var guide:CosmicGuideDialog = new CosmicGuideDialog();
+
+    dialogOpen = true;
+    guide.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    guide.showDialog(true);
+  }
+
+  function openModDoctor():Void
+  {
+    var dialog:CosmicModsDialog = new CosmicModsDialog();
+
+    dialogOpen = true;
+    dialog.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    dialog.showDialog(true);
+  }
+
+  function modsRootIndex():Int
+  {
+    for (i in 0...roots.length)
+    {
+      if (roots[i].label == 'MODS') return i;
+    }
+
+    return 0;
+  }
+
+  function createMod():Void
+  {
+    askName('Create a New Mod', 'Type the mod folder name (letters, numbers, - and _).', '', function(name:String):Void
+    {
+      if (!MOD_ID_PATTERN.match(name))
+      {
+        fail('Use only letters, numbers, - and _ in a mod name.');
+        return;
+      }
+
+      var modsIndex:Int = modsRootIndex();
+      var folder:Null<String> = FunkinCosmic.resolve(roots[modsIndex].mount, name);
+
+      if (folder == null || FunkinCosmic.exists(folder))
+      {
+        fail('MODS:/' + name + ' already exists.');
+        return;
+      }
+
+      FunkinCosmic.createDirectory(PolymodHandler.getModFolder());
+
+      var api:String = PolymodHandler.API_VERSION;
+
+      if (api.charAt(0) == 'v' || api.charAt(0) == 'V') api = api.substr(1);
+
+      var meta:String = StringTools.replace(StringTools.replace(META_TEMPLATE, '%TITLE%', name), '%API%', api);
+
+      if (!FunkinCosmic.createDirectory(folder) || !FunkinCosmic.writeTextAtomic(folder + '/_polymod_meta.json', meta, false))
+      {
+        fail('Could not create MODS:/' + name);
+        return;
+      }
+
+      rootIndex = modsIndex;
+      relDir = name;
+      selectedName = '_polymod_meta.json';
+
+      updatingList = true;
+      rootPicker.selectedIndex = modsIndex;
+      updatingList = false;
+
+      refreshList();
+      logLine('ok', 'Created MODS:/' + name + '. Enable it in the Mod Menu after you add some content.');
+      confirmDiscard(() -> openFile(folder + '/_polymod_meta.json', 'MODS:/' + name + '/_polymod_meta.json'));
+    });
+  }
+
+  function addTitleConfig():Void
+  {
+    if (currentRoot().label != 'MODS' || relDir == '')
+    {
+      fail('Open a mod folder inside MODS first, then use this again.');
+      return;
+    }
+
+    var modDir:String = relDir.split('/')[0];
+    var rel:String = modDir + '/ui/title';
+    var folder:Null<String> = FunkinCosmic.resolve(currentRoot().mount, rel);
+    var target:Null<String> = FunkinCosmic.resolve(currentRoot().mount, rel + '/title-screen.json');
+
+    if (folder == null || target == null)
+    {
+      fail('That folder is outside the root.');
+      return;
+    }
+
+    if (FunkinCosmic.exists(target))
+    {
+      fail('MODS:/' + rel + '/title-screen.json already exists.');
+      return;
+    }
+
+    if (!FunkinCosmic.createDirectory(folder) || !FunkinCosmic.writeTextAtomic(target, TitleConfig.DEFAULTS + '\n', false))
+    {
+      fail('Could not create the title screen config.');
+      return;
+    }
+
+    relDir = rel;
+    selectedName = 'title-screen.json';
+
+    refreshList();
+    logLine('ok', 'Created MODS:/' + rel + '/title-screen.json with every setting at its default. Delete the settings you do not change.');
+    confirmDiscard(() -> openFile(target, 'MODS:/' + rel + '/title-screen.json'));
   }
 
   function onEditorChange(_:Event):Void
   {
     if (readOnly) return;
 
-    dirty = true;
-    armedAction = '';
+    if (!dirty)
+    {
+      dirty = true;
+      updateFileLabel();
+    }
 
     if (changeClock > 0.6)
     {
@@ -1074,6 +1504,31 @@ class CosmicEditorState extends MusicBeatState
     changeClock = 10;
     dirty = true;
 
+    updateFileLabel();
+    refreshGutter();
+    applyHighlight();
+  }
+
+  function applyEdit(text:String, selectionStart:Int, selectionEnd:Int):Void
+  {
+    undoStack.push(editor.text);
+
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+
+    redoStack = [];
+
+    var scroll:Int = editor.scrollV;
+
+    editor.text = text;
+    editor.scrollV = scroll;
+    editor.setSelection(selectionStart, selectionEnd);
+
+    previousText = text;
+    changeClock = 10;
+    dirty = true;
+    gutterLines = -1;
+
+    updateFileLabel();
     refreshGutter();
     applyHighlight();
   }
@@ -1141,17 +1596,254 @@ class CosmicEditorState extends MusicBeatState
     }
   }
 
+  function changeFontSize(delta:Int):Void
+  {
+    var next:Int = Std.int(Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize + delta)));
+
+    if (next == fontSize) return;
+
+    fontSize = next;
+    baseFormat.size = next;
+
+    editor.defaultTextFormat = baseFormat;
+    gutter.defaultTextFormat = new TextFormat(baseFormat.font, next, 0x5C6370, false, false, false, null, null, TextFormatAlign.RIGHT);
+    console.defaultTextFormat = new TextFormat(baseFormat.font, next, 0xC8D0DA);
+
+    gutterLines = -1;
+    refreshGutter();
+    applyHighlight();
+  }
+
   function updateStatus():Void
   {
     var caret:Int = editor.caretIndex;
     var line:Int = Std.int(Math.max(0, editor.getLineIndexOfChar(caret)));
     var column:Int = caret - editor.getLineOffset(line) + 1;
-    var status:String = currentFile == null ? 'no file' : 'Ln ${line + 1}, Col $column' + (dirty ? '  MODIFIED' : '') + (readOnly ? '  READ-ONLY' : '');
+    var status:String = currentFile == null ? rootPrefix() + relDir + '   ' + entries.length + ' entries' : 'Ln ${line + 1}, Col $column   ${editor.numLines} lines   $language'
+      + (dirty ? '   MODIFIED' : '') + (readOnly ? '   READ-ONLY' : '');
 
     if (status == lastStatus) return;
 
     lastStatus = status;
-    statusText.text = status;
+    statusLabel.text = status;
+  }
+
+  function openFind(withReplace:Bool):Void
+  {
+    if (readOnly && currentFile == null) return;
+
+    findVisible = true;
+    findBar.hidden = false;
+
+    var selection:String = editor.text.substring(editor.selectionBeginIndex, editor.selectionEndIndex);
+
+    if (selection != '' && selection.indexOf('\n') == -1) findInput.text = selection;
+
+    (withReplace ? replaceInput : findInput).focus = true;
+
+    updateFindInfo();
+  }
+
+  function closeFind():Void
+  {
+    findVisible = false;
+    findBar.hidden = true;
+
+    var focused = FocusManager.instance.focus;
+
+    if (focused != null) focused.focus = false;
+
+    FlxG.stage.focus = editor;
+  }
+
+  function focusGoto():Void
+  {
+    findVisible = true;
+    findBar.hidden = false;
+
+    gotoInput.text = '';
+    gotoInput.focus = true;
+  }
+
+  function submitGoto():Void
+  {
+    var line:Null<Int> = Std.parseInt(StringTools.trim(gotoInput.text));
+
+    if (line == null)
+    {
+      logLine('warn', 'Type a line number.');
+      return;
+    }
+
+    gotoLine(line);
+
+    FlxG.stage.focus = editor;
+  }
+
+  function gotoLine(line:Int):Void
+  {
+    var index:Int = Std.int(Math.max(0, Math.min(editor.numLines - 1, line - 1)));
+    var start:Int = editor.getLineOffset(index);
+
+    editor.scrollV = Std.int(Math.max(1, index - 3));
+    editor.setSelection(start, start + Std.int(Math.max(0, editor.getLineLength(index) - 1)));
+
+    gutter.scrollV = editor.scrollV;
+  }
+
+  function haystackFor(text:String):String
+  {
+    return findCase ? text : text.toLowerCase();
+  }
+
+  function findMatches():Array<Int>
+  {
+    var needle:String = haystackFor(findInput.text);
+    var matches:Array<Int> = [];
+
+    if (needle == '') return matches;
+
+    var haystack:String = haystackFor(editor.text);
+    var position:Int = haystack.indexOf(needle);
+
+    while (position >= 0 && matches.length < 5000)
+    {
+      matches.push(position);
+      position = haystack.indexOf(needle, position + Std.int(Math.max(1, needle.length)));
+    }
+
+    return matches;
+  }
+
+  function findNext(direction:Int, fromStart:Bool = false):Void
+  {
+    var matches:Array<Int> = findMatches();
+
+    if (matches.length == 0)
+    {
+      findInfo.text = findInput.text == '' ? '' : 'no matches';
+      return;
+    }
+
+    var anchor:Int = fromStart ? editor.selectionBeginIndex : (direction > 0 ? editor.selectionEndIndex : editor.selectionBeginIndex);
+    var target:Int = -1;
+
+    if (direction > 0)
+    {
+      for (position in matches)
+      {
+        if (position >= anchor)
+        {
+          target = position;
+          break;
+        }
+      }
+
+      if (target < 0) target = matches[0];
+    }
+    else
+    {
+      var index:Int = matches.length - 1;
+
+      while (index >= 0)
+      {
+        if (matches[index] < anchor)
+        {
+          target = matches[index];
+          break;
+        }
+
+        index--;
+      }
+
+      if (target < 0) target = matches[matches.length - 1];
+    }
+
+    selectRange(target, target + findInput.text.length);
+    updateFindInfo();
+  }
+
+  function selectRange(start:Int, end:Int):Void
+  {
+    var line:Int = editor.getLineIndexOfChar(start);
+
+    if (line >= 0 && (line + 1 < editor.scrollV || line + 1 > editor.bottomScrollV)) editor.scrollV = Std.int(Math.max(1, line - 4));
+
+    applyHighlight();
+    editor.setTextFormat(matchFormat, start, end);
+    editor.setSelection(start, end);
+  }
+
+  function updateFindInfo():Void
+  {
+    if (findInfo == null) return;
+
+    if (findInput.text == '')
+    {
+      findInfo.text = '';
+      return;
+    }
+
+    var matches:Array<Int> = findMatches();
+
+    if (matches.length == 0)
+    {
+      findInfo.text = 'no matches';
+      return;
+    }
+
+    var current:Int = matches.indexOf(editor.selectionBeginIndex);
+
+    findInfo.text = (current >= 0 ? Std.string(current + 1) : '-') + ' of ' + matches.length;
+  }
+
+  function selectionMatchesFind():Bool
+  {
+    var needle:String = findInput.text;
+
+    if (needle == '' || editor.selectionEndIndex - editor.selectionBeginIndex != needle.length) return false;
+
+    return haystackFor(editor.text.substring(editor.selectionBeginIndex, editor.selectionEndIndex)) == haystackFor(needle);
+  }
+
+  function replaceCurrent():Void
+  {
+    if (readOnly) return;
+
+    if (!selectionMatchesFind())
+    {
+      findNext(1);
+      return;
+    }
+
+    var start:Int = editor.selectionBeginIndex;
+    var text:String = editor.text;
+    var replacement:String = replaceInput.text;
+
+    applyEdit(text.substring(0, start) + replacement + text.substring(editor.selectionEndIndex), start + replacement.length, start + replacement.length);
+    findNext(1);
+  }
+
+  function replaceAll():Void
+  {
+    var needle:String = findInput.text;
+
+    if (readOnly || needle == '') return;
+
+    var matches:Array<Int> = findMatches();
+
+    if (matches.length == 0)
+    {
+      findInfo.text = 'no matches';
+      return;
+    }
+
+    var pattern:EReg = new EReg(REGEX_ESCAPE.replace(needle, '\\$0'), findCase ? 'g' : 'gi');
+    var replacement:String = replaceInput.text;
+
+    applyEdit(pattern.map(editor.text, (_) -> replacement), 0, 0);
+    logLine('ok', 'Replaced ' + matches.length + ' matches.');
+    updateFindInfo();
   }
 
   function logLine(level:String, message:String):Void
@@ -1184,11 +1876,334 @@ class CosmicEditorState extends MusicBeatState
     consoleLines = 0;
   }
 
+  function confirmDiscard(action:Void->Void, ?cancel:Void->Void):Void
+  {
+    if (!dirty)
+    {
+      action();
+      return;
+    }
+
+    dialogOpen = true;
+
+    Dialogs.messageBox('This file has unsaved changes. Discard them?', 'Unsaved Changes', MessageBoxType.TYPE_YESNO, true, function(button:DialogButton):Void
+    {
+      dialogOpen = false;
+
+      if (button == DialogButton.YES) action();
+      else if (cancel != null)
+        cancel();
+    });
+  }
+
   function requestExit():Void
   {
-    if (!guardDiscard()) return;
+    if (exitDialog != null) return;
 
+    if (!dirty)
+    {
+      leave();
+      return;
+    }
+
+    dialogOpen = true;
+
+    exitDialog = Dialogs.messageBox('You are about to leave the editor without saving.\n\nAre you sure?', 'Leave Editor', MessageBoxType.TYPE_YESNO, true,
+      function(button:DialogButton):Void
+      {
+        exitDialog = null;
+        dialogOpen = false;
+
+        if (button == DialogButton.YES) leave();
+      });
+  }
+
+  function leave():Void
+  {
     FlxG.switchState(() -> new funkin.ui.mainmenu.MainMenuState());
+  }
+
+  @:bind(listUp, MouseEvent.CLICK)
+  function onListUpClick(_):Void
+  {
+    goUp();
+  }
+
+  @:bind(listOpen, MouseEvent.CLICK)
+  function onListOpenClick(_):Void
+  {
+    openSelected();
+  }
+
+  @:bind(listNewFile, MouseEvent.CLICK)
+  function onListNewFileClick(_):Void
+  {
+    createFile();
+  }
+
+  @:bind(listNewFolder, MouseEvent.CLICK)
+  function onListNewFolderClick(_):Void
+  {
+    createDirectory();
+  }
+
+  @:bind(toolSave, MouseEvent.CLICK)
+  function onToolSaveClick(_):Void
+  {
+    save();
+  }
+
+  @:bind(toolReload, MouseEvent.CLICK)
+  function onToolReloadClick(_):Void
+  {
+    reload();
+  }
+
+  @:bind(toolCheck, MouseEvent.CLICK)
+  function onToolCheckClick(_):Void
+  {
+    check();
+  }
+
+  @:bind(toolUndo, MouseEvent.CLICK)
+  function onToolUndoClick(_):Void
+  {
+    undo();
+  }
+
+  @:bind(toolRedo, MouseEvent.CLICK)
+  function onToolRedoClick(_):Void
+  {
+    redo();
+  }
+
+  @:bind(toolInfo, MouseEvent.CLICK)
+  function onToolInfoClick(_):Void
+  {
+    showInfo();
+  }
+
+  @:bind(findPreviousButton, MouseEvent.CLICK)
+  function onFindPreviousButtonClick(_):Void
+  {
+    findNext(-1);
+  }
+
+  @:bind(findNextButton, MouseEvent.CLICK)
+  function onFindNextButtonClick(_):Void
+  {
+    findNext(1);
+  }
+
+  @:bind(findReplaceButton, MouseEvent.CLICK)
+  function onFindReplaceButtonClick(_):Void
+  {
+    replaceCurrent();
+  }
+
+  @:bind(findReplaceAllButton, MouseEvent.CLICK)
+  function onFindReplaceAllButtonClick(_):Void
+  {
+    replaceAll();
+  }
+
+  @:bind(findCloseButton, MouseEvent.CLICK)
+  function onFindCloseButtonClick(_):Void
+  {
+    closeFind();
+  }
+
+  @:bind(menubarItemNewFile, MouseEvent.CLICK)
+  function onMenubarItemNewFileClick(_):Void
+  {
+    createFile();
+  }
+
+  @:bind(menubarItemNewFolder, MouseEvent.CLICK)
+  function onMenubarItemNewFolderClick(_):Void
+  {
+    createDirectory();
+  }
+
+  @:bind(menubarItemOpen, MouseEvent.CLICK)
+  function onMenubarItemOpenClick(_):Void
+  {
+    openSelected();
+  }
+
+  @:bind(menubarItemSave, MouseEvent.CLICK)
+  function onMenubarItemSaveClick(_):Void
+  {
+    save();
+  }
+
+  @:bind(menubarItemReload, MouseEvent.CLICK)
+  function onMenubarItemReloadClick(_):Void
+  {
+    reload();
+  }
+
+  @:bind(menubarItemRename, MouseEvent.CLICK)
+  function onMenubarItemRenameClick(_):Void
+  {
+    renameSelected();
+  }
+
+  @:bind(menubarItemCopy, MouseEvent.CLICK)
+  function onMenubarItemCopyClick(_):Void
+  {
+    copySelected();
+  }
+
+  @:bind(menubarItemDelete, MouseEvent.CLICK)
+  function onMenubarItemDeleteClick(_):Void
+  {
+    deleteSelected();
+  }
+
+  @:bind(menubarItemRestore, MouseEvent.CLICK)
+  function onMenubarItemRestoreClick(_):Void
+  {
+    restoreBackup();
+  }
+
+  @:bind(menubarItemInfo, MouseEvent.CLICK)
+  function onMenubarItemInfoClick(_):Void
+  {
+    showInfo();
+  }
+
+  @:bind(menubarItemExit, MouseEvent.CLICK)
+  function onMenubarItemExitClick(_):Void
+  {
+    requestExit();
+  }
+
+  @:bind(menubarItemUndo, MouseEvent.CLICK)
+  function onMenubarItemUndoClick(_):Void
+  {
+    undo();
+  }
+
+  @:bind(menubarItemRedo, MouseEvent.CLICK)
+  function onMenubarItemRedoClick(_):Void
+  {
+    redo();
+  }
+
+  @:bind(menubarItemFind, MouseEvent.CLICK)
+  function onMenubarItemFindClick(_):Void
+  {
+    openFind(false);
+  }
+
+  @:bind(menubarItemReplace, MouseEvent.CLICK)
+  function onMenubarItemReplaceClick(_):Void
+  {
+    openFind(true);
+  }
+
+  @:bind(menubarItemFindNext, MouseEvent.CLICK)
+  function onMenubarItemFindNextClick(_):Void
+  {
+    findNext(1);
+  }
+
+  @:bind(menubarItemGoto, MouseEvent.CLICK)
+  function onMenubarItemGotoClick(_):Void
+  {
+    focusGoto();
+  }
+
+  @:bind(menubarItemFontLarger, MouseEvent.CLICK)
+  function onMenubarItemFontLargerClick(_):Void
+  {
+    changeFontSize(1);
+  }
+
+  @:bind(menubarItemFontSmaller, MouseEvent.CLICK)
+  function onMenubarItemFontSmallerClick(_):Void
+  {
+    changeFontSize(-1);
+  }
+
+  @:bind(menubarItemRefresh, MouseEvent.CLICK)
+  function onMenubarItemRefreshClick(_):Void
+  {
+    refreshList();
+  }
+
+  @:bind(menubarItemClearConsole, MouseEvent.CLICK)
+  function onMenubarItemClearConsoleClick(_):Void
+  {
+    clearConsole();
+  }
+
+  @:bind(menubarItemCheck, MouseEvent.CLICK)
+  function onMenubarItemCheckClick(_):Void
+  {
+    check();
+  }
+
+  @:bind(menubarItemNewMod, MouseEvent.CLICK)
+  function onMenubarItemNewModClick(_):Void
+  {
+    createMod();
+  }
+
+  @:bind(menubarItemTitleConfig, MouseEvent.CLICK)
+  function onMenubarItemTitleConfigClick(_):Void
+  {
+    addTitleConfig();
+  }
+
+  @:bind(menubarItemModDoctor, MouseEvent.CLICK)
+  function onMenubarItemModDoctorClick(_):Void
+  {
+    openModDoctor();
+  }
+
+  @:bind(menubarItemGuide, MouseEvent.CLICK)
+  function onMenubarItemGuideClick(_):Void
+  {
+    openGuide();
+  }
+
+  @:bind(rootPicker, UIEvent.CHANGE)
+  function onRootPickerChange(_):Void
+  {
+    if (updatingList) return;
+
+    switchRoot(rootPicker.selectedIndex);
+  }
+
+  @:bind(listFilter, UIEvent.CHANGE)
+  function onListFilterChange(_):Void
+  {
+    renderList();
+  }
+
+  @:bind(findInput, UIEvent.CHANGE)
+  function onFindInputChange(_):Void
+  {
+    if (findInput.text != null && findInput.text != '') findNext(1, true);
+    else
+      updateFindInfo();
+  }
+
+  @:bind(findCaseBox, UIEvent.CHANGE)
+  function onFindCaseChange(_):Void
+  {
+    findCase = findCaseBox.selected;
+    updateFindInfo();
+  }
+
+  @:bind(fileList, UIEvent.CHANGE)
+  function onFileListChange(_):Void
+  {
+    if (updatingList || fileList.selectedItem == null) return;
+
+    selectedName = Std.string(fileList.selectedItem.name);
   }
 
   override function destroy():Void
@@ -1199,14 +2214,16 @@ class CosmicEditorState extends MusicBeatState
       watcher = null;
     }
 
-    for (root in roots) FunkinCosmic.unmount(root.mount);
+    for (item in roots) FunkinCosmic.unmount(item.mount);
 
-    for (field in [editor, gutter, pathField, nameField, console])
+    for (field in [editor, gutter, console])
     {
       if (field != null && field.parent != null) field.parent.removeChild(field);
     }
 
     if (FlxG.stage != null) FlxG.stage.focus = null;
+
+    NotificationManager.instance.clearNotifications();
 
     Cursor.hide();
 

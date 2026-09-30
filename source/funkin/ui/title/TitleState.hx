@@ -17,6 +17,9 @@ import funkin.audio.FunkinSound;
 import funkin.ui.AtlasText;
 // import openfl.Assets;
 import funkin.ui.mainmenu.MainMenuState;
+import funkin.ui.title.TitleConfig;
+import funkin.ui.title.TitleConfig.TitleAnimConfig;
+import funkin.ui.title.TitleConfig.TitleIntroEvent;
 #if FEATURE_NEWGROUNDS
 import funkin.api.newgrounds.Medals;
 #end
@@ -44,19 +47,24 @@ class TitleState extends MusicBeatState
   var curWacky:Array<String> = [];
   var lastBeat:Int = 0;
   var swagShader:ColorSwap;
+  var config:TitleConfig;
 
   override public function create():Void
   {
     super.create();
     swagShader = new ColorSwap();
 
-    curWacky = FlxG.random.getObject(getIntroTextShit());
+    config = loadConfig();
 
-    Assets.cacheSound(Paths.music('ui/title/girlfriends-ringtone').audio());
+    var wackyLines:Array<Array<String>> = getIntroTextShit();
+
+    curWacky = wackyLines.length > 0 ? FlxG.random.getObject(wackyLines) : ['', ''];
+
+    if (config.getBool('secret.enabled')) Assets.cacheSound(Paths.music('ui/title/girlfriends-ringtone').audio());
 
     // DEBUG BULLSHIT
 
-    if (!initialized) new FlxTimer().start(1, function(tmr:FlxTimer)
+    if (!initialized) new FlxTimer().start(config.getFloat('intro.delay'), function(tmr:FlxTimer)
     {
       startIntro();
     });
@@ -64,10 +72,54 @@ class TitleState extends MusicBeatState
       startIntro();
   }
 
-  var logoBl:FunkinSprite;
-  var gfDance:FunkinSprite;
+  function loadConfig():TitleConfig
+  {
+    var text:Null<String> = null;
+    var path = Paths.json(TitleConfig.DEFAULT_PATH, false);
+
+    try
+    {
+      if (path.exists()) text = Assets.getText(path);
+    }
+    catch (e:Dynamic)
+    {
+      text = null;
+    }
+
+    return TitleConfig.parse(text, #if mobile true #else false #end);
+  }
+
+  function imageOr(key:String, fallback:String):String
+  {
+    return Paths.image(key, false).exists() ? key : fallback;
+  }
+
+  function place(path:String, cutoutFactorPath:String):FlxPoint
+  {
+    var cutout:Float = FullScreenScaleMode.gameCutoutSize.x;
+    var factor:Float = config.getFloat(cutoutFactorPath);
+
+    return FlxPoint.get(config.resolveCoord(path + '.x', FlxG.width, cutout, factor), config.resolveCoord(path + '.y', FlxG.height, cutout, 0));
+  }
+
+  function tint(sprite:FunkinSprite, path:String):Void
+  {
+    if (config.getBool(path + '.colorSwap')) sprite.shader = swagShader.shader;
+  }
+
+  function rescale(sprite:FunkinSprite, path:String):Void
+  {
+    var scale:Float = config.getFloat(path + '.scale');
+
+    if (scale > 0 && scale != 1) sprite.scale.set(scale, scale);
+
+    sprite.updateHitbox();
+  }
+
+  var logoBl:Null<FunkinSprite>;
+  var gfDance:Null<FunkinSprite>;
   var danceLeft:Bool = false;
-  var titleText:FunkinSprite;
+  var titleText:Null<FunkinSprite>;
   #if FEATURE_VIDEO_PLAYBACK
   var attractTimer:FlxTimer;
   #end
@@ -78,73 +130,61 @@ class TitleState extends MusicBeatState
 
     persistentUpdate = true;
 
-    var bg:FunkinSprite = new FunkinSprite(-1).makeSolidColor(FlxG.width + 2, FlxG.height, FlxColor.BLACK);
+    var bg:FunkinSprite = new FunkinSprite(-1).makeSolidColor(FlxG.width + 2, FlxG.height, config.getColor('background.color'));
     bg.screenCenter();
     add(bg);
 
-    logoBl = new FunkinSprite(-150 + (FullScreenScaleMode.gameCutoutSize.x / 2.5), -100);
-    logoBl.frames = Assets.getSparrowAtlas(Paths.image('ui/title/logo-bumpin'));
-    logoBl.animation.addByPrefix('bump', 'logo bumpin', 24);
-    logoBl.animation.play('bump');
-    logoBl.shader = swagShader.shader;
-    logoBl.updateHitbox();
+    var bgImage:String = config.getString('background.image');
 
-    gfDance = new FunkinSprite((FlxG.width * 0.4) + FullScreenScaleMode.gameCutoutSize.x / 2.5, FlxG.height * 0.07);
-    gfDance.frames = Assets.getSparrowAtlas(Paths.image('ui/title/gf-dance-title'));
-    gfDance.animation.addByIndices('danceLeft', 'gfDance', [
-      30,
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      14
-    ], "", 24, false);
-    gfDance.animation.addByIndices('danceRight', 'gfDance', [
-      15,
-      16,
-      17,
-      18,
-      19,
-      20,
-      21,
-      22,
-      23,
-      24,
-      25,
-      26,
-      27,
-      28,
-      29
-    ], "", 24, false);
+    if (bgImage != '' && Paths.image(bgImage, false).exists())
+    {
+      var picture:FunkinSprite = new FunkinSprite();
+      picture.loadGraphic(Paths.image(bgImage, false).toFlxGraphicAsset());
+      picture.setGraphicSize(FlxG.width + 2, FlxG.height);
+      picture.updateHitbox();
+      picture.screenCenter();
+      add(picture);
+    }
 
-    gfDance.shader = swagShader.shader;
+    if (config.getBool('logo.enabled'))
+    {
+      var logoPos:FlxPoint = place('logo', 'logo.cutoutX');
 
-    add(logoBl);
-    add(gfDance);
+      logoBl = new FunkinSprite(logoPos.x, logoPos.y);
+      logoPos.put();
+      logoBl.frames = Assets.getSparrowAtlas(Paths.image(imageOr(config.getString('logo.image'), 'ui/title/logo-bumpin'), false));
+      logoBl.animation.addByPrefix('bump', config.getString('logo.prefix'), config.getInt('logo.fps'));
+      logoBl.animation.play('bump');
+      tint(logoBl, 'logo');
+      rescale(logoBl, 'logo');
+    }
 
-    var titleTextPath:String = 'ui/title/title-screen-text' #if mobile + '-mobile' #end;
+    if (config.getBool('gf.enabled'))
+    {
+      var gfPos:FlxPoint = place('gf', 'gf.cutoutX');
 
-    // On mobile, the text is shifted more to the left to center it properly.
-    titleText = FunkinSprite.createTextureAtlas(#if mobile 50 #else 100 #end + (FullScreenScaleMode.gameCutoutSize.x / 2), FlxG.height * 0.8, titleTextPath, {
-      cacheOnLoad: true
-    });
-    titleText.anim.addByFrameLabel('idle', "Idle", 24);
-    titleText.anim.addByFrameLabel('press', "Confirm", 24);
-    titleText.animation.play('idle');
-    titleText.updateHitbox();
-    titleText.shader = swagShader.shader;
+      gfDance = new FunkinSprite(gfPos.x, gfPos.y);
+      gfPos.put();
+      gfDance.frames = Assets.getSparrowAtlas(Paths.image(imageOr(config.getString('gf.image'), 'ui/title/gf-dance-title'), false));
 
-    add(titleText);
+      for (side in ['left', 'right'])
+      {
+        var anim:TitleAnimConfig = config.getAnim('gf.' + side);
+        var name:String = side == 'left' ? 'danceLeft' : 'danceRight';
+
+        if (anim.indices.length > 0) gfDance.animation.addByIndices(name, anim.prefix, anim.indices, "", config.getInt('gf.fps'), false);
+        else
+          gfDance.animation.addByPrefix(name, anim.prefix, config.getInt('gf.fps'), false);
+      }
+
+      tint(gfDance, 'gf');
+      rescale(gfDance, 'gf');
+    }
+
+    if (logoBl != null) add(logoBl);
+    if (gfDance != null) add(gfDance);
+
+    if (config.getBool('enter.enabled')) createEnterText();
 
     if (!initialized) // Fix an issue where returning to the credits would play a black screen.
     {
@@ -156,9 +196,18 @@ class TitleState extends MusicBeatState
 
     blackScreen = bg.clone();
 
-    ngSpr = new FunkinSprite(0, FlxG.height * 0.52);
+    ngSpr = new FunkinSprite(0, config.resolveCoord('newgrounds.y', FlxG.height));
 
-    if (FlxG.random.bool(1))
+    if (!config.getBool('newgrounds.enabled'))
+    {
+      ngSpr.makeGraphic(1, 1, 0x00000000);
+    }
+    else if (!config.getBool('newgrounds.variants'))
+    {
+      ngSpr.loadGraphic(Paths.image(imageOr(config.getString('newgrounds.image'), 'ui/title/newgrounds-logo'), false).toFlxGraphicAsset());
+      ngSpr.setGraphicSize(Std.int(ngSpr.width * config.getFloat('newgrounds.scale')));
+    }
+    else if (FlxG.random.bool(1))
     {
       ngSpr.loadGraphic(Paths.image('ui/title/newgrounds-logo-classic').toFlxGraphicAsset());
     }
@@ -173,7 +222,7 @@ class TitleState extends MusicBeatState
     else
     {
       ngSpr.loadGraphic(Paths.image('ui/title/newgrounds-logo').toFlxGraphicAsset());
-      ngSpr.setGraphicSize(Std.int(ngSpr.width * 0.8));
+      ngSpr.setGraphicSize(Std.int(ngSpr.width * config.getFloat('newgrounds.scale')));
     }
 
     ngSpr.visible = false;
@@ -199,9 +248,45 @@ class TitleState extends MusicBeatState
     }
 
     #if FEATURE_VIDEO_PLAYBACK
-    trace('Opening Attract state in ${Constants.TITLE_ATTRACT_DELAY} seconds...');
-    attractTimer = new FlxTimer().start(Constants.TITLE_ATTRACT_DELAY, (_:FlxTimer) -> moveToAttract());
+    var attractDelay:Float = config.getFloat('attract.delay') >= 0 ? config.getFloat('attract.delay') : Constants.TITLE_ATTRACT_DELAY;
+
+    if (config.getBool('attract.enabled')) attractTimer = new FlxTimer().start(attractDelay, (_:FlxTimer) -> moveToAttract());
     #end
+  }
+
+  function createEnterText():Void
+  {
+    var enterPos:FlxPoint = place('enter', 'enter.cutoutX');
+    var key:String = config.getString('enter.image');
+    var fps:Int = config.getInt('enter.fps');
+    var created:FunkinSprite;
+
+    if (config.getString('enter.type') == 'sparrow')
+    {
+      created = new FunkinSprite(enterPos.x, enterPos.y);
+      created.frames = Assets.getSparrowAtlas(Paths.image(imageOr(key, 'ui/title/logo-bumpin'), false));
+      created.animation.addByPrefix('idle', config.getString('enter.idle'), fps, true);
+      created.animation.addByPrefix('press', config.getString('enter.press'), fps, false);
+    }
+    else
+    {
+      var atlas:String = Paths.json(key + '/Animation', false).exists() ? key : 'ui/title/title-screen-text' #if mobile + '-mobile' #end;
+
+      created = FunkinSprite.createTextureAtlas(enterPos.x, enterPos.y, atlas, {
+        cacheOnLoad: true
+      });
+      created.anim.addByFrameLabel('idle', config.getString('enter.idle'), fps);
+      created.anim.addByFrameLabel('press', config.getString('enter.press'), fps);
+    }
+
+    enterPos.put();
+    created.animation.play('idle');
+    tint(created, 'enter');
+    rescale(created, 'enter');
+
+    titleText = created;
+
+    add(created);
   }
 
   /**
@@ -220,31 +305,29 @@ class TitleState extends MusicBeatState
   {
     var shouldFadeIn:Bool = (FlxG.sound.music == null);
     // Load music. Includes logic to handle BPM changes.
-    FunkinSound.playMusic('ui/main-menu/freaky-menu/freaky-menu', {
+    FunkinSound.playMusic(config.getString('music.track'), {
       startingVolume: 0.0,
       overrideExisting: true,
       restartTrack: false,
       // Continue playing this music between states, until a different music track gets played.
       persist: true
     });
-    // Fade from 0.0 to 1 over 4 seconds
-    if (shouldFadeIn) FlxG.sound.music.fadeIn(4.0, 0.0, 1.0);
+    // Fade from 0.0 to 1 over the configured time
+    if (shouldFadeIn && FlxG.sound.music != null) FlxG.sound.music.fadeIn(config.getFloat('music.fadeIn'), 0.0, 1.0);
   }
 
   function getIntroTextShit():Array<Array<String>>
   {
-    var fullText:String = Assets.getText(Paths.txt('ui/title/intro-text'));
+    var separator:String = config.getString('intro.separator');
+    var inlineLines:Array<String> = config.getIntroLines();
 
-    // Split into lines and remove empty lines
-    var firstArray:Array<String> = fullText.split('\n').filter(function(s:String) return s != '');
-    var swagGoodArray:Array<Array<String>> = [];
+    if (inlineLines.length > 0) return TitleConfig.parseIntroText(inlineLines.join('\n'), separator);
 
-    for (i in firstArray)
-    {
-      swagGoodArray.push(i.split('--'));
-    }
+    var path = Paths.txt(config.getString('intro.textFile'), false);
 
-    return swagGoodArray;
+    if (!path.exists()) path = Paths.txt('ui/title/intro-text');
+
+    return TitleConfig.parseIntroText(Assets.getText(path), separator);
   }
 
   var transitioning:Bool = false;
@@ -322,9 +405,9 @@ class TitleState extends MusicBeatState
     if (pressedEnter && !transitioning && skippedIntro)
     {
       if (FlxG.sound.music != null) FlxG.sound.music.onComplete = null;
-      titleText.animation.play('press');
-      FlxG.camera.flash(FlxColor.WHITE, 1);
-      FunkinSound.playOnce(Paths.sound('ui/main-menu/confirm-menu').toString(), 0.7);
+      if (titleText != null) titleText.animation.play('press');
+      FlxG.camera.flash(config.getColor('confirm.flashColor'), config.getFloat('confirm.flashDuration'));
+      FunkinSound.playOnce(Paths.sound(config.getString('confirm.sound'), false).toString(), config.getFloat('confirm.volume'));
       transitioning = true;
 
       #if FEATURE_HAPTICS
@@ -337,7 +420,7 @@ class TitleState extends MusicBeatState
       funkin.api.newgrounds.Events.logStartGame();
       #end
 
-      new FlxTimer().start(2, function(tmr:FlxTimer)
+      new FlxTimer().start(config.getFloat('confirm.delay'), function(tmr:FlxTimer)
       {
         moveToMainMenu();
       });
@@ -352,7 +435,7 @@ class TitleState extends MusicBeatState
     // TODO: Maybe use the dxdy method for swiping instead.
     if (controls.UI_LEFT #if FEATURE_TOUCH_CONTROLS || SwipeUtil.justSwipedLeft #end) swagShader.update(-elapsed * 0.1);
     if (controls.UI_RIGHT #if FEATURE_TOUCH_CONTROLS || SwipeUtil.justSwipedRight #end) swagShader.update(elapsed * 0.1);
-    if (!cheatActive && skippedIntro) cheatCodeShit();
+    if (!cheatActive && skippedIntro && config.getBool('secret.enabled')) cheatCodeShit();
     super.update(elapsed);
   }
 
@@ -410,7 +493,7 @@ class TitleState extends MusicBeatState
   {
     cheatActive = true;
 
-    FunkinSound.playMusic('ui/title/girlfriends-ringtone/girlfriends-ringtone', {
+    FunkinSound.playMusic(config.getString('secret.track'), {
       startingVolume: 0.0,
       overrideExisting: true,
       restartTrack: true
@@ -423,7 +506,7 @@ class TitleState extends MusicBeatState
 
     #if FEATURE_VIDEO_PLAYBACK
     // Stop the attract timer so you can listen to the whole song!
-    attractTimer.cancel();
+    if (attractTimer != null) attractTimer.cancel();
     #end
   }
 
@@ -435,7 +518,7 @@ class TitleState extends MusicBeatState
     {
       var money:AtlasText = new AtlasText(0, 0, textArray[i], AtlasFont.BOLD);
       money.screenCenter(X);
-      money.y += (i * 60) + 200;
+      money.y += (i * config.getFloat('intro.lineSpacing')) + config.getFloat('intro.firstLineY');
       // credGroup.add(money);
       textGroup.add(money);
     }
@@ -449,7 +532,7 @@ class TitleState extends MusicBeatState
 
     var coolText:AtlasText = new AtlasText(0, 0, text.trim(), AtlasFont.BOLD);
     coolText.screenCenter(X);
-    coolText.y += (textGroup.length * 60) + 200;
+    coolText.y += (textGroup.length * config.getFloat('intro.lineSpacing')) + config.getFloat('intro.firstLineY');
     textGroup.add(coolText);
   }
 
@@ -482,42 +565,7 @@ class TitleState extends MusicBeatState
         // TODO: Why does it perform ALL the previous steps each beat?
         for (i in lastBeat...Conductor.instance.currentBeat)
         {
-          switch (i + 1)
-          {
-            case 1:
-              createCoolText(['The', 'Funkin Crew Inc']);
-            case 3:
-              addMoreText('presents');
-            case 4:
-              deleteCoolText();
-            case 5:
-              createCoolText(['In association', 'with']);
-            case 7:
-              addMoreText('newgrounds');
-              if (ngSpr != null) ngSpr.visible = true;
-            case 8:
-              deleteCoolText();
-              if (ngSpr != null) ngSpr.visible = false;
-            case 9:
-              createCoolText([curWacky[0]]);
-            case 11:
-              addMoreText(curWacky[1]);
-            case 12:
-              deleteCoolText();
-            case 13:
-              addMoreText('Friday');
-            case 14:
-              // easter egg for when the game is trending with the wrong spelling
-              // the random intro text would be "trending--only on x"
-
-              if (curWacky[0] == "trending") addMoreText('Nigth');
-              else
-                addMoreText('Night');
-            case 15:
-              addMoreText('Funkin');
-            case 16:
-              skipIntro();
-          }
+          for (event in config.eventsAt(i + 1)) runIntroEvent(event);
         }
       }
       lastBeat = Conductor.instance.currentBeat;
@@ -542,13 +590,33 @@ class TitleState extends MusicBeatState
     return true;
   }
 
+  function runIntroEvent(event:TitleIntroEvent):Void
+  {
+    switch (event.action)
+    {
+      case 'text':
+        createCoolText([for (line in event.lines) TitleConfig.fillText(line, curWacky)]);
+      case 'add':
+        addMoreText(TitleConfig.resolveText(event.text, event.variants, curWacky));
+      case 'clear':
+        deleteCoolText();
+      case 'showLogo':
+        if (ngSpr != null && config.getBool('newgrounds.enabled')) ngSpr.visible = true;
+      case 'hideLogo':
+        if (ngSpr != null) ngSpr.visible = false;
+      case 'skip':
+        skipIntro();
+      default:
+    }
+  }
+
   function skipIntro():Void
   {
     if (!skippedIntro)
     {
       remove(ngSpr);
 
-      FlxG.camera.flash(FlxColor.WHITE, initialized ? 1 : 4);
+      FlxG.camera.flash(config.getColor('intro.flashColor'), initialized ? config.getFloat('intro.flashDurationRepeat') : config.getFloat('intro.flashDuration'));
 
       if (credGroup != null) remove(credGroup);
       skippedIntro = true;

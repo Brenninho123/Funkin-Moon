@@ -13,6 +13,8 @@ import funkin.data.song.SongRegistry;
 import funkin.data.stage.StageRegistry;
 import funkin.data.stickers.StickerRegistry;
 import funkin.data.story.level.LevelRegistry;
+import funkin.modding.ModDoctor.ModInfo;
+import funkin.modding.ModDoctor.ModReport;
 import funkin.modding.module.ModuleHandler;
 import funkin.mod.FunkinConverter.ConversionReport;
 import funkin.play.notes.notekind.NoteKindManager;
@@ -63,6 +65,11 @@ class PolymodHandler
   public static var loadedModDirs:Array<String> = [];
   public static var loadedModIds:Array<String> = [];
   static var modFileSystem:Null<ZipFileSystem> = null;
+
+  /**
+   * The result of the last dependency check, made every time mods are loaded.
+   */
+  public static var lastReport:Null<ModReport> = null;
 
   /**
    * Returns the physical folder where mods are stored.
@@ -129,6 +136,11 @@ class PolymodHandler
     }
 
     for (modId in toRemove) modIds.remove(modId);
+
+    var report:ModReport = inspectMods(modIds, false);
+
+    lastReport = report;
+    modIds = report.order;
 
     var loadedModList:Array<ModMetadata> = polymod.Polymod.init({
       modRoot: MOD_FOLDER,
@@ -516,6 +528,85 @@ class PolymodHandler
       return [];
     }
     return modMetadata;
+  }
+
+  /**
+   * Checks dependencies, load order and overridden files for a list of mod IDs.
+   *
+   * @param modIds The mods to check, in load order.
+   * @param withFiles Whether to list the files of every mod to find overridden files. This reads every mod folder.
+   */
+  public static function inspectMods(modIds:Array<String>, withFiles:Bool = true):ModReport
+  {
+    var installed:Array<ModInfo> = [];
+
+    for (meta in getAllModsIncludingIncompatible())
+    {
+      var dependencies:Map<String, String> = new Map();
+      var optional:Map<String, String> = new Map();
+
+      if (meta.dependencies != null)
+      {
+        for (id => rule in meta.dependencies) dependencies.set(id, rule.toString());
+      }
+
+      if (meta.optionalDependencies != null)
+      {
+        for (id => rule in meta.optionalDependencies) optional.set(id, rule.toString());
+      }
+
+      installed.push({
+        id: meta.id,
+        title: meta.title ?? meta.id,
+        dirName: meta.dirName,
+        version: meta.modVersion != null ? meta.modVersion.toString() : '0.0.0',
+        compatible: isModCompatible(meta),
+        dependencies: dependencies,
+        optionalDependencies: optional,
+        files: withFiles && modIds.contains(meta.id) ? listModFiles(meta) : []
+      });
+    }
+
+    return ModDoctor.inspect(modIds.copy(), installed, versionSatisfies);
+  }
+
+  static function versionSatisfies(rule:String, version:String):Bool
+  {
+    try
+    {
+      var parsedRule:thx.semver.VersionRule = rule;
+      var parsedVersion:thx.semver.Version = version;
+
+      return parsedRule.isSatisfiedBy(parsedVersion);
+    }
+    catch (e:Dynamic)
+    {
+      return true;
+    }
+  }
+
+  static function listModFiles(mod:ModMetadata):Array<String>
+  {
+    if (modFileSystem == null) return [];
+
+    try
+    {
+      var prefix:String = mod.dirName + '/';
+
+      return [
+        for (file in modFileSystem.readModDirectory(mod.dirName, true))
+        {
+          var clean:String = ModDoctor.normalizePath(file);
+          var at:Int = clean.indexOf(prefix);
+
+          at >= 0 ? clean.substr(at + prefix.length) : clean;
+        }
+      ];
+    }
+    catch (e:Dynamic)
+    {
+      return [];
+    }
   }
 
   public static function isModCompatible(mod:ModMetadata):Bool

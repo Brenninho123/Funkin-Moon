@@ -30,3 +30,16 @@
 2. Open the Files app, and navigate to `On My iPhone` -> `Friday Night Funkin` -> `mods`.
 3. Extract the mod you downloaded from its ZIP file, and place the mod folder into the game's `mods` folder.
 4. Restart the game (you may have to [force close](https://support.apple.com/en-us/109359) the app first). The game should detect the mod and start with it.
+
+
+# Checking your mods
+
+Dependencies in `_polymod_meta.json` (`dependencies` and `optional_dependencies`, each a map from a mod id to a version rule) are now checked every time mods load:
+
+- A mod that needs another mod always loads after it, even if the Mod Menu lists it earlier. Mods without dependencies keep the order you chose.
+- Missing or disabled dependencies, versions that do not satisfy the rule, dependency cycles and mods made for another game version are reported instead of being skipped silently.
+- `PolymodHandler.lastReport` holds the result of the last load, and `PolymodHandler.inspectMods(ids)` produces a full report, including every file that more than one mod replaces and which mod wins (the one loaded last).
+
+The Cosmic editor shows the report in **Tools > Mod Doctor** (F8) and can create a new mod folder with a valid `_polymod_meta.json`. See [COSMIC_EDITOR.md](COSMIC_EDITOR.md).
+
+Mods can also change the title screen with a JSON file, see [TITLE_SCREEN.md](TITLE_SCREEN.md).

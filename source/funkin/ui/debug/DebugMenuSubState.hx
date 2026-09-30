@@ -85,7 +85,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
     createItem("LUA SCRIPT EDITOR", openLuaScriptEditor);
     #end
-    #if (sys && !mobile)
+    #if (sys && !mobile && FEATURE_HAXEUI)
     createItem("COSMIC EDITOR", openCosmicEditor);
     #end
     #if FEATURE_RESULTS_DEBUG
@@ -296,7 +296,7 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
-  #if (sys && !mobile)
+  #if (sys && !mobile && FEATURE_HAXEUI)
   function openCosmicEditor():Void
   {
     FlxG.switchState(() -> new funkin.ui.debug.cosmic.CosmicEditorState());
