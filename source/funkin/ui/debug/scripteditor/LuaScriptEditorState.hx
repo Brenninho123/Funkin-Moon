@@ -2,13 +2,14 @@ package funkin.ui.debug.scripteditor;
 
 #if (FEATURE_LUA_SCRIPTS && !mobile)
 import flixel.FlxSprite;
-import flixel.group.FlxSpriteGroup;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
 import funkin.input.Cursor;
 import funkin.lua.FunkinLua;
 import funkin.modding.PolymodHandler;
 import funkin.ui.MusicBeatState;
+import funkin.ui.debug.EditorButton;
+import funkin.ui.debug.EditorText;
 import funkin.ui.system.FunkinCosmic;
 import openfl.events.Event;
 import openfl.events.KeyboardEvent;
@@ -17,57 +18,6 @@ import openfl.text.TextFieldType;
 import openfl.text.TextFormat;
 import openfl.text.TextFormatAlign;
 import openfl.ui.Keyboard;
-
-class EditorButton extends FlxSpriteGroup
-{
-  public var onClick:Null<Void->Void> = null;
-  public var selected(default, set):Bool = false;
-
-  var background:FlxSprite;
-  var label:FlxText;
-  var idleColor:FlxColor;
-
-  public function new(x:Float, y:Float, width:Int, height:Int, text:String, alignLeft:Bool = false, idleColor:FlxColor = 0xFF2A2F38)
-  {
-    super(x, y);
-
-    this.idleColor = idleColor;
-
-    background = new FlxSprite().makeGraphic(width, height, FlxColor.WHITE);
-    background.color = idleColor;
-    add(background);
-
-    label = new FlxText(alignLeft ? 6 : 0, 0, alignLeft ? width - 6 : width, text, 14);
-    label.alignment = alignLeft ? LEFT : CENTER;
-    label.y = Math.max(0, (height - label.height) / 2);
-    add(label);
-  }
-
-  public function setLabel(text:String):Void
-  {
-    label.text = text;
-  }
-
-  function set_selected(value:Bool):Bool
-  {
-    selected = value;
-    background.color = value ? 0xFF3B6EA8 : idleColor;
-    return value;
-  }
-
-  override public function update(elapsed:Float):Void
-  {
-    super.update(elapsed);
-
-    if (!visible) return;
-
-    var hovered:Bool = FlxG.mouse.overlaps(background);
-
-    background.color = selected ? 0xFF3B6EA8 : (hovered ? 0xFF3A414D : idleColor);
-
-    if (hovered && FlxG.mouse.justPressed && onClick != null) onClick();
-  }
-}
 
 class LuaScriptEditorState extends MusicBeatState
 {
@@ -185,38 +135,12 @@ class LuaScriptEditorState extends MusicBeatState
 
   function resolveFontName():String
   {
-    try
-    {
-      var font = openfl.utils.Assets.getFont(Paths.font('ui/fonts/Inconsolata Regular'));
-
-      if (font != null) return font.fontName;
-    }
-    catch (e:Dynamic) {}
-
-    return '_typewriter';
+    return EditorText.resolveFontName();
   }
 
   function createField(x:Float, y:Float, width:Float, height:Float, input:Bool, multiline:Bool):TextField
   {
-    var field:TextField = new TextField();
-
-    field.x = x;
-    field.y = y;
-    field.width = width;
-    field.height = height;
-    field.multiline = multiline;
-    field.wordWrap = false;
-    field.background = true;
-    field.backgroundColor = 0x1B1E24;
-    field.border = true;
-    field.borderColor = 0x3A404A;
-    field.type = input ? TextFieldType.INPUT : TextFieldType.DYNAMIC;
-    field.tabEnabled = false;
-    field.defaultTextFormat = baseFormat;
-
-    FlxG.game.addChild(field);
-
-    return field;
+    return EditorText.createField(baseFormat, x, y, width, height, input, multiline);
   }
 
   function createButtons():Void
@@ -514,23 +438,7 @@ class LuaScriptEditorState extends MusicBeatState
 
   function highlightMatches(pattern:EReg, format:TextFormat):Void
   {
-    var text:String = editor.text;
-    var position:Int = 0;
-
-    while (position <= text.length && pattern.matchSub(text, position))
-    {
-      var match = pattern.matchedPos();
-
-      if (match.len == 0)
-      {
-        position = match.pos + 1;
-        continue;
-      }
-
-      editor.setTextFormat(format, match.pos, match.pos + match.len);
-
-      position = match.pos + match.len;
-    }
+    EditorText.highlightMatches(editor, pattern, format);
   }
 
   function updateStatus():Void
