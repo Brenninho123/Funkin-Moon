@@ -1,5 +1,6 @@
 package funkin.play.modcharts;
 
+import funkin.play.modcharts.ModchartExpand.ModchartTempo;
 import haxe.io.Path;
 
 class ModchartLoader
@@ -26,14 +27,14 @@ class ModchartLoader
     return Path.join([userFolder(), sanitize(songId) + '.json']);
   }
 
-  public static function loadFromText(text:Null<String>, songId:String):Null<ModchartDocument>
+  public static function loadFromText(text:Null<String>, songId:String, ?tempo:ModchartTempo):Null<ModchartDocument>
   {
     if (text == null || text == '') return null;
 
-    return ModchartDocument.fromJson(text, songId);
+    return ModchartDocument.fromJson(text, songId, tempo);
   }
 
-  public static function loadUser(songId:String):Null<ModchartDocument>
+  public static function loadUser(songId:String, ?tempo:ModchartTempo):Null<ModchartDocument>
   {
     #if sys
     var path:String = userPath(songId);
@@ -42,7 +43,7 @@ class ModchartLoader
 
     try
     {
-      return loadFromText(sys.io.File.getContent(path), songId);
+      return loadFromText(sys.io.File.getContent(path), songId, tempo);
     }
     catch (e:Dynamic)
     {
@@ -53,7 +54,7 @@ class ModchartLoader
     #end
   }
 
-  public static function loadAsset(songId:String):Null<ModchartDocument>
+  public static function loadAsset(songId:String, ?tempo:ModchartTempo):Null<ModchartDocument>
   {
     var path:String = assetPath(songId);
 
@@ -61,7 +62,7 @@ class ModchartLoader
 
     try
     {
-      return loadFromText(openfl.Assets.getText(path), songId);
+      return loadFromText(openfl.Assets.getText(path), songId, tempo);
     }
     catch (e:Dynamic)
     {
@@ -69,11 +70,11 @@ class ModchartLoader
     }
   }
 
-  public static function load(songId:String):Null<ModchartDocument>
+  public static function load(songId:String, ?tempo:ModchartTempo):Null<ModchartDocument>
   {
-    var user:Null<ModchartDocument> = loadUser(songId);
+    var user:Null<ModchartDocument> = loadUser(songId, tempo);
 
-    return user != null ? user : loadAsset(songId);
+    return user != null ? user : loadAsset(songId, tempo);
   }
 
   public static function describeSource(songId:String):String

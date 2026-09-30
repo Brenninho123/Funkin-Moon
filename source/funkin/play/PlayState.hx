@@ -1261,11 +1261,16 @@ class PlayState extends MusicBeatSubState
 
     if (!Preferences.modcharts || currentSong == null) return;
 
-    var document = ModchartLoader.load(currentSong.id);
+    var conductor = Conductor.instance;
+    var document = ModchartLoader.load(currentSong.id, {
+      toMs: (beat:Float) -> conductor.getBeatTimeInMs(beat),
+      toBeats: (ms:Float) -> conductor.getTimeInSteps(ms) / Constants.STEPS_PER_BEAT
+    });
 
     if (document == null || document.events.length == 0) return;
 
     modchart = new ModchartPlayer(document);
+    modchart.beatAt = (ms:Float) -> conductor.getTimeInSteps(ms) / Constants.STEPS_PER_BEAT;
     modchart.setCamera(funkin.play.modcharts.ModchartDefs.TARGET_HUD, camHUD);
     modchart.setCamera(funkin.play.modcharts.ModchartDefs.TARGET_GAME, camGame);
   }

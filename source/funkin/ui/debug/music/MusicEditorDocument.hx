@@ -128,6 +128,41 @@ class MusicEditorDocument
     return index + 1 < points.length ? points[index + 1].time : lengthMs;
   }
 
+  public function beatsToMs(beat:Float):Float
+  {
+    var accumulated:Float = 0.0;
+
+    for (index in 0...points.length)
+    {
+      var point:MusicPoint = points[index];
+      var length:Float = beatLengthMs(point);
+      var segment:Float = (segmentEnd(index) - point.time) / length;
+
+      if (index == points.length - 1 || beat <= accumulated + segment) return point.time + (beat - accumulated) * length;
+
+      accumulated += segment;
+    }
+
+    return beat * beatLengthMs(points[0]);
+  }
+
+  public function msToBeats(ms:Float):Float
+  {
+    var accumulated:Float = 0.0;
+
+    for (index in 0...points.length)
+    {
+      var point:MusicPoint = points[index];
+      var length:Float = beatLengthMs(point);
+
+      if (index == points.length - 1 || ms <= segmentEnd(index)) return accumulated + (ms - point.time) / length;
+
+      accumulated += (segmentEnd(index) - point.time) / length;
+    }
+
+    return ms / beatLengthMs(points[0]);
+  }
+
   public function nearestIndex(time:Float, maxDistanceMs:Float = 1.0e30):Int
   {
     var nearest:Int = -1;

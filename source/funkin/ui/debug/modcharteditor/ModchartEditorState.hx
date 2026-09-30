@@ -15,12 +15,14 @@ import funkin.play.modcharts.ModchartDefs.ModchartModifierInfo;
 import funkin.play.modcharts.ModchartDocument;
 import funkin.play.modcharts.ModchartDocument.ModchartEvent;
 import funkin.play.modcharts.ModchartEase;
+import funkin.play.modcharts.ModchartExpand.ModchartTempo;
 import funkin.play.modcharts.ModchartLoader;
 import funkin.play.modcharts.ModchartPlayer;
 import funkin.ui.debug.common.EditorHistory.CompoundEditorCommand;
 import funkin.ui.debug.common.EditorTouch;
 import funkin.ui.debug.common.EditorHistory.EditorCommand;
 import funkin.ui.debug.modcharteditor.ModchartCommands;
+import funkin.ui.debug.modcharteditor.ModchartEdit;
 import funkin.ui.debug.modcharteditor.ModchartPresets.ModchartPreset;
 import funkin.ui.debug.modcharteditor.ModchartTimelineView.ModchartHit;
 import funkin.ui.debug.modcharteditor.ModchartTimelineView.ModchartRow;
@@ -176,6 +178,7 @@ class ModchartEditorState extends UIState
     modchartPlayer = new ModchartPlayer(document);
     modchartPlayer.setCamera(ModchartDefs.TARGET_HUD, camPreview);
     modchartPlayer.setCamera(ModchartDefs.TARGET_GAME, camRef);
+    modchartPlayer.beatAt = (ms:Float) -> beats != null ? beats.msToBeats(ms) : 0.0;
 
     buildReference();
 
@@ -318,7 +321,9 @@ class ModchartEditorState extends UIState
 
     if (FlxG.sound.music != null) FlxG.sound.music.stop();
 
-    var loaded:Null<ModchartDocument> = ModchartLoader.load(id);
+    beats = buildBeatDocument(id);
+
+    var loaded:Null<ModchartDocument> = ModchartLoader.load(id, currentTempo());
     var source:String = ModchartLoader.describeSource(id);
 
     document = loaded != null ? loaded : new ModchartDocument(id);
@@ -332,8 +337,6 @@ class ModchartEditorState extends UIState
     backupSlot = 0;
     lastAutosaveVersion = version;
     autosaveTimer = 0.0;
-
-    beats = buildBeatDocument(id);
 
     var hasChart:Bool = preview.load(id);
 
@@ -374,6 +377,10 @@ class ModchartEditorState extends UIState
     updateTitle();
 
     notify('Loaded ' + id, 'Using ' + source + (hasChart ? '' : '. The song has no chart, so the preview has no notes.'), NotificationType.Info);
+
+    var advice:Null<String> = ModchartEdit.describeWarnings(document);
+
+    if (advice != null) notify('About this modchart', advice, NotificationType.Warning);
     announceAutosave();
   }
 
@@ -406,6 +413,18 @@ class ModchartEditorState extends UIState
     }
 
     return result;
+  }
+
+  function currentTempo():Null<ModchartTempo>
+  {
+    var tempoDocument:Null<MusicEditorDocument> = beats;
+
+    if (tempoDocument == null) return null;
+
+    return {
+      toMs: (beat:Float) -> tempoDocument.beatsToMs(beat),
+      toBeats: (ms:Float) -> tempoDocument.msToBeats(ms)
+    };
   }
 
   function beatLengthAt(time:Float):Float
@@ -519,6 +538,8 @@ class ModchartEditorState extends UIState
     var hasSelection:Bool = selection.length > 0;
 
     menubarItemDuplicate.disabled = !hasSelection;
+    menubarItemRepeat.disabled = !hasSelection;
+    menubarItemMirror.disabled = !hasSelection;
     menubarItemDelete.disabled = !hasSelection;
   }
 
@@ -623,6 +644,60 @@ class ModchartEditorState extends UIState
     }
 
     perform(new AddEventsCommand(copies, 'Duplicate events'));
+
+    selection = copies;
+    refreshAll();
+  }
+
+  function repeatSelection():Void
+  {
+    if (selection.length == 0) return;
+
+    var tempo:Null<ModchartTempo> = currentTempo();
+
+    if (tempo == null) return;
+
+    var dialog:funkin.ui.debug.music.MusicTimeInputDialog = new funkin.ui.debug.music.MusicTimeInputDialog('Repeat the selection',
+      'Type how many copies and the spacing in beats, for example 8 every 1 or 4x2.', function(text:String):Void
+    {
+      dialogOpen = false;
+
+      var request = ModchartEdit.parseRepeat(text);
+
+      if (request == null)
+      {
+        notify('Not understood', 'Type a count and the spacing in beats, like 8 every 1.', NotificationType.Error);
+        return;
+      }
+
+      var copies:Array<ModchartEvent> = ModchartEdit.repeatCopies(selection, request.count, request.beats, tempo);
+
+      perform(new AddEventsCommand(copies, 'Repeat events'));
+
+      selection = copies;
+      refreshAll();
+      notify('Repeated', copies.length + ' events added.', NotificationType.Success);
+    });
+
+    dialogOpen = true;
+    dialog.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    dialog.showDialog(true);
+  }
+
+  function mirrorSelection():Void
+  {
+    var copies:Array<ModchartEvent> = ModchartEdit.mirrorCopies(selection);
+
+    if (copies.length == 0)
+    {
+      notify('Nothing to mirror', 'Only player and opponent strumline events can be mirrored.', NotificationType.Warning);
+      return;
+    }
+
+    perform(new AddEventsCommand(copies, 'Mirror events'));
 
     selection = copies;
     refreshAll();
@@ -989,6 +1064,18 @@ class ModchartEditorState extends UIState
     duplicateSelection();
   }
 
+  @:bind(menubarItemRepeat, MouseEvent.CLICK)
+  function onMenuRepeat(_):Void
+  {
+    repeatSelection();
+  }
+
+  @:bind(menubarItemMirror, MouseEvent.CLICK)
+  function onMenuMirror(_):Void
+  {
+    mirrorSelection();
+  }
+
   @:bind(menubarItemDelete, MouseEvent.CLICK)
   function onMenuDelete(_):Void
   {
@@ -1193,13 +1280,17 @@ class ModchartEditorState extends UIState
 
   function applyText(text:String, description:String):Bool
   {
-    var loaded:Null<ModchartDocument> = ModchartDocument.fromJson(text, songId);
+    var loaded:Null<ModchartDocument> = ModchartDocument.fromJson(text, songId, currentTempo());
 
     if (loaded == null)
     {
       notify('Not a modchart', 'That data does not contain a valid modchart.', NotificationType.Error);
       return false;
     }
+
+    var advice:Null<String> = ModchartEdit.describeWarnings(loaded);
+
+    if (advice != null) notify('About this modchart', advice, NotificationType.Warning);
 
     selection = [];
     perform(new ReplaceAllEventsCommand(loaded.events, description));

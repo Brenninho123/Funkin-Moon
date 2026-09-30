@@ -277,6 +277,26 @@ class MusicEditorTests
     check('validation reports the problems', invalid.issues().length == 3, invalid.issues().join(' / '));
     check('a clean document has no issues', newDocument().issues().length == 0);
 
+    Sys.println('beat conversion');
+
+    var tempoDoc:MusicEditorDocument = newDocument();
+
+    check('beats to milliseconds in the first segment', near(tempoDoc.beatsToMs(4), 2000));
+    check('the first segment ends at 16 beats', near(tempoDoc.beatsToMs(16), 8000));
+    check('beats continue at the new tempo', near(tempoDoc.beatsToMs(20), 12000));
+    check('the third segment uses its own beat length', near(tempoDoc.beatsToMs(29), 20200));
+    check('milliseconds to beats matches', near(tempoDoc.msToBeats(2000), 4) && near(tempoDoc.msToBeats(12000), 20) && near(tempoDoc.msToBeats(20200), 29));
+    var roundTrip:Bool = true;
+
+    for (step in 0...60)
+    {
+      var beat:Float = step * 0.75;
+
+      if (!near(tempoDoc.msToBeats(tempoDoc.beatsToMs(beat)), beat, 0.001)) roundTrip = false;
+    }
+
+    check('conversion round trips across every segment', roundTrip);
+
     Sys.println(failures == 0 ? '\nall ' + checks + ' checks passed' : '\n' + failures + ' of ' + checks + ' checks failed');
     Sys.exit(failures == 0 ? 0 : 1);
   }

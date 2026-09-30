@@ -3,7 +3,9 @@ import funkin.play.modcharts.ModchartDocument;
 import funkin.play.modcharts.ModchartDocument.ModchartEvent;
 import funkin.play.modcharts.ModchartDocument.ModchartTrack;
 import funkin.play.modcharts.ModchartEase;
+import funkin.play.modcharts.ModchartExpand.ModchartTempo;
 import funkin.ui.debug.modcharteditor.ModchartCommands;
+import funkin.ui.debug.modcharteditor.ModchartEdit;
 
 class ModchartTests
 {
@@ -122,6 +124,76 @@ class ModchartTests
     check('garbage is rejected', ModchartDocument.fromJson('nope', 'a') == null && ModchartDocument.fromJson('{"events":3}', 'a') == null);
     var dirty:ModchartDocument = ModchartDocument.fromJson('[{"time":1,"value":5,"target":"player","modifier":"x"},{"time":"x"},{"time":2,"value":1,"target":"ghost","modifier":"x"},null,{"time":3,"value":9999,"target":"player","modifier":"x","lane":8,"ease":"zzz"}]', 'a');
     check('invalid entries are skipped and the rest repaired', dirty.events.length == 2 && dirty.events[1].value == 1200 && dirty.events[1].lane == 3 && dirty.events[1].ease == 'linear');
+
+    Sys.println('json v2');
+
+    var tempo:ModchartTempo = {toMs: (beat) -> beat * 500.0, toBeats: (ms) -> ms / 500.0};
+
+    var beatsDoc:ModchartDocument = ModchartDocument.fromJson('[{"beat":2,"beats":1,"value":30,"target":"player","modifier":"x"}]', 'v2', tempo);
+    check('beat timing is converted with the tempo', beatsDoc.events.length == 1 && beatsDoc.events[0].time == 1000 && beatsDoc.events[0].duration == 500);
+    check('beat timing marks the document as flattened', beatsDoc.flattened);
+    var noTempo:ModchartDocument = ModchartDocument.fromJson('[{"beat":2,"value":30,"target":"player","modifier":"x"},{"time":1,"value":1,"target":"player","modifier":"x"}]', 'v2');
+    check('beat events are skipped without a tempo and warn', noTempo.events.length == 1 && noTempo.warnings.length == 1);
+    check('plain events are not flattened', !ModchartDocument.fromJson('[{"time":1,"value":5,"target":"player","modifier":"x"}]', 'v2').flattened);
+
+    var repeated:ModchartDocument = ModchartDocument.fromJson('[{"time":1000,"duration":100,"every":500,"repeat":4,"value":10,"valueB":-10,"target":"both","modifier":"x"}]', 'v2');
+    check('repeat creates copies', repeated.events.length == 4);
+    check('repeat spaces the copies', repeated.events[0].time == 1000 && repeated.events[3].time == 2500);
+    check('valueB alternates the value', repeated.events[0].value == 10 && repeated.events[1].value == -10 && repeated.events[2].value == 10);
+    check('repeat with beats uses the tempo', ModchartDocument.fromJson('[{"beat":1,"everyBeats":2,"repeat":3,"value":1,"target":"hud","modifier":"x"}]', 'v2', tempo).events[2].time == 2500);
+    var noEvery:ModchartDocument = ModchartDocument.fromJson('[{"time":0,"repeat":5,"value":1,"target":"hud","modifier":"x"}]', 'v2');
+    check('repeat without an interval plays once and warns', noEvery.events.length == 1 && noEvery.warnings.length == 1);
+    check('repeat is capped', ModchartDocument.fromJson('[{"time":0,"every":1,"repeat":99999,"value":1,"target":"hud","modifier":"x"}]', 'v2').events.length == 512);
+
+    var disabled:ModchartDocument = ModchartDocument.fromJson('[{"time":0,"value":1,"target":"hud","modifier":"x","enabled":false},{"time":5,"value":2,"target":"hud","modifier":"x","label":"hi"}]', 'v2');
+    check('disabled events are skipped', disabled.events.length == 1 && disabled.events[0].value == 2 && disabled.flattened);
+
+    var macroText:String = '{"macros":{"bump":[{"time":0,"value":1.2,"target":"hud","modifier":"zoom","ease":"instant"},{"time":100,"duration":400,"value":1,"target":"hud","modifier":"zoom","ease":"quadOut"}]},"events":[{"macro":"bump","time":1000},{"macro":"bump","time":3000,"scale":2},{"macro":"bump","time":5000,"target":"game"}]}';
+    var macroDoc:ModchartDocument = ModchartDocument.fromJson(macroText, 'v2');
+    check('macros expand into events', macroDoc.events.length == 6, Std.string(macroDoc.events.length));
+    check('macro times are relative to the call', macroDoc.events[0].time == 1000 && macroDoc.events[1].time == 1100);
+    check('macro scale stretches times and lengths', macroDoc.events[3].time == 3200 && macroDoc.events[3].duration == 800);
+    check('macro target override applies', macroDoc.events[4].target == 'game' && macroDoc.events[5].target == 'game');
+    check('macro documents are flattened', macroDoc.flattened);
+    var repeatMacro:ModchartDocument = ModchartDocument.fromJson('{"macros":{"m":[{"time":0,"value":2,"target":"hud","modifier":"zoom"}]},"events":[{"macro":"m","time":0,"every":1000,"repeat":3}]}', 'v2');
+    check('a macro call can repeat', repeatMacro.events.length == 3 && repeatMacro.events[2].time == 2000);
+    var beatMacro:ModchartDocument = ModchartDocument.fromJson('{"macros":{"m":[{"beat":1,"value":2,"target":"hud","modifier":"zoom"}]},"events":[{"macro":"m","beat":4}]}', 'v2', tempo);
+    check('macros work in beats', beatMacro.events.length == 1 && beatMacro.events[0].time == 2500);
+    var mixedMacro:ModchartDocument = ModchartDocument.fromJson('{"macros":{"m":[{"beat":1,"value":2,"target":"hud","modifier":"zoom"}]},"events":[{"macro":"m","time":1000}]}', 'v2', tempo);
+    check('a macro called in time can use beat offsets', mixedMacro.events.length == 1 && mixedMacro.events[0].time == 1500);
+    check('a missing macro warns', ModchartDocument.fromJson('{"events":[{"macro":"none","time":0}]}', 'v2').warnings.length == 1);
+    check('macros cannot nest', ModchartDocument.fromJson('{"macros":{"a":[{"macro":"b","time":0}],"b":[{"time":0,"value":1,"target":"hud","modifier":"x"}]},"events":[{"macro":"a","time":0}]}', 'v2').events.length == 0);
+    check('the saved file is flat and version 2', macroDoc.toJson().indexOf('macro') < 0 && macroDoc.toJson().indexOf('"version": 2') >= 0);
+
+    Sys.println('new modifiers');
+
+    check('scale is multiplicative and per lane', ModchartDefs.infoFor('player', 'scale').multiplicative && ModchartDefs.infoFor('player', 'scale').perLane);
+    check('flip and invert are not per lane', !ModchartDefs.infoFor('player', 'flip').perLane && !ModchartDefs.infoFor('player', 'invert').perLane);
+    check('note opacity is multiplicative', ModchartDefs.infoFor('opponent', 'noteAlpha').multiplicative);
+    check('shake and pulse belong to cameras', ModchartDefs.infoFor('hud', 'shake') != null && ModchartDefs.infoFor('game', 'pulse') != null && ModchartDefs.infoFor('player', 'shake') == null);
+    var scaled:ModchartDocument = new ModchartDocument('s');
+    scaled.events = [event(0, 0, 'both', -1, 'scale', 2), event(0, 0, 'player', 1, 'scale', 1.5)];
+    scaled.sort();
+    check('scale multiplies across both and the lane', near(scaled.effective('player', 1, 'scale', 10), 3.0) && near(scaled.effective('player', 0, 'scale', 10), 2.0));
+    check('unused modifiers keep their defaults', near(scaled.effective('player', 0, 'noteAlpha', 10), 1.0) && near(scaled.effective('hud', -1, 'shake', 10), 0.0));
+
+    Sys.println('editing helpers');
+
+    check('repeat text: count and spacing', ModchartEdit.parseRepeat('4 every 2').count == 4 && ModchartEdit.parseRepeat('4 every 2').beats == 2);
+    check('repeat text: short forms', ModchartEdit.parseRepeat('8x0.5').count == 8 && ModchartEdit.parseRepeat('8x0.5').beats == 0.5 && ModchartEdit.parseRepeat('3').beats == 1);
+    check('repeat text: invalid input', ModchartEdit.parseRepeat('nope') == null && ModchartEdit.parseRepeat('0 every 1') == null && ModchartEdit.parseRepeat('4 every 0') == null && ModchartEdit.parseRepeat(null) == null);
+    check('repeat count is capped', ModchartEdit.parseRepeat('9999').count == ModchartEdit.MAX_COPIES);
+
+    var source:Array<ModchartEvent> = [event(1000, 200, 'player', -1, 'x', 10), event(1500, 0, 'hud', -1, 'angle', 5)];
+    var copies:Array<ModchartEvent> = ModchartEdit.repeatCopies(source, 3, 2.0, tempo);
+    check('repeat makes count times the events', copies.length == 6);
+    check('repeat shifts by the spacing in beats', copies[0].time == 2000 && copies[1].time == 2500 && copies[2].time == 3000 && copies[4].time == 4000);
+    check('repeat keeps the other fields', copies[0].value == 10 && copies[0].duration == 200 && copies[1].target == 'hud');
+    check('repeat does not touch the source', source[0].time == 1000);
+
+    var mirrored:Array<ModchartEvent> = ModchartEdit.mirrorCopies([event(0, 0, 'player', 2, 'x', 10), event(0, 0, 'opponent', -1, 'y', 5), event(0, 0, 'both', -1, 'y', 5), event(0, 0, 'hud', -1, 'zoom', 2)]);
+    check('mirroring swaps player and opponent', mirrored.length == 2 && mirrored[0].target == 'opponent' && mirrored[0].lane == 2 && mirrored[1].target == 'player');
+    check('warnings describe flattened documents', ModchartEdit.describeWarnings(macroDoc) != null && ModchartEdit.describeWarnings(new ModchartDocument('z')) == null);
 
     Sys.println('commands');
 

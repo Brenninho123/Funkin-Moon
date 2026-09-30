@@ -47,10 +47,19 @@ class ModchartDefs
     mod('tipsy', 'Tipsy (sway Y)', KIND_STRUMLINE, 0, -300, 300, 5, false, 'px', true),
     mod('wobble', 'Wobble (sway angle)', KIND_STRUMLINE, 0, -90, 90, 1, false, 'deg', true),
     mod('waveSpeed', 'Wave speed', KIND_STRUMLINE, 1, 0, 10, 0.1, true, 'x', false),
+    mod('scale', 'Scale', KIND_STRUMLINE, 1, 0.1, 4, 0.05, true, 'x', true),
+    mod('spin', 'Spin', KIND_STRUMLINE, 0, -720, 720, 10, false, 'deg/s', true),
+    mod('flip', 'Flip lanes', KIND_STRUMLINE, 0, 0, 1, 0.05, false, '', false),
+    mod('invert', 'Invert pairs', KIND_STRUMLINE, 0, 0, 1, 0.05, false, '', false),
+    mod('beat', 'Beat bounce (sway X)', KIND_STRUMLINE, 0, -200, 200, 5, false, 'px', true),
+    mod('bumpy', 'Bumpy (sway Y on notes)', KIND_STRUMLINE, 0, -300, 300, 5, false, 'px', true),
+    mod('noteAlpha', 'Note opacity', KIND_STRUMLINE, 1, 0, 1, 0.05, true, '', true),
     mod('x', 'Move X', KIND_CAMERA, 0, -1280, 1280, 10, false, 'px', false),
     mod('y', 'Move Y', KIND_CAMERA, 0, -720, 720, 10, false, 'px', false),
     mod('angle', 'Rotate', KIND_CAMERA, 0, -360, 360, 1, false, 'deg', false),
-    mod('zoom', 'Zoom', KIND_CAMERA, 1, 0.1, 4, 0.05, true, 'x', false)
+    mod('zoom', 'Zoom', KIND_CAMERA, 1, 0.1, 4, 0.05, true, 'x', false),
+    mod('shake', 'Shake', KIND_CAMERA, 0, 0, 100, 1, false, 'px', false),
+    mod('pulse', 'Beat pulse (zoom)', KIND_CAMERA, 0, 0, 0.5, 0.01, false, '', false)
   ];
 
   static function mod(id:String, label:String, kind:String, defaultValue:Float, min:Float, max:Float, step:Float, multiplicative:Bool, unit:String,

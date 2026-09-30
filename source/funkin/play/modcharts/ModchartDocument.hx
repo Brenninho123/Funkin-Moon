@@ -1,6 +1,7 @@
 package funkin.play.modcharts;
 
 import funkin.play.modcharts.ModchartDefs.ModchartModifierInfo;
+import funkin.play.modcharts.ModchartExpand.ModchartTempo;
 
 typedef ModchartEvent =
 {
@@ -66,13 +67,16 @@ class ModchartTrack
 
 class ModchartDocument
 {
-  public static inline var VERSION:Int = 1;
+  public static inline var VERSION:Int = 2;
   public static inline var MAX_EVENTS:Int = 20000;
 
   public var songId:String;
   public var events:Array<ModchartEvent> = [];
+  public var warnings:Array<String> = [];
+  public var flattened:Bool = false;
 
   var tracks:Map<String, ModchartTrack> = new Map();
+  var used:Map<String, Bool> = new Map();
   var tracksValid:Bool = false;
 
   public function new(songId:String)
@@ -162,6 +166,9 @@ class ModchartDocument
     }
 
     tracks = new Map();
+    used = new Map();
+
+    for (event in events) used.set(event.target + '|' + event.modifier, true);
 
     for (key in grouped.keys())
     {
@@ -194,11 +201,15 @@ class ModchartDocument
 
     if (info == null) return 0.0;
 
+    if (!tracksValid) rebuildTracks();
+
     var owners:Array<String> = target == ModchartDefs.TARGET_PLAYER || target == ModchartDefs.TARGET_OPPONENT ? [target, ModchartDefs.TARGET_BOTH] : [target];
     var result:Float = info.multiplicative ? 1.0 : 0.0;
 
     for (owner in owners)
     {
+      if (!used.exists(owner + '|' + modifier)) continue;
+
       var layers:Array<Float> = [sampleTrack(owner, ModchartDefs.ALL_LANES, modifier, time, info)];
 
       if (lane >= 0 && info.perLane) layers.push(sampleTrack(owner, lane, modifier, time, info));
@@ -241,7 +252,7 @@ class ModchartDocument
     return haxe.Json.stringify({version: VERSION, songId: songId, events: list}, null, pretty ? '  ' : null);
   }
 
-  public static function fromJson(text:String, songId:String):Null<ModchartDocument>
+  public static function fromJson(text:String, songId:String, ?tempo:ModchartTempo):Null<ModchartDocument>
   {
     var parsed:Dynamic;
 
@@ -258,28 +269,14 @@ class ModchartDocument
 
     if (!Std.isOfType(raw, Array)) return null;
 
+    var macros:Dynamic = Std.isOfType(parsed, Array) || parsed == null ? null : Reflect.field(parsed, 'macros');
     var document:ModchartDocument = new ModchartDocument(songId);
+    var expansion = ModchartExpand.expand(raw, macros, tempo, document.warnings, MAX_EVENTS);
 
-    for (entry in (raw : Array<Dynamic>))
-    {
-      if (entry == null || document.events.length >= MAX_EVENTS) continue;
+    document.events = expansion.events;
+    document.flattened = expansion.expanded;
 
-      var time:Dynamic = Reflect.field(entry, 'time');
-      var value:Dynamic = Reflect.field(entry, 'value');
-      var target:Dynamic = Reflect.field(entry, 'target');
-      var modifier:Dynamic = Reflect.field(entry, 'modifier');
-
-      if (!Std.isOfType(time, Float) || !Std.isOfType(value, Float) || !Std.isOfType(target, String) || !Std.isOfType(modifier, String)) continue;
-
-      var duration:Dynamic = Reflect.field(entry, 'duration');
-      var lane:Dynamic = Reflect.field(entry, 'lane');
-      var ease:Dynamic = Reflect.field(entry, 'ease');
-
-      var event:Null<ModchartEvent> = makeEvent(time, Std.isOfType(duration, Float) ? duration : 0.0, target, Std.isOfType(lane, Float) ? Std.int(lane) : ModchartDefs.ALL_LANES,
-        modifier, value, Std.isOfType(ease, String) ? ease : 'linear');
-
-      if (event != null) document.events.push(event);
-    }
+    if (macros != null && Type.typeof(macros) == TObject && Reflect.fields(macros).length > 0) document.flattened = true;
 
     document.sort();
 
