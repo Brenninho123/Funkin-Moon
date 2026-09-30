@@ -181,7 +181,9 @@ class Assets implements ConsoleClass
     }
     // Fetch the asset synchronously.
     // NOTE: This WILL cause stutters! Try to use `cacheBitmapData()` so we don't end up here.
-    var bitmapData:BitmapData = OpenFLAssets.getBitmapData(assetPath.toString(), false, !assetPath.needsPixelData, !assetPath.needsPixelData);
+    var bitmapData:Null<BitmapData> = OpenFLAssets.getBitmapData(assetPath.toString(), false, !assetPath.needsPixelData, !assetPath.needsPixelData);
+    if (bitmapData == null) bitmapData = OpenFLAssets.getBitmapData(assetPath.toString(), false);
+    if (bitmapData == null) throw 'Bitmap file could not be decoded: ${assetPath.toString()}';
     // Upload the texture to the GPU immediately so we don't have to do it later.
     bitmapData.toGPU(false);
     FunkinAssetCache.instance.setBitmapData(assetPath.toString(), bitmapData);
