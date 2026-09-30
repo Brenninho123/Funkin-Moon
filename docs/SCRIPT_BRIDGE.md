@@ -40,6 +40,14 @@ callModule('mymod:hud', 'refresh')
 | `ScriptBridge.getOnlinePlayers()` | Names of the players that are online |
 | `ScriptBridge.getDiscordName()` | Name of the logged in Discord account, or `null` |
 
+## Memory
+
+| Function | Description |
+| --- | --- |
+| `ScriptBridge.getMemoryInfo()` | Memory numbers and the pressure level, see `docs/MEMORY.md` |
+| `ScriptBridge.getMemoryPressure()` | `normal`, `elevated`, `high` or `critical` |
+| `ScriptBridge.requestGarbageCollection(?major)` | Asks for a garbage collection. Refused during a song (unless critical) and within 5 seconds of the last one |
+
 ## Logging
 
 `ScriptBridge.log(message)`, `warn(message)` and `error(message)` write to the game log.

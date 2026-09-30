@@ -15,6 +15,7 @@ import funkin.Conductor;
 import funkin.Highscore;
 import funkin.audio.FunkinSound;
 import funkin.lowend.FunkinLow;
+import funkin.memory.MemoryManager;
 import funkin.lua.compat.Lua;
 import funkin.lua.compat.LuaL;
 import funkin.modding.events.ScriptEvent;
@@ -1836,6 +1837,10 @@ class FunkinLua
 
       return t * t * (3.0 - 2.0 * t);
     });
+
+    query('getMemoryInfo', (s, a) -> MemoryManager.instance.getSnapshot());
+    query('getMemoryPressure', (s, a) -> MemoryManager.instance.pressure.getName());
+    query('collectGarbage', (s, a) -> MemoryManager.instance.requestCollect(argBool(a, 0, false)));
 
     query('callModule', (s, a) -> funkin.modding.ScriptBridge.callModule(argStr(a, 0), argStr(a, 1), a.slice(2)));
 

@@ -401,6 +401,16 @@ end
 | `getMusicLength` | `getMusicLength()` | Length of the current track in milliseconds |
 | `isMusicPlaying` | `isMusicPlaying()` | Whether the current track is playing |
 
+## Memory
+
+See `docs/MEMORY.md` for how the levels work.
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `getMemoryInfo` | `getMemoryInfo()` | Table with `gcBytes`, `taskBytes`, `peakGcBytes`, `peakTaskBytes`, `pressure`, `softLimitBytes`, `hardLimitBytes`, `collections` and `secondsSinceCollection` |
+| `getMemoryPressure` | `getMemoryPressure()` | `"normal"`, `"elevated"`, `"high"` or `"critical"` |
+| `collectGarbage` | `collectGarbage(full)` | Asks for a garbage collection. Returns `false` when refused (during a song, unless memory is critical, or less than 5 seconds after the last one) |
+
 ## More math and helpers
 
 | Function | Signature | Description |

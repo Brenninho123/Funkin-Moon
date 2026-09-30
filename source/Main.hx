@@ -8,6 +8,7 @@ import funkin.ui.FullScreenScaleMode;
 import funkin.Preferences;
 import funkin.PlayerSettings;
 import funkin.memory.FunkinMemory;
+import funkin.memory.MemoryManager;
 import funkin.audio.FunkinSound;
 import funkin.save.Save;
 import funkin.util.WindowUtil;
@@ -67,7 +68,7 @@ class Main extends Sprite
   private var initialized:Bool = false;
   private var shuttingDown:Bool = false;
   private var uncaughtErrorCount:Int = 0;
-  private var startupErrorTimestamps:Array<Float> = [];
+  private var recentErrorTimestamps:Array<Float> = [];
   private var stageTimings:Map<String, Float> = new Map();
   private var assetIntegrityOk:Bool = true;
   private var graphicsContextRetries:Int = 0;
@@ -205,14 +206,14 @@ class Main extends Sprite
 
     var now:Float = haxe.Timer.stamp();
 
-    startupErrorTimestamps.push(now);
-    startupErrorTimestamps = startupErrorTimestamps.filter(t -> (now - t) <= SAFE_MODE_WINDOW_SECONDS);
+    recentErrorTimestamps.push(now);
+    recentErrorTimestamps = recentErrorTimestamps.filter(t -> (now - t) <= SAFE_MODE_WINDOW_SECONDS);
 
     var errorMessage:String = Std.string(event.error);
 
     FlxG.log.error('Uncaught error #$uncaughtErrorCount: $errorMessage');
 
-    if (!safeMode && startupErrorTimestamps.length >= SAFE_MODE_ERROR_THRESHOLD)
+    if (!safeMode && recentErrorTimestamps.length >= SAFE_MODE_ERROR_THRESHOLD)
     {
       triggerSafeModeRestart(errorMessage);
       return;
@@ -245,7 +246,7 @@ class Main extends Sprite
       FlxG.log.error('Safe mode mod reload also failed: $e');
     }
 
-    startupErrorTimestamps = [];
+    recentErrorTimestamps = [];
 
     try
     {
@@ -285,11 +286,11 @@ class Main extends Sprite
     #if mobile
     try
     {
-      FunkinMemory.purgeCache();
+      MemoryManager.instance.trim(Aggressive);
     }
     catch (e:Dynamic)
     {
-      FlxG.log.error('Failed to purge memory cache on deactivate: $e');
+      FlxG.log.error('Failed to trim memory on deactivate: $e');
     }
     #end
   }
@@ -308,29 +309,40 @@ class Main extends Sprite
 
     try
     {
+      Save.system.flush();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to flush save data on exit: $e');
+    }
+
+    #if FEATURE_ONLINE
+    try
+    {
+      funkin.online.FunkinOnline.instance.disconnect();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to disconnect from the online server: $e');
+    }
+    #end
+
+    try
+    {
+      FunkinCosmic.unwatchAll();
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('Failed to stop file watchers: $e');
+    }
+
+    try
+    {
       FunkinSound.stopAllAudio(true, true);
     }
     catch (e:Dynamic)
     {
       FlxG.log.error('Failed to stop audio: $e');
-    }
-
-    try
-    {
-      FunkinMemory.purgeCache(true);
-    }
-    catch (e:Dynamic)
-    {
-      FlxG.log.error('Failed to purge memory: $e');
-    }
-
-    try
-    {
-      Assets.cache.clear();
-    }
-    catch (e:Dynamic)
-    {
-      FlxG.log.error('Failed to clear asset cache: $e');
     }
 
     #if !html5
@@ -384,6 +396,7 @@ class Main extends Sprite
       #end
 
       runStage("checkAssetIntegrity", checkAssetIntegrity);
+      runStage("initializeMemory", initializeMemory);
       runStage("initializeLowEnd", initializeLowEnd);
 
       #if FEATURE_MULTIPLAYER
@@ -483,6 +496,11 @@ class Main extends Sprite
     #end
   }
 
+  private function initializeMemory():Void
+  {
+    MemoryManager.instance.init();
+  }
+
   private function initializeLowEnd():Void
   {
     FunkinLow.persistenceHandler = {
@@ -533,11 +551,11 @@ class Main extends Sprite
     {
       try
       {
-        FunkinMemory.purgeCache();
+        MemoryManager.instance.trim(Aggressive);
       }
       catch (e:Dynamic)
       {
-        FlxG.log.error('Failed to purge memory after dropping to Potato tier: $e');
+        FlxG.log.error('Failed to trim memory after dropping to Potato tier: $e');
       }
     }
   }
@@ -573,7 +591,7 @@ class Main extends Sprite
       totalMs += duration;
     }
 
-    FlxG.log.add('Startup complete in ${Math.round(totalMs)}ms across ${Lambda.count(stageTimings)} stage(s).');
+    FlxG.log.add('Startup complete in ${Math.round(totalMs)}ms across ${Lambda.count(stageTimings)} stage(s), ${MemoryManager.instance.describe()}.');
 
     if (safeMode)
     {
@@ -601,6 +619,7 @@ class Main extends Sprite
         qualityTier: FunkinLow.getTierName(),
         stutterCount: FunkinLow.getStutterCount(),
         lastError: lastError,
+        memory: MemoryManager.instance.getSnapshot(),
         buildInfo: buildInfo,
         generatedAt: Date.now().toString()
       };
@@ -636,6 +655,7 @@ class Main extends Sprite
     FlxG.signals.postUpdate.add(handleLowEndUpdate);
     FlxG.signals.postUpdate.add(handleCosmicWatchers);
     FlxG.signals.postUpdate.add(handleFreezeWatchdog);
+    FlxG.signals.postUpdate.add(handleMemoryUpdate);
 
     #if mobile
     FlxG.signals.preUpdate.add(repositionCounters.bind(true));
@@ -645,6 +665,11 @@ class Main extends Sprite
   private function handleLowEndUpdate():Void
   {
     FunkinLow.update(FlxG.elapsed);
+  }
+
+  private function handleMemoryUpdate():Void
+  {
+    MemoryManager.instance.update(FlxG.elapsed);
   }
 
   private function handleCosmicWatchers():Void
@@ -665,7 +690,7 @@ class Main extends Sprite
     {
       watchdogWarningIssued = true;
 
-      FlxG.log.warn('Main loop resumed after a ${Math.round(delta * 10) / 10}s stall.');
+      FlxG.log.warn('Main loop resumed after a ${Math.round(delta * 10) / 10}s stall (${MemoryManager.instance.describe()}).');
     }
     else if (delta < FREEZE_WATCHDOG_THRESHOLD_SECONDS)
     {

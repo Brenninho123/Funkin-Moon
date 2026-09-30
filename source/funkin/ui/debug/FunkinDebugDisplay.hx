@@ -2,6 +2,8 @@ package funkin.ui.debug;
 
 import flixel.util.FlxStringUtil;
 import funkin.lowend.FunkinLow;
+import funkin.memory.MemoryManager;
+import funkin.memory.MemoryManager.MemoryPressure;
 import funkin.play.PlayState;
 import funkin.ui.debug.stats.FunkinStatsGraph;
 import funkin.util.MemoryUtil;
@@ -336,6 +338,12 @@ class FunkinDebugDisplay extends Sprite
   function collectExtraLines():Array<String>
   {
     var lines:Array<String> = [];
+    var memory:MemoryManager = MemoryManager.instance;
+
+    if (memory.pressure != MemoryPressure.Normal)
+    {
+      lines.push('MEMORY: ' + memory.pressure.getName().toUpperCase() + '  ' + FlxStringUtil.formatBytes(memory.getUsedBytes()).toLowerCase() + ' / ' + FlxStringUtil.formatBytes(memory.softLimitBytes).toLowerCase() + ' budget');
+    }
 
     if (showPlayStateInfo && PlayState.instance != null)
     {

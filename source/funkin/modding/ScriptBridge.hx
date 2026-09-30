@@ -1,5 +1,6 @@
 package funkin.modding;
 
+import funkin.memory.MemoryManager;
 import funkin.modding.module.ModuleHandler;
 import funkin.ui.Codex;
 #if FEATURE_LUA_SCRIPTS
@@ -87,6 +88,21 @@ class ScriptBridge
     #if FEATURE_LUA_SCRIPTS
     FunkinLua.removeSharedValue(name);
     #end
+  }
+
+  public static function getMemoryInfo():MemorySnapshot
+  {
+    return MemoryManager.instance.getSnapshot();
+  }
+
+  public static function getMemoryPressure():String
+  {
+    return MemoryManager.instance.pressure.getName();
+  }
+
+  public static function requestGarbageCollection(major:Bool = false):Bool
+  {
+    return MemoryManager.instance.requestCollect(major);
   }
 
   public static function callModule(moduleId:String, functionName:String, ?args:Array<Dynamic>):Dynamic
