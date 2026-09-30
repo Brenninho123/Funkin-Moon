@@ -29,6 +29,7 @@ class MusicEditorTimeline extends FlxGroup
   public var msPerPixel(default, null):Float = 1.0;
   public var lengthMs(default, null):Float = 1.0;
   public var hitRadius:Float = 9.0;
+  public var showWaveform(default, set):Bool = true;
 
   var targetMsPerPixel:Float = 1.0;
   var pivotMs:Float = 0.0;
@@ -145,11 +146,58 @@ class MusicEditorTimeline extends FlxGroup
     rect.visible = true;
   }
 
+  function place(sprite:FlxSprite, x:Float, y:Float, w:Float, h:Float):Void
+  {
+    sprite.scale.set(Math.max(1.0, w), Math.max(1.0, h));
+    sprite.updateHitbox();
+    sprite.x = x;
+    sprite.y = y;
+  }
+
+  public function setRect(x:Float, y:Float, w:Float, h:Float):Void
+  {
+    if (x == left && y == top && w == width && h == height) return;
+
+    left = x;
+    top = y;
+    width = Math.max(120.0, w);
+    height = Math.max(RULER_HEIGHT + MARKER_LANE_HEIGHT + 40.0, h);
+
+    place(background, left, top, width, height);
+    place(rulerBackground, left, top, width, RULER_HEIGHT);
+    place(laneBackground, left, top + height - MARKER_LANE_HEIGHT, width, MARKER_LANE_HEIGHT);
+    place(playhead, left, top, 2, height);
+    place(playheadCap, left, top, 12, 8);
+
+    var waveHeight:Int = Std.int(Math.max(8.0, height - RULER_HEIGHT - MARKER_LANE_HEIGHT));
+
+    waveSprite.makeGraphic(Std.int(width), waveHeight, 0x00000000, true);
+    waveSprite.x = left;
+    waveSprite.y = top + RULER_HEIGHT;
+
+    targetMsPerPixel = Math.max(MIN_MS_PER_PIXEL, Math.min(targetMsPerPixel, maxMsPerPixel()));
+    msPerPixel = Math.min(msPerPixel, maxMsPerPixel());
+
+    clampView();
+    layoutDirty = true;
+  }
+
   public function setWaveform(data:Null<WaveformData>):Void
   {
     waveform = data;
-    waveSprite.visible = data != null;
+    waveSprite.visible = data != null && showWaveform;
     layoutDirty = true;
+  }
+
+  function set_showWaveform(value:Bool):Bool
+  {
+    showWaveform = value;
+
+    if (waveSprite != null) waveSprite.visible = value && waveform != null;
+
+    layoutDirty = true;
+
+    return value;
   }
 
   public function setLoop(start:Null<Float>, end:Null<Float>):Void
@@ -351,7 +399,7 @@ class MusicEditorTimeline extends FlxGroup
 
   function drawWaveform():Void
   {
-    if (waveform == null) return;
+    if (waveform == null || !showWaveform) return;
 
     var data:WaveformData = waveform;
     var channel = data.channel(0);
@@ -397,7 +445,7 @@ class MusicEditorTimeline extends FlxGroup
     var clippedFrom:Float = Math.max(left, from);
     var clippedTo:Float = Math.min(left + width, to);
 
-    if (clippedTo > clippedFrom) useRect(clippedFrom, gridTop, clippedTo - clippedFrom, gridHeight, 0xFF2ECC71, 0.14);
+    if (loopStart != null && loopEnd != null && clippedTo > clippedFrom) useRect(clippedFrom, gridTop, clippedTo - clippedFrom, gridHeight, 0xFF2ECC71, 0.14);
 
     if (loopStart != null && from >= left && from <= left + width) useRect(from, gridTop, 2, gridHeight, 0xFF2ECC71, 0.9);
     if (loopEnd != null && to >= left && to <= left + width) useRect(to - 1, gridTop, 2, gridHeight, 0xFFE67E22, 0.9);

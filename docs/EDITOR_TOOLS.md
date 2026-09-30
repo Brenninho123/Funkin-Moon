@@ -31,7 +31,7 @@ Notes changed by these tools fade in when they are redrawn, which makes it easy 
 
 ## Music editor
 
-The music editor was rebuilt with the same approach as the camera editor: undo and redo, a zoomable timeline, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).
+The music editor was rebuilt with the same approach as the camera editor and uses HaxeUI like the modchart editor: menus, a properties panel, undo and redo, a zoomable timeline with a waveform, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).
 
 ## Modchart editor
 
@@ -43,4 +43,4 @@ On desktop, **Screen Ratio** in Preferences sets the widest screen shape the gam
 
 ## Touch support
 
-The music editor, the Lua script editor and the modchart editor work with touch input. Pinch to zoom a timeline, drag with two fingers to scroll it and long press a marker or block to delete it. Press F10 in the music editor or the modchart editor to try the touch layout with a mouse. On mobile the debug menu is opened from Options.
+The music editor, the Lua script editor and the modchart editor work with touch input. Pinch to zoom a timeline, drag with two fingers to scroll it and long press a marker or block to delete it. Press F10 in the music editor or the modchart editor to try the touch sizes with a mouse. On mobile the debug menu is opened from Options.

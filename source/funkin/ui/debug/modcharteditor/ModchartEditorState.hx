@@ -1109,7 +1109,7 @@ class ModchartEditorState extends UIState
 
   function openSongDialog():Void
   {
-    var picker:OpenSongDialog = new OpenSongDialog(function(id:String):Void
+    var picker:funkin.ui.debug.common.OpenSongDialog = new funkin.ui.debug.common.OpenSongDialog(function(id:String):Void
     {
       dialogOpen = false;
       switchSong(id);

@@ -1,9 +1,9 @@
-package funkin.ui.debug.modcharteditor;
+package funkin.ui.debug.common;
 
 import haxe.ui.containers.dialogs.Dialog;
 import haxe.ui.events.MouseEvent;
 
-@:build(haxe.ui.macros.ComponentMacros.build('assets/exclude/ui/editors/modchart-editor/dialogs/open-song.xml'))
+@:build(haxe.ui.macros.ComponentMacros.build('assets/exclude/ui/editors/common/dialogs/open-song.xml'))
 class OpenSongDialog extends Dialog
 {
   var onPick:String->Void;

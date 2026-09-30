@@ -512,7 +512,7 @@ class Project extends HXProject
     FEATURE_HAXEUI.apply(
       this, FEATURE_ANIMATION_EDITOR.isEnabled(
         this
-      ) || FEATURE_CHART_EDITOR.isEnabled(this) || FEATURE_STAGE_EDITOR.isEnabled(this) || FEATURE_CAMERA_EDITOR.isEnabled(this) || FEATURE_MODCHART_EDITOR.isEnabled(this)
+      ) || FEATURE_CHART_EDITOR.isEnabled(this) || FEATURE_STAGE_EDITOR.isEnabled(this) || FEATURE_CAMERA_EDITOR.isEnabled(this) || FEATURE_MODCHART_EDITOR.isEnabled(this) || FEATURE_MUSIC_EDITOR.isEnabled(this)
     );
 
     FEATURE_LAG_ADJUSTMENT.apply(this, !isWeb());
@@ -720,6 +720,11 @@ class Project extends HXProject
       if (FEATURE_MODCHART_EDITOR.isEnabled(this))
       {
         addHaxeMacro("include('funkin.ui.debug.modcharteditor')");
+      }
+
+      if (FEATURE_MUSIC_EDITOR.isEnabled(this))
+      {
+        addHaxeMacro("include('funkin.ui.debug.music')");
       }
 
       addHaxeMacro("include('funkin.ui.haxeui')");

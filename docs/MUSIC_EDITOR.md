@@ -1,34 +1,34 @@
 # Music editor
 
-The music editor edits the time changes (BPM and time signature points) of a song. It opens from the debug menu and starts on the `tutorial` song. Press Ctrl+O to open any other song.
+The music editor (debug menu, **MUSIC EDITOR**) edits the time changes of a song: points that set the BPM and the time signature from a moment on. It uses HaxeUI like the chart editor, the camera editor and the modchart editor. It opens on the `tutorial` song, and File > Open Song (Ctrl+O) opens any other.
 
 ## Layout
 
-- Top bar: song, unsaved marker, play state, time, snap, metronome and playback speed.
-- Left: a beat display with the measure number, BPM, signature and one dot per beat. The box pulses on every beat, stronger on the downbeat.
-- Right: the selected point (time, BPM, signature, beat and measure length), the undo and redo history and a list of problems found in the data.
-- Bottom: the timeline with a time ruler, measure lines, beat lines, snap subdivisions, the playhead and one marker per point.
+- Top left: the beat display with the current bar, the BPM and signature and one dot per beat. The box pulses on every beat, stronger on the downbeat.
+- Bar under it: playback, snap division, zoom, undo and redo.
+- Bottom: the timeline with the ruler, the waveform, bar lines, beat lines, snap subdivisions, the playhead, the loop region and one marker per point.
+- Right: the selected point (start, BPM, beats per bar, beat unit and the lengths they give), buttons for the common edits, the loop controls, the playback speed, the history and a list of problems found in the data.
+- Menus: File (open, save, export, import, clipboard, autosave and backups), Edit, View, Playback (metronome, snapping and the loop), Help. **Go to Modchart Editor** opens the modchart editor on the same song.
 
 ## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | Space | Play or pause |
-| Left / Right | Step one snap division (Shift: one measure) |
+| Left / Right | Step one snap division (Shift: one bar) |
 | Home / End | Start or end of the song |
-| - / + | Playback speed from x0.25 to x2 |
-| M | Metronome |
 | Enter or P | Add a point at the playhead |
-| Delete or Backspace | Remove the selected point (the first one is protected) |
-| Tab / Shift+Tab | Select the next or previous point |
-| PgDn / PgUp | Select the next or previous point and jump to it |
+| Delete | Remove the selected point (the first one is protected) |
+| Tab / Shift+Tab, PgDn / PgUp | Select the next or previous point (PgDn and PgUp also jump to it) |
 | Up / Down | BPM +-1 (Shift +-5, Ctrl +-0.1) |
-| Alt+Up / Down | Numerator (Alt+Shift: denominator) |
+| Alt+Up / Down | Beats per bar (Alt+Shift: beat unit) |
+| Alt+Left / Right | Nudge the selected point 1 ms (Shift: 10 ms). Repeated nudges are one undo step |
+| H / D | Halve or double the BPM of the selected point |
 | T | Tap tempo, applied to the selected point after three taps |
-| G | Toggle snapping |
-| , / . | Snap division (1, 2, 3, 4, 6, 8, 12, 16 per beat) |
-| [ / ] | Zoom out or in around the playhead |
-| F | Fit the whole song |
+| J / Shift+J | Type a time to jump to, or to move the selected point to. Times can be seconds (`12.5`), a clock (`1:05.5`) or milliseconds (`750ms`) |
+| I / O / L | Set the loop start, set the loop end, turn the loop on or off (Shift+L clears it) |
+| M / G | Metronome, snapping |
+| + / - , F | Zoom the timeline, fit the whole song |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+S | Save |
 | Ctrl+O | Open another song |
@@ -37,46 +37,28 @@ The music editor edits the time changes (BPM and time signature points) of a son
 | Ctrl+Shift+C | Copy the points in the song metadata `timeChanges` format |
 | Ctrl+B | Load an older backup (cycles through the last three) |
 | Ctrl+Shift+R | Restore the autosave |
-| F1 | Help |
-| Esc | Exit (press twice when there are unsaved changes) |
+| F1 | User guide |
+| F10 | Use the touch sizes with a mouse |
+| Esc | Exit (asks first when there are unsaved changes) |
 
-## More tools
+The fields in the right panel edit the selected point directly. Quick edits of the same value are one undo step.
 
-| Shortcut | Action |
-| --- | --- |
-| I / O / L | Set the loop start, set the loop end, turn the loop on or off (Shift+L clears it). The region is drawn on the timeline |
-| H / D | Halve or double the BPM of the selected point |
-| B / N | Type a BPM or a time signature for the selected point |
-| J / Shift+J | Type a time to jump to, or to move the selected point to |
-| Alt+Left / Right | Nudge the selected point 1 ms (Shift: 10 ms). Repeated nudges are one undo step |
+## Mouse and touch
 
-The timeline draws the waveform of the song. Times can be typed as seconds (`12.5`), as a clock (`1:05.5`) or in milliseconds (`750ms`).
-
-## Touch
-
-The editor works on phones and tablets. On a device with a touch screen, or after pressing F10 on a computer, a panel of large buttons appears under the properties with three pages of actions (playback and points, view and tempo, typing and files). Typing a value opens a number pad.
-
-- Drag a marker to move it and drag the ruler to scrub.
-- Pinch to zoom the timeline and drag with two fingers to scroll it.
-- Long press a marker to remove it.
-- Tap a song in the picker, and tap anywhere on the help to close it.
-- The editor is centered when the screen is wider than 16:9.
-
-## Mouse
-
-- Click or drag on the timeline to scrub. Snapping applies unless Alt is held.
-- Click a marker to select it and drag it to move the point. Points cannot cross their neighbours, and the first point stays at 0.
+- Click or drag the timeline to scrub. Snapping applies unless Alt is held.
+- Drag a marker to move a point. A point cannot cross its neighbours, and the first point stays at 0.
 - Double click in the marker lane to add a point. Right click a marker to remove it.
-- The wheel zooms around the cursor with easing. Shift plus the wheel scrolls.
+- The wheel zooms around the cursor with easing and Shift plus the wheel scrolls.
+- On a touch screen: pinch to zoom, drag with two fingers to scroll, long press a marker to remove it. The markers are easier to grab and all the controls are HaxeUI buttons and fields.
 
 ## Saving
 
 Work is stored in the application data folder under `music_editor/<song>.json`, written atomically with three rotating backups. When the editor opens a song it loads, in order, your saved file, the song metadata, or a single 100 BPM point.
 
-The editor autosaves every 30 seconds while there are unsaved changes and when you leave. If an autosave is newer than the saved file a notification tells you, and Ctrl+Shift+R restores it. Restoring, pasting, importing and loading a backup are all normal undo steps.
+The editor autosaves every 30 seconds while there are unsaved changes and when you leave. If an autosave is newer than the saved file a notification tells you, and File > Restore Autosave loads it. Restoring, pasting, importing and loading a backup are all normal undo steps.
 
 The JSON reader also accepts a bare array and the song metadata field names (`timeStamp`, `timeSignatureNum`, `timeSignatureDen`), so `timeChanges` copied from a `-metadata.json` file can be pasted directly.
 
 ## Code
 
-`MusicEditorDocument` and `MusicEditorCommands` have no Flixel dependency and are covered by `tests/MusicEditorTests.hx`. To run the tests, copy those two files and the test into a temporary folder that has an empty `funkin/import.hx`, then run `haxe -cp . --run MusicEditorTests`.
+`MusicEditorDocument` and `MusicEditorCommands` have no Flixel dependency and are covered by `tests/MusicEditorTests.hx`. The state, the timeline and the beat display draw with Flixel behind the HaxeUI layout in `assets/exclude/ui/editors/music-editor`. To run the tests, copy those two files and the test into a temporary folder that has an empty `funkin/import.hx`, then run `haxe -cp . --run MusicEditorTests`.
