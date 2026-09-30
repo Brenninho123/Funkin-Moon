@@ -1,6 +1,6 @@
 # Moon Engine — Lua Scripting API
 
-Moon Engine mods can use Lua (via `hxlua`) alongside HScript. This document covers every function exposed to Lua scripts by `funkin.lua.FunkinLua`, plus the global variables set automatically when a script loads.
+Moon Engine mods can use Lua (via `linc_luajit`) alongside HScript. This document covers every function exposed to Lua scripts by `funkin.lua.FunkinLua`, plus the global variables set automatically when a script loads.
 
 Each song, stage, or character folder in a mod can carry its own `.lua` script. A script is loaded into its own isolated Lua state — variables declared with `local` never leak between scripts, and globals set with `setVar`/`getVar` are explicitly shared through the engine rather than through Lua's global table.
 
@@ -15,6 +15,9 @@ Set automatically when a script is loaded, before any of your code runs:
 | `songName` | string | Current song ID (only set if a song is loaded) |
 | `difficulty` | string | Current difficulty ID |
 | `variation` | string | Current variation ID |
+| `moonVersion` | string | The Moon Engine version string |
+
+Scripts run in a sandboxed LuaJIT state: `io`, `os.execute`, `os.exit`, `os.remove`, `os.rename`, `os.tmpname` and `package.loadlib` are removed. Use the `save*` functions for persistence.
 
 ## Logging
 
@@ -80,17 +83,24 @@ end
 | `setCameraZoom` | `setCameraZoom(value)` | Sets the game camera's zoom |
 | `triggerCameraMovement` | `triggerCameraMovement(direction, intensity)` | Triggers a note-hit-style camera movement. `direction` is `"left"`, `"down"`, `"up"`, or `"right"` |
 | `setCameraMovementEnabled` | `setCameraMovementEnabled(enabled)` | Enables or disables automatic camera movement on note hits |
-| `flashCamera` | `flashCamera(color, duration)` | Flashes the game camera to `color` (hex number, e.g. `0xFFFFFF`) over `duration` seconds |
-| `shakeCamera` | `shakeCamera(intensity, duration)` | Shakes the game camera |
+| `setCameraPosition` | `setCameraPosition(x, y)` | Sets the game camera scroll position |
+| `getCameraZoom` | `getCameraZoom()` | Current game camera zoom |
+| `flashCamera` | `flashCamera(color, duration, camera)` | Flashes a camera to `color` over `duration` seconds. `camera` is `"game"` (default) or `"hud"` |
+| `shakeCamera` | `shakeCamera(intensity, duration, camera)` | Shakes a camera. `camera` is `"game"` (default) or `"hud"` |
+
+Colors accept a hex number (`0xFF0000`, alpha optional; a zero alpha is treated as opaque) or a color string (`"#FF0000"`, `"red"`).
 
 ## Characters
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `characterPlayAnim` | `characterPlayAnim(target, animName, force)` | Plays an animation on a character. `target` is `"boyfriend"`/`"bf"`, `"girlfriend"`/`"gf"`, or `"dad"`/`"opponent"` |
+| `characterPlayAnim` | `characterPlayAnim(target, animName, force)` | Plays an animation on a character. `target` is `"boyfriend"`/`"bf"`/`"player"`, `"girlfriend"`/`"gf"`, or `"dad"`/`"opponent"` |
 | `characterDance` | `characterDance(target)` | Triggers the character's idle dance |
 | `setCharacterVisible` | `setCharacterVisible(target, visible)` | Shows or hides a character |
 | `setCharacterPosition` | `setCharacterPosition(target, x, y)` | Repositions a character |
+| `setCharacterAlpha` | `setCharacterAlpha(target, alpha)` | Sets a character's opacity |
+| `setCharacterFlip` | `setCharacterFlip(target, flipped)` | Flips a character horizontally |
+| `setCharacterScale` | `setCharacterScale(target, scaleX, scaleY)` | Scales a character (`scaleY` defaults to `scaleX`) |
 
 ```lua
 characterPlayAnim("bf", "hey", true)
@@ -107,10 +117,14 @@ Text created through this API belongs to the script that created it and is autom
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `createLuaText` | `createLuaText(id, text, x, y, size)` | Creates a text object (not yet visible until `addLuaText` is called) |
-| `addLuaText` | `addLuaText(id)` | Adds the text object to the current state, making it visible |
+| `createLuaText` | `createLuaText(id, text, x, y, size)` | Creates a text object (not yet visible until `addLuaText` is called). `size` defaults to 16 |
+| `addLuaText` | `addLuaText(id)` | Adds the text object to the current state, making it visible. Inside `PlayState` it is drawn on the HUD camera |
 | `setLuaTextString` | `setLuaTextString(id, text)` | Updates the text content |
-| `setLuaTextColor` | `setLuaTextColor(id, color)` | Sets the text color (hex number) |
+| `setLuaTextColor` | `setLuaTextColor(id, color)` | Sets the text color (hex number or color string) |
+| `setLuaTextAlignment` | `setLuaTextAlignment(id, alignment)` | `"left"`, `"center"`, `"right"` or `"justify"` |
+| `setLuaTextScale` | `setLuaTextScale(id, scaleX, scaleY)` | Scales the text (`scaleY` defaults to `scaleX`) |
+| `getLuaTextWidth` / `getLuaTextHeight` | `getLuaTextWidth(id)` / `getLuaTextHeight(id)` | Text dimensions |
+| `hasLuaText` | `hasLuaText(id)` | Whether the text exists |
 | `setLuaTextPosition` | `setLuaTextPosition(id, x, y)` | Repositions the text |
 | `setLuaTextAlpha` | `setLuaTextAlpha(id, alpha)` | Sets opacity, 0.0–1.0 |
 | `setLuaTextVisible` | `setLuaTextVisible(id, visible)` | Shows or hides the text without destroying it |
@@ -131,8 +145,9 @@ end
 | --- | --- | --- |
 | `playSound` | `playSound(path, volume)` | Plays a one-shot sound from the `sounds` asset folder |
 | `stopAllSounds` | `stopAllSounds()` | Stops all currently playing audio |
-| `setMusicVolume` | `setMusicVolume(value)` | Sets the current music track's volume, 0.0–1.0 |
-| `setMusicPitch` | `setMusicPitch(value)` | Sets the current music track's pitch, 1.0 = normal |
+| `getMusicVolume` / `setMusicVolume` | `getMusicVolume()` / `setMusicVolume(value)` | Gets or sets the current music track's volume, 0.0–1.0 |
+| `getMusicPitch` / `setMusicPitch` | `getMusicPitch()` / `setMusicPitch(value)` | Gets or sets the current music track's pitch, 1.0 = normal |
+| `getMusicTime` / `setMusicTime` | `getMusicTime()` / `setMusicTime(ms)` | Gets or sets the current music position in milliseconds |
 
 ## Input
 
@@ -148,8 +163,12 @@ end
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `runLater` | `runLater(delay, functionName)` | Calls the named global function once, after `delay` seconds |
-| `runRepeating` | `runRepeating(interval, functionName, repeatCount)` | Calls the named function every `interval` seconds. `repeatCount` of `0` repeats forever |
+| `runLater` | `runLater(delay, functionName, timerId)` | Calls the named global function once, after `delay` seconds. Returns the timer id |
+| `runRepeating` | `runRepeating(interval, functionName, repeatCount, timerId)` | Calls the named function every `interval` seconds, passing the current loop number. `repeatCount` of `0` repeats forever. Returns the timer id |
+| `cancelTimer` | `cancelTimer(timerId)` | Cancels a timer |
+| `hasActiveTimer` | `hasActiveTimer(timerId)` | Whether a timer is still running |
+
+`timerId` is optional. Reusing an id replaces the previous timer with that id. All timers are cancelled when the script unloads.
 
 `functionName` must be the name of a global function defined in the same script.
 
@@ -165,7 +184,7 @@ Variables shared across scripts within the same song (unlike Lua locals, which s
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `setVar` | `setVar(name, value)` | Stores a value under `name`. Accepts numbers, strings, booleans, and arrays |
+| `setVar` | `setVar(name, value)` | Stores a value under `name`. Accepts numbers, strings, booleans, arrays, and tables |
 | `getVar` | `getVar(name)` | Retrieves a stored value, or `nil` if not set |
 | `hasVar` | `hasVar(name)` | Returns whether `name` is currently set |
 | `removeVar` | `removeVar(name)` | Clears a stored value |
@@ -177,6 +196,16 @@ Variables shared across scripts within the same song (unlike Lua locals, which s
 | `randomFloat` | `randomFloat(min, max)` | A random float in `[min, max]` |
 | `randomInt` | `randomInt(min, max)` | A random integer in `[min, max]` |
 | `randomBool` | `randomBool(chance)` | A random boolean, `true` with probability `chance` (0.0–1.0) |
+
+## Math
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `clamp` | `clamp(value, min, max)` | Clamps `value` into `[min, max]` |
+| `lerp` | `lerp(a, b, t)` | Linear interpolation |
+| `mapRange` | `mapRange(value, inMin, inMax, outMin, outMax)` | Remaps a value between ranges |
+| `roundNumber` | `roundNumber(value, decimals)` | Rounds to `decimals` places (default 0) |
+| `floorNumber` / `ceilNumber` | `floorNumber(value)` / `ceilNumber(value)` | Floor / ceiling |
 
 ## Adaptive quality (`FunkinLow`)
 
@@ -203,25 +232,35 @@ end
 | Function | Signature | Returns |
 | --- | --- | --- |
 | `getWindowWidth` / `getWindowHeight` | `getWindowWidth()` / `getWindowHeight()` | Game window dimensions |
-| `getFPS` | `getFPS()` | Target framerate |
+| `getFPS` / `setFPS` | `getFPS()` / `setFPS(value)` | Update framerate |
+| `getDrawFPS` / `setDrawFPS` | `getDrawFPS()` / `setDrawFPS(value)` | Draw framerate |
 | `isMobilePlatform` | `isMobilePlatform()` | bool |
 | `getPlatformName` | `getPlatformName()` | string, e.g. `"Windows"`, `"Android"` |
 
 ## File I/O (`FunkinCosmic`)
 
-Scripts can read and write plain text files through the engine's sandboxed, atomic file system rather than raw Lua `io`:
+Scripts can read and write plain text files through the engine's atomic file system rather than raw Lua `io`. Paths are relative to a per-game `lua_data` folder in the application storage directory; paths that escape it are rejected:
 
 | Function | Signature | Description |
 | --- | --- | --- |
 | `saveReadString` | `saveReadString(path)` | Reads a text file, or `nil` if it doesn't exist |
 | `saveWriteString` | `saveWriteString(path, content)` | Writes a text file atomically (with automatic backup rotation), returns `true`/`false` |
+| `saveReadNumber` / `saveWriteNumber` | `saveReadNumber(path, fallback)` / `saveWriteNumber(path, value)` | Number variants; the read returns `fallback` when missing or invalid |
+| `saveReadBool` / `saveWriteBool` | `saveReadBool(path, fallback)` / `saveWriteBool(path, value)` | Boolean variants |
 
 ## String utilities
 
 | Function | Signature | Description |
 | --- | --- | --- |
 | `stringTrim` | `stringTrim(value)` | Trims leading/trailing whitespace |
+| `stringUpper` / `stringLower` | `stringUpper(value)` / `stringLower(value)` | Case conversion |
+| `stringContains` | `stringContains(value, search)` | Whether `value` contains `search` |
+| `stringReplace` | `stringReplace(value, from, to)` | Replaces every occurrence of `from` |
+| `stringSplit` | `stringSplit(value, separator)` | Splits into a table (default separator `,`) |
 | `stringSplitCount` | `stringSplitCount(value, separator)` | Returns the number of parts `value` would split into on `separator` |
+| `tableLength` | `tableLength(value)` | Length of an array, or number of keys of an object table |
+| `arrayContains` | `arrayContains(array, value)` | Whether the array contains `value` |
+| `jsonEncode` / `jsonDecode` | `jsonEncode(value)` / `jsonDecode(text)` | Converts tables to and from JSON text; returns `nil` on failure |
 
 ## Statistics (save file)
 
@@ -237,7 +276,7 @@ Scripts can read and write plain text files through the engine's sandboxed, atom
 | --- | --- | --- |
 | `isOnline` | `isOnline()` | Whether the online service connection is active |
 | `getOnlineUserCount` | `getOnlineUserCount()` | Number of currently active online users |
-| `sendOnlineMessage` | `sendOnlineMessage(messageType)` | Sends a message of the given type through the online service |
+| `sendOnlineMessage` | `sendOnlineMessage(messageType, data)` | Sends a message of the given type, with optional data, through the online service |
 
 ## Multiplayer (requires `FEATURE_MULTIPLAYER`)
 

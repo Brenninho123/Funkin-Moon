@@ -17,7 +17,7 @@ Moon Engine targets Windows, macOS, Linux, Android, iOS, and HTML5 from a single
 Most FNF engines are either desktop-only forks with mobile bolted on as an afterthought, or mobile ports that fall behind the base game. Moon Engine is built mobile-first from the ground up while staying fully compatible with desktop and web, so a single mod pack targets every platform without a separate mobile build.
 
 - **True cross-platform parity** — the same codebase and the same mods run on desktop, mobile, and web, with platform-specific behavior handled through feature flags rather than a fork.
-- **Two scripting languages, one mod format** — HScript (via Polymod) and Lua (via `hxlua`) are both first-class. Mods can mix `.hxc` and `.lua` files freely.
+- **Two scripting languages, one mod format** — HScript (via Polymod) and Lua (via `linc_luajit`) are both first-class. Mods can mix `.hxc` and `.lua` files freely.
 - **Adaptive performance** — the built-in `FunkinLow` system watches FPS, frame time, memory pressure, and battery, and automatically scales visual quality so the same mod runs acceptably on a flagship phone and a five-year-old mid-range device.
 - **Multiplayer-ready modding** — the `MultiplayerModding` system hashes and compares mod manifests between host and client before a match starts, so mismatched mods fail fast with a clear reason instead of desyncing mid-song.
 - **Built to be debugged** — crash diagnostics, a safe-mode auto-recovery path, asset integrity verification, and an in-game FPS/memory debug overlay all ship in the base engine, not as an optional patch.

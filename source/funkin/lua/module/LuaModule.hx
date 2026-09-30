@@ -25,63 +25,42 @@ class LuaModule extends Module
   {
     super(moduleId, priority, params);
     this.scriptPath = scriptPath;
-    trace('[LuaModule] Creating Lua module: $scriptPath');
     this.script = new FunkinLua(scriptPath);
-    if (script != null && !script.closed)
-    {
-      trace('[LuaModule] Lua script loaded successfully: $scriptPath');
-    }
-    else
-    {
-      trace('[LuaModule] Lua script FAILED to load: $scriptPath');
-    }
   }
 
   function callLua(funcName:String, ?args:Array<Dynamic>):Dynamic
   {
-    if (script == null)
-    {
-      trace('[LuaModule] Cannot call "$funcName": script is null -> $scriptPath');
-      return null;
-    }
-    if (script.closed)
-    {
-      trace('[LuaModule] Cannot call "$funcName": script is closed -> $scriptPath');
-      return null;
-    }
-    trace('[LuaModule] Calling Lua function "$funcName" -> $scriptPath');
-    return script.call(funcName, args ?? []);
+    if (script == null || script.closed) return null;
+
+    return script.call(funcName, args);
   }
 
   override public function onEnabled():Void
   {
-    trace('[LuaModule] onEnabled -> $scriptPath');
     callLua('onEnabled');
   }
 
   override public function onDisabled():Void
   {
-    trace('[LuaModule] onDisabled -> $scriptPath');
     callLua('onDisabled');
   }
 
   override public function onScriptEvent(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onScriptEvent: ${event.type} -> $scriptPath');
     callLua('onScriptEvent', [event.type]);
   }
 
   override public function onCreate(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onCreate -> $scriptPath');
     callLua('onCreate');
   }
 
   override public function onDestroy(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onDestroy -> $scriptPath');
     super.onDestroy(event);
+
     callLua('onDestroy');
+
     if (script != null)
     {
       script.destroy();
@@ -89,226 +68,204 @@ class LuaModule extends Module
     }
   }
 
-  override public function onUpdate(event):Void
+  override public function onUpdate(event:UpdateScriptEvent):Void
   {
-    trace('[LuaModule] onUpdate -> $scriptPath');
     callLua('onUpdate', [event.elapsed]);
   }
 
-  override public function onPause(event:ScriptEvent):Void
+  override public function onPause(event:PauseScriptEvent):Void
   {
-    trace('[LuaModule] onPause -> $scriptPath');
     callLua('onPause');
   }
 
   override public function onResume(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onResume -> $scriptPath');
     callLua('onResume');
   }
 
   override public function onSongStart(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onSongStart -> $scriptPath');
     callLua('onSongStart');
   }
 
   override public function onSongEnd(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onSongEnd -> $scriptPath');
     callLua('onSongEnd');
   }
 
   override public function onGameOver(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onGameOver -> $scriptPath');
     callLua('onGameOver');
   }
 
-  override public function onNoteIncoming(event:ScriptEvent):Void
+  override public function onNoteIncoming(event:NoteScriptEvent):Void
   {
-    trace('[LuaModule] onNoteIncoming -> $scriptPath');
-    callLua('onNoteIncoming');
+    callLua('onNoteIncoming', [event.note.direction]);
   }
 
-  override public function onNoteHit(event:ScriptEvent):Void
+  override public function onNoteHit(event:HitNoteScriptEvent):Void
   {
-    trace('[LuaModule] onNoteHit -> $scriptPath');
-    callLua('onNoteHit');
+    callLua('onNoteHit', [event.judgement, event.comboCount]);
   }
 
-  override public function onNoteMiss(event:ScriptEvent):Void
+  override public function onNoteMiss(event:NoteScriptEvent):Void
   {
-    trace('[LuaModule] onNoteMiss -> $scriptPath');
-    callLua('onNoteMiss');
+    callLua('onNoteMiss', [event.healthChange]);
   }
 
-  override public function onNoteHoldDrop(event:ScriptEvent):Void
+  override public function onNoteHoldDrop(event:HoldNoteScriptEvent):Void
   {
-    trace('[LuaModule] onNoteHoldDrop -> $scriptPath');
     callLua('onNoteHoldDrop');
   }
 
-  override public function onNoteGhostMiss(event:ScriptEvent):Void
+  override public function onNoteGhostMiss(event:GhostMissNoteScriptEvent):Void
   {
-    trace('[LuaModule] onNoteGhostMiss -> $scriptPath');
-    callLua('onNoteGhostMiss');
+    callLua('onNoteGhostMiss', [event.dir, event.playAnim]);
   }
 
-  override public function onStepHit(event:ScriptEvent):Void
+  override public function onStepHit(event:SongTimeScriptEvent):Void
   {
-    trace('[LuaModule] onStepHit -> $scriptPath');
-    callLua('onStepHit');
+    callLua('onStepHit', [event.step]);
   }
 
-  override public function onBeatHit(event:ScriptEvent):Void
+  override public function onBeatHit(event:SongTimeScriptEvent):Void
   {
-    trace('[LuaModule] onBeatHit -> $scriptPath');
-    callLua('onBeatHit');
+    callLua('onBeatHit', [event.beat]);
   }
 
-  override public function onSongEvent(event:ScriptEvent):Void
+  override public function onSongEvent(event:SongEventScriptEvent):Void
   {
-    trace('[LuaModule] onSongEvent -> $scriptPath');
-    callLua('onSongEvent');
+    callLua('onSongEvent', [event.eventData.eventKind, event.eventData.value]);
   }
 
-  override public function onCountdownStart(event:ScriptEvent):Void
+  override public function onCountdownStart(event:CountdownScriptEvent):Void
   {
-    trace('[LuaModule] onCountdownStart -> $scriptPath');
     callLua('onCountdownStart');
   }
 
-  override public function onCountdownStep(event:ScriptEvent):Void
+  override public function onCountdownStep(event:CountdownScriptEvent):Void
   {
-    trace('[LuaModule] onCountdownStep -> $scriptPath');
-    callLua('onCountdownStep');
+    callLua('onCountdownStep', [event.step]);
   }
 
-  override public function onCountdownEnd(event:ScriptEvent):Void
+  override public function onCountdownEnd(event:CountdownScriptEvent):Void
   {
-    trace('[LuaModule] onCountdownEnd -> $scriptPath');
     callLua('onCountdownEnd');
   }
 
-  override public function onSongLoaded(event:ScriptEvent):Void
+  override public function onSongLoaded(event:SongLoadScriptEvent):Void
   {
-    trace('[LuaModule] onSongLoaded -> $scriptPath');
-    callLua('onSongLoaded');
+    callLua('onSongLoaded', [event.id, event.difficulty]);
   }
 
-  override public function onStateChangeBegin(event:ScriptEvent):Void
+  override public function onStateChangeBegin(event:StateChangeScriptEvent):Void
   {
-    trace('[LuaModule] onStateChangeBegin -> $scriptPath');
     callLua('onStateChangeBegin');
   }
 
-  override public function onStateChangeEnd(event:ScriptEvent):Void
+  override public function onStateChangeEnd(event:StateChangeScriptEvent):Void
   {
-    trace('[LuaModule] onStateChangeEnd -> $scriptPath');
     callLua('onStateChangeEnd');
   }
 
-  override public function onFocusGained(event:ScriptEvent):Void
+  override public function onFocusGained(event:FocusScriptEvent):Void
   {
-    trace('[LuaModule] onFocusGained -> $scriptPath');
     callLua('onFocusGained');
   }
 
-  override public function onFocusLost(event:ScriptEvent):Void
+  override public function onFocusLost(event:FocusScriptEvent):Void
   {
-    trace('[LuaModule] onFocusLost -> $scriptPath');
     callLua('onFocusLost');
   }
 
-  override public function onSubStateOpenBegin(event:ScriptEvent):Void
+  override public function onSubStateOpenBegin(event:SubStateScriptEvent):Void
   {
-    trace('[LuaModule] onSubStateOpenBegin -> $scriptPath');
     callLua('onSubStateOpenBegin');
   }
 
-  override public function onSubStateOpenEnd(event:ScriptEvent):Void
+  override public function onSubStateOpenEnd(event:SubStateScriptEvent):Void
   {
-    trace('[LuaModule] onSubStateOpenEnd -> $scriptPath');
     callLua('onSubStateOpenEnd');
   }
 
-  override public function onSubStateCloseBegin(event:ScriptEvent):Void
+  override public function onSubStateCloseBegin(event:SubStateScriptEvent):Void
   {
-    trace('[LuaModule] onSubStateCloseBegin -> $scriptPath');
     callLua('onSubStateCloseBegin');
   }
 
-  override public function onSubStateCloseEnd(event:ScriptEvent):Void
+  override public function onSubStateCloseEnd(event:SubStateScriptEvent):Void
   {
-    trace('[LuaModule] onSubStateCloseEnd -> $scriptPath');
     callLua('onSubStateCloseEnd');
   }
 
-  override public function onSongRetry(event:ScriptEvent):Void
+  override public function onSongRetry(event:SongRetryEvent):Void
   {
-    trace('[LuaModule] onSongRetry -> $scriptPath');
-    callLua('onSongRetry');
+    callLua('onSongRetry', [event.difficulty]);
   }
 
   override public function onStateCreate(event:ScriptEvent):Void
   {
-    trace('[LuaModule] onStateCreate -> $scriptPath');
     callLua('onStateCreate');
   }
 
-  override public function onCapsuleSelected(event:ScriptEvent):Void
+  override public function onCapsuleSelected(event:CapsuleScriptEvent):Void
   {
-    trace('[LuaModule] onCapsuleSelected -> $scriptPath');
-    callLua('onCapsuleSelected');
+    callLua('onCapsuleSelected', [event.difficultyId, event.variationId]);
   }
 
-  override public function onDifficultySwitch(event:ScriptEvent):Void
+  override public function onDifficultySwitch(event:CapsuleScriptEvent):Void
   {
-    trace('[LuaModule] onDifficultySwitch -> $scriptPath');
-    callLua('onDifficultySwitch');
+    callLua('onDifficultySwitch', [event.difficultyId, event.variationId]);
   }
 
-  override public function onSongSelected(event:ScriptEvent):Void
+  override public function onSongSelected(event:CapsuleScriptEvent):Void
   {
-    trace('[LuaModule] onSongSelected -> $scriptPath');
-    callLua('onSongSelected');
+    callLua('onSongSelected', [event.difficultyId, event.variationId]);
   }
 
-  override public function onFreeplayIntroDone(event:ScriptEvent):Void
+  override public function onCapsuleNewRank(event:CapsuleScriptEvent):Void
   {
-    trace('[LuaModule] onFreeplayIntroDone -> $scriptPath');
+    callLua('onCapsuleNewRank', [event.difficultyId, event.variationId]);
+  }
+
+  override public function onRankSlam(event:CapsuleScriptEvent):Void
+  {
+    callLua('onRankSlam', [event.difficultyId, event.variationId]);
+  }
+
+  override public function onCapsuleSlam(event:CapsuleScriptEvent):Void
+  {
+    callLua('onCapsuleSlam', [event.difficultyId, event.variationId]);
+  }
+
+  override public function onFreeplayIntroDone(event:FreeplayScriptEvent):Void
+  {
     callLua('onFreeplayIntroDone');
   }
 
-  override public function onFreeplayOutro(event:ScriptEvent):Void
+  override public function onFreeplayOutro(event:FreeplayScriptEvent):Void
   {
-    trace('[LuaModule] onFreeplayOutro -> $scriptPath');
     callLua('onFreeplayOutro');
   }
 
-  override public function onFreeplayClose(event:ScriptEvent):Void
+  override public function onFreeplayClose(event:FreeplayScriptEvent):Void
   {
-    trace('[LuaModule] onFreeplayClose -> $scriptPath');
     callLua('onFreeplayClose');
   }
 
-  override public function onCharacterSelect(event:ScriptEvent):Void
+  override public function onCharacterSelect(event:CharacterSelectScriptEvent):Void
   {
-    trace('[LuaModule] onCharacterSelect -> $scriptPath');
-    callLua('onCharacterSelect');
+    callLua('onCharacterSelect', [event.characterId]);
   }
 
-  override public function onCharacterDeselect(event:ScriptEvent):Void
+  override public function onCharacterDeselect(event:CharacterSelectScriptEvent):Void
   {
-    trace('[LuaModule] onCharacterDeselect -> $scriptPath');
-    callLua('onCharacterDeselect');
+    callLua('onCharacterDeselect', [event.characterId]);
   }
 
-  override public function onCharacterConfirm(event:ScriptEvent):Void
+  override public function onCharacterConfirm(event:CharacterSelectScriptEvent):Void
   {
-    trace('[LuaModule] onCharacterConfirm -> $scriptPath');
-    callLua('onCharacterConfirm');
+    callLua('onCharacterConfirm', [event.characterId]);
   }
   #end
 }

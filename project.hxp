@@ -159,8 +159,6 @@ class Project extends HXProject
 
   static final FEATURE_LUA_SCRIPTS:FeatureFlag = "FEATURE_LUA_SCRIPTS";
 
-  static final FEATURE_LINC_LUAJIT_MIGRATION:FeatureFlag = "FEATURE_LINC_LUAJIT_MIGRATION";
-
   static final LUA_ALLOWED:FeatureFlag = "LUA_ALLOWED";
 
   static final FEATURE_MOBILE_BATTERY_SAVER:FeatureFlag = "FEATURE_MOBILE_BATTERY_SAVER";
@@ -479,7 +477,6 @@ class Project extends HXProject
     FEATURE_MULTITHREADING.apply(this, true);
     FEATURE_POLYMOD_MODS.apply(this, true);
     FEATURE_LUA_SCRIPTS.apply(this, true);
-    FEATURE_LINC_LUAJIT_MIGRATION.apply(this, true);
 
 
     FEATURE_CPPIA.apply(this, isCPP() && FEATURE_POLYMOD_MODS.isEnabled(this) && !isIOS());
@@ -945,11 +942,6 @@ class Project extends HXProject
     }
 
     if (FEATURE_LUA_SCRIPTS.isEnabled(this))
-    {
-      addHaxelib('hxlua');
-    }
-
-    if (FEATURE_LINC_LUAJIT_MIGRATION.isEnabled(this))
     {
       addHaxelib('linc_luajit');
     }
