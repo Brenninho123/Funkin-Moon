@@ -28,3 +28,7 @@ These work on the selected notes and each one is a single undo step.
 | Ctrl+Alt+[ / Ctrl+Alt+] | Shift the selected notes one lane to the left or right |
 
 Notes changed by these tools fade in when they are redrawn, which makes it easy to see what moved. Each tool tells you when nothing was selected or nothing changed.
+
+## Music editor
+
+The music editor was rebuilt with the same approach as the camera editor: undo and redo, a zoomable timeline, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).

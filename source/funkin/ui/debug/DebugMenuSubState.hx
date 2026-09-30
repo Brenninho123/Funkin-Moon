@@ -77,7 +77,7 @@ class DebugMenuSubState extends MusicBeatSubState
     createItem("STAGE EDITOR", openStageEditor);
     #end
     #if FEATURE_MUSIC_EDITOR
-    createItem("MUSIC EDITOR (EXPERIMENTAL)", openMusicEditor);
+    createItem("MUSIC EDITOR", openMusicEditor);
     #end
     #if (FEATURE_LUA_SCRIPTS && !mobile)
     createItem("LUA SCRIPT EDITOR", openLuaScriptEditor);
