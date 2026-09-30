@@ -75,6 +75,8 @@ import funkin.ui.debug.charting.commands.MirrorNotesCommand;
 import funkin.ui.debug.charting.commands.MoveEventsCommand;
 import funkin.ui.debug.charting.commands.MoveItemsCommand;
 import funkin.ui.debug.charting.commands.MoveNotesCommand;
+import funkin.ui.debug.charting.commands.QuantizeNotesCommand;
+import funkin.ui.debug.charting.commands.ReverseNotesCommand;
 import funkin.ui.debug.charting.commands.PasteItemsCommand;
 import funkin.ui.debug.charting.commands.RemoveEventsCommand;
 import funkin.ui.debug.charting.commands.RemoveItemsCommand;
@@ -591,6 +593,11 @@ class ChartEditorState extends UIState
   var undoHistory:Array<ChartEditorCommand> = [];
   var redoHistory:Array<ChartEditorCommand> = [];
   var noteDisplayDirty:Bool = true;
+
+  /**
+   * Notes that were just changed by a command, so their sprites fade in the next time they are drawn.
+   */
+  var freshNotes:Array<SongNoteData> = [];
   var commentDisplayDirty:Bool = true;
   var noteTooltipsDirty:Bool = true;
   var healthIconsDirty:Bool = true;
@@ -3108,6 +3115,18 @@ class ChartEditorState extends UIState
 
         noteSprite.updateNotePosition(renderedNotes);
 
+        if (freshNotes.length > 0 && freshNotes.contains(noteData))
+        {
+          flixel.tweens.FlxTween.cancelTweensOf(noteSprite, ['alpha']);
+          noteSprite.alpha = 0;
+          flixel.tweens.FlxTween.tween(noteSprite, {alpha: 1}, 0.2, {ease: flixel.tweens.FlxEase.quadOut});
+        }
+        else if (noteSprite.alpha < 1)
+        {
+          flixel.tweens.FlxTween.cancelTweensOf(noteSprite, ['alpha']);
+          noteSprite.alpha = 1;
+        }
+
         if (
           noteSprite.noteData != null
           && noteSprite.noteData.length > 0
@@ -3131,6 +3150,8 @@ class ChartEditorState extends UIState
           holdNoteSprite.updateHoldNotePosition(renderedHoldNotes);
         }
       }
+
+      freshNotes = [];
 
       for (eventData in currentSongChartEventData)
       {
@@ -5198,6 +5219,14 @@ class ChartEditorState extends UIState
       performCommand(new FlipNotesCommand(currentNoteSelection));
     }
 
+    if (pressingControl() && FlxG.keys.pressed.ALT && !FlxG.keys.pressed.SHIFT)
+    {
+      if (FlxG.keys.justPressed.R) runNoteTool('Reverse', () -> performCommand(new ReverseNotesCommand(currentNoteSelection)), 2);
+      if (FlxG.keys.justPressed.T) runNoteTool('Quantize', () -> performCommand(new QuantizeNotesCommand(currentNoteSelection)), 1);
+      if (FlxG.keys.justPressed.LBRACKET) runNoteTool('Shift lanes left', () -> performCommand(new MoveNotesCommand(currentNoteSelection, 0, -1)), 1);
+      if (FlxG.keys.justPressed.RBRACKET) runNoteTool('Shift lanes right', () -> performCommand(new MoveNotesCommand(currentNoteSelection, 0, 1)), 1);
+    }
+
     if (FlxG.keys.pressed.CONTROL && FlxG.keys.pressed.SHIFT && FlxG.keys.pressed.ALT && FlxG.keys.justPressed.M)
     {
       performCommand(
@@ -5290,6 +5319,27 @@ class ChartEditorState extends UIState
         performCommand(new SelectAllItemsBetweenTimeCommand(scrollPositionInMs + playheadPositionInMs, false, true, true));
       }
     }
+  }
+
+  function runNoteTool(name:String, action:Void->Void, minimumNotes:Int):Void
+  {
+    if (currentNoteSelection.length < minimumNotes)
+    {
+      this.warning(name, minimumNotes == 1 ? 'Select at least one note first.' : 'Select at least ' + minimumNotes + ' notes first.');
+      return;
+    }
+
+    var before:Int = undoHistory.length;
+
+    action();
+
+    if (undoHistory.length == before)
+    {
+      this.info(name, 'Nothing changed.');
+      return;
+    }
+
+    freshNotes = currentNoteSelection.copy();
   }
 
   function handleViewKeybinds():Void

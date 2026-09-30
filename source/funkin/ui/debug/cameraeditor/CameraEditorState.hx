@@ -278,9 +278,15 @@ class CameraEditorState extends UIState implements ConsoleClass
   @:bind(menubarItemRelativeView.selected)
   var isCameraRelative(default, set):Bool = false;
   var relativeZoom:Float = 1.0;
+  var zoomTarget:Null<Float> = null;
+
+  static final ZOOM_SMOOTHING:Float = 14.0;
+  static final NUDGE_BEAT_STEPS:Int = 4;
 
   function set_isCameraRelative(val:Bool):Bool
   {
+    zoomTarget = null;
+
     isCameraRelative = val;
     onResetCameraScroll(null);
 
@@ -880,6 +886,8 @@ class CameraEditorState extends UIState implements ConsoleClass
     #end
 
     super.update(elapsed);
+
+    updateZoomSmoothing(elapsed);
 
     _cameraTarget.x = FlxMath.lerp(_cameraTarget.x, goToPoint.x, 0.8);
     _cameraTarget.y = FlxMath.lerp(_cameraTarget.y, goToPoint.y, 0.8);
@@ -2144,6 +2152,25 @@ class CameraEditorState extends UIState implements ConsoleClass
       case [FlxKey.Y, true, false, false, _]:
         CameraEditorCommandHandler.redoLastCommand(this);
 
+      case [FlxKey.D, true, false, false, true]:
+        duplicateSelectedEvents();
+      case [FlxKey.LEFT, false, true, false, true]:
+        nudgeSelectedEvents(-1);
+      case [FlxKey.RIGHT, false, true, false, true]:
+        nudgeSelectedEvents(1);
+      case [FlxKey.LEFT, false, true, true, true]:
+        nudgeSelectedEvents(-NUDGE_BEAT_STEPS);
+      case [FlxKey.RIGHT, false, true, true, true]:
+        nudgeSelectedEvents(NUDGE_BEAT_STEPS);
+      case [FlxKey.Q, true, false, true, true]:
+        quantizeSelectedEvents();
+      case [FlxKey.A, true, false, true, _]:
+        selectEventsAfterPlayhead();
+      case [FlxKey.LBRACKET, false, false, false, _]:
+        jumpToEvent(-1);
+      case [FlxKey.RBRACKET, false, false, false, _]:
+        jumpToEvent(1);
+
       case [FlxKey.A, true, false, false, _]:
         selectedSongEvents = currentSongChartData.events.filter(e -> e.eventKind == 'FocusCamera'
           || e.eventKind == 'ZoomCamera'
@@ -2235,18 +2262,7 @@ class CameraEditorState extends UIState implements ConsoleClass
   @:bind(menubarItemResetCameraZoom, MouseEvent.CLICK)
   function onResetCameraZoom(_)
   {
-    var fitZoom:Float = computeViewportFitZoom();
-    pivotZoomOnViewport(() ->
-    {
-      if (isCameraRelative)
-      {
-        relativeZoom = fitZoom;
-      }
-      else
-      {
-        FlxG.camera.zoom = fitZoom;
-      }
-    });
+    requestZoom(computeViewportFitZoom());
   }
 
   static final VIEWPORT_FIT_MARGIN:Float = 0.95;
@@ -2272,6 +2288,189 @@ class CameraEditorState extends UIState implements ConsoleClass
     var zoom:Float = isCameraRelative ? (cameraRect.zoom * relativeZoom) : FlxG.camera.zoom;
     if (zoom <= 0) zoom = 1.0;
     return FlxPoint.get(dx / zoom, dy / zoom);
+  }
+
+  function getCurrentZoom():Float
+  {
+    return isCameraRelative ? relativeZoom : FlxG.camera.zoom;
+  }
+
+  function setCurrentZoom(value:Float):Void
+  {
+    if (isCameraRelative) relativeZoom = value;
+    else
+      FlxG.camera.zoom = value;
+  }
+
+  function requestZoom(target:Float):Void
+  {
+    zoomTarget = Math.max(0.1, Math.min(10.0, target));
+  }
+
+  function updateZoomSmoothing(elapsed:Float):Void
+  {
+    if (zoomTarget == null) return;
+
+    var target:Float = zoomTarget;
+    var current:Float = getCurrentZoom();
+    var next:Float = current + (target - current) * (1.0 - Math.exp(-ZOOM_SMOOTHING * elapsed));
+
+    if (Math.abs(target - next) < 0.0005)
+    {
+      next = target;
+      zoomTarget = null;
+    }
+
+    pivotZoomOnViewport(() -> setCurrentZoom(next));
+  }
+
+  function getTimelineEvents():Array<SongEventData>
+  {
+    var events:Array<SongEventData> = currentSongChartData.events.filter(e -> e.eventKind == 'FocusCamera' || e.eventKind == 'ZoomCamera' || e.eventKind == 'PlayAnimation');
+
+    events.sort((a, b) -> a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
+
+    return events;
+  }
+
+  function nudgeSelectedEvents(stepDelta:Int):Void
+  {
+    var stepMs:Float = timeline.viewport.stepLengthMs;
+
+    if (stepMs <= 0 || selectedSongEvents.length == 0) return;
+
+    var commands:Array<CameraEditorCommand> = [];
+
+    for (event in selectedSongEvents)
+    {
+      var raw:funkin.data.song.SongData.SongEventDataRaw = event;
+      var layer:String = raw.editorLayer ?? 'Default';
+      var duration:Float = TimelineUtil.getEventDurationSteps(event);
+      var newTime:Float = Math.max(0, Math.min(timeline.viewport.songLengthMs, event.time + stepDelta * stepMs));
+
+      if (newTime != event.time) commands.push(new MoveResizeEventCommand(event, event.time, duration, layer, newTime, duration, layer));
+    }
+
+    if (commands.length == 0)
+    {
+      CameraEditorNotificationHandler.warning(this, 'Nudge', 'The selected events are already at the edge of the song.');
+      return;
+    }
+
+    CameraEditorCommandHandler.performCommand(this, new CompoundCommand(commands, 'Nudge ${commands.length} Events', []));
+  }
+
+  function quantizeSelectedEvents():Void
+  {
+    var stepMs:Float = timeline.viewport.stepLengthMs;
+
+    if (stepMs <= 0 || selectedSongEvents.length == 0) return;
+
+    var commands:Array<CameraEditorCommand> = [];
+
+    for (event in selectedSongEvents)
+    {
+      var raw:funkin.data.song.SongData.SongEventDataRaw = event;
+      var layer:String = raw.editorLayer ?? 'Default';
+      var duration:Float = TimelineUtil.getEventDurationSteps(event);
+      var newTime:Float = Math.max(0, Math.min(timeline.viewport.songLengthMs, Math.round(event.time / stepMs) * stepMs));
+
+      if (Math.abs(newTime - event.time) > 0.01) commands.push(new MoveResizeEventCommand(event, event.time, duration, layer, newTime, duration, layer));
+    }
+
+    if (commands.length == 0)
+    {
+      CameraEditorNotificationHandler.info(this, 'Quantize', 'Every selected event is already on the grid.');
+      return;
+    }
+
+    CameraEditorCommandHandler.performCommand(this, new CompoundCommand(commands, 'Quantize ${commands.length} Events', []));
+  }
+
+  function duplicateSelectedEvents():Void
+  {
+    if (selectedSongEvents.length == 0) return;
+
+    var stepMs:Float = timeline.viewport.stepLengthMs;
+    var rangeStart:Float = selectedSongEvents[0].time;
+    var rangeEnd:Float = selectedSongEvents[0].time;
+
+    for (event in selectedSongEvents)
+    {
+      rangeStart = Math.min(rangeStart, event.time);
+      rangeEnd = Math.max(rangeEnd, event.time + TimelineUtil.getEventDurationSteps(event) * stepMs);
+    }
+
+    var shift:Float = rangeEnd - rangeStart;
+
+    if (shift <= 0) shift = Math.max(stepMs, 1) * NUDGE_BEAT_STEPS;
+
+    var copies:Array<SongEventData> = [];
+    var commands:Array<CameraEditorCommand> = [];
+
+    for (event in selectedSongEvents)
+    {
+      var copy:SongEventData = event.clone();
+
+      copy.time = event.time + shift;
+
+      if (copy.time > timeline.viewport.songLengthMs) continue;
+
+      copies.push(copy);
+      commands.push(new AddEventCommand(copy));
+    }
+
+    if (commands.length == 0)
+    {
+      CameraEditorNotificationHandler.warning(this, 'Duplicate', 'There is no room left in the song for the copies.');
+      return;
+    }
+
+    CameraEditorCommandHandler.performCommand(this, new CompoundCommand(commands, 'Duplicate ${commands.length} Events', []));
+
+    selectedSongEvents = copies;
+  }
+
+  function jumpToEvent(direction:Int):Void
+  {
+    var position:Float = Conductor.instance.songPosition;
+    var events:Array<SongEventData> = getTimelineEvents();
+    var target:Null<SongEventData> = null;
+
+    if (direction > 0)
+    {
+      for (event in events)
+      {
+        if (event.time > position + 1)
+        {
+          target = event;
+          break;
+        }
+      }
+    }
+    else
+    {
+      for (event in events)
+      {
+        if (event.time < position - 1) target = event;
+      }
+    }
+
+    if (target == null)
+    {
+      CameraEditorNotificationHandler.info(this, 'Jump', direction > 0 ? 'There are no more events after the playhead.' : 'There are no events before the playhead.');
+      return;
+    }
+
+    setTimePosition(target.time);
+    selectedSongEvent = target;
+  }
+
+  function selectEventsAfterPlayhead():Void
+  {
+    var position:Float = Conductor.instance.songPosition;
+
+    selectedSongEvents = getTimelineEvents().filter(e -> e.time >= position);
   }
 
   function pivotZoomOnViewport(mutateZoom:Void->Void):Void
@@ -2308,21 +2507,7 @@ class CameraEditorState extends UIState implements ConsoleClass
     var rawScale:Float = Math.exp(scaledDelta / 100.0);
     rawScale = Math.min(1.25, Math.max(0.75, rawScale));
 
-    pivotZoomOnViewport(() ->
-    {
-      if (isCameraRelative)
-      {
-        relativeZoom *= rawScale;
-        if (relativeZoom < 0.1) relativeZoom = 0.1;
-        if (relativeZoom > 10.0) relativeZoom = 10.0;
-      }
-      else
-      {
-        FlxG.camera.zoom *= rawScale;
-        if (FlxG.camera.zoom < 0.1) FlxG.camera.zoom = 0.1;
-        if (FlxG.camera.zoom > 10.0) FlxG.camera.zoom = 10.0;
-      }
-    });
+    requestZoom((zoomTarget ?? getCurrentZoom()) * rawScale);
   }
 
   function onViewportPanStart(_:CameraViewportEvent):Void
