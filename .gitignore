@@ -48,3 +48,10 @@ Windows64/lime.ndll
 Windows64/lime.ndll.hash
 vscode-project.hxml
 *.ndll
+
+# Moon Engine online server
+server/build/
+server/data/
+server/server.json
+discord_session.json
+online_server.json

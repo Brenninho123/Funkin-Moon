@@ -1,0 +1,15 @@
+{
+  "serverName": "Moon Engine Server",
+  "motd": "Welcome!",
+  "bindAddress": "0.0.0.0",
+  "port": 7777,
+  "httpPort": 8080,
+  "publicUrl": "http://127.0.0.1:8080",
+  "dataDir": "data",
+  "maxPlayers": 1024,
+  "sessionDays": 30,
+  "discord": {
+    "clientId": "",
+    "clientSecret": ""
+  }
+}
