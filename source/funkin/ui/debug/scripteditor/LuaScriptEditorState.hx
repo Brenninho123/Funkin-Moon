@@ -1,17 +1,30 @@
 package funkin.ui.debug.scripteditor;
 
-#if FEATURE_LUA_SCRIPTS
+#if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
 import flixel.FlxSprite;
-import flixel.text.FlxText;
-import flixel.util.FlxColor;
+import funkin.graphics.FunkinCamera;
 import funkin.input.Cursor;
 import funkin.lua.FunkinLua;
 import funkin.modding.PolymodHandler;
-import funkin.ui.MusicBeatState;
-import funkin.ui.debug.EditorButton;
+import funkin.ui.debug.scripteditor.bot.BotContext;
+import funkin.ui.debug.scripteditor.bot.LuaBotEngine;
+import funkin.ui.debug.scripteditor.bot.LuaBotEngine.LuaBotReply;
+import funkin.ui.debug.scripteditor.bot.LuaMerge;
+import funkin.ui.debug.scripteditor.bot.LuaScan;
 import funkin.ui.debug.common.EditorTouch;
 import funkin.ui.debug.EditorText;
 import funkin.ui.system.FunkinCosmic;
+import haxe.ui.backend.flixel.UIState;
+import haxe.ui.components.Label;
+import haxe.ui.containers.dialogs.Dialog.DialogButton;
+import haxe.ui.containers.dialogs.Dialogs;
+import haxe.ui.containers.dialogs.MessageBox.MessageBoxType;
+import haxe.ui.containers.windows.WindowManager;
+import haxe.ui.core.Screen;
+import haxe.ui.events.UIEvent;
+import haxe.ui.focus.FocusManager;
+import lime.system.Clipboard;
+import openfl.display.BitmapData;
 import openfl.events.Event;
 import openfl.events.KeyboardEvent;
 import openfl.events.MouseEvent;
@@ -22,17 +35,13 @@ import openfl.text.TextFormat;
 import openfl.text.TextFormatAlign;
 import openfl.ui.Keyboard;
 
-class LuaScriptEditorState extends MusicBeatState
+@:build(haxe.ui.ComponentBuilder.build('assets/exclude/ui/editors/script-editor/main-view.xml'))
+class LuaScriptEditorState extends UIState
 {
-  static final LIST_X:Float = 8;
-  static final LIST_WIDTH:Int = 260;
-  static final EDITOR_X:Float = 276;
   static final GUTTER_WIDTH:Float = 52;
   static final MAX_COMPLETIONS:Int = 8;
   static final MIN_FONT_SIZE:Int = 11;
   static final MAX_FONT_SIZE:Int = 26;
-  static final CONSOLE_Y:Float = 490;
-  static final CONSOLE_HEIGHT:Float = 222;
   static final MAX_CONSOLE_LINES:Int = 600;
   static final MAX_HIGHLIGHT_LENGTH:Int = 60000;
   static final MAX_UNDO:Int = 200;
@@ -70,38 +79,34 @@ class LuaScriptEditorState extends MusicBeatState
 
   var editor:TextField;
   var gutter:TextField;
-  var pathField:TextField;
   var console:TextField;
+  var completionField:TextField;
 
+  var camBackdrop:FunkinCamera;
+  var camUI:FunkinCamera;
+  var editorSnapshot:FlxSprite;
+  var gutterSnapshot:FlxSprite;
+  var consoleSnapshot:FlxSprite;
+  var overlayShown:Bool = false;
+  var lastLayout:String = '';
+  var lastNativeFocus:Bool = false;
+  var lastHaxeFocus:Bool = false;
+  var updatingList:Bool = false;
   var touchMode:Bool = false;
   var fontSize:Int = 15;
-  var editorTop:Float = 80;
-  var listTop:Float = 80;
-  var listRowHeight:Int = 20;
-  var listRows:Int = 20;
-  var editorWidth:Float = 996;
-  var editorHeight:Float = 368;
-  var findBarY:Float = 454;
-  var barHeight:Int = 26;
-  var listDragY:Float = 0.0;
-  var listDragging:Bool = false;
-  var statusText:FlxText;
-  var findField:TextField;
-  var replaceField:TextField;
-  var gotoField:TextField;
-  var completionField:TextField;
-  var findInfo:FlxText;
-  var findLabels:Array<FlxText> = [];
-  var findButtons:Array<EditorButton> = [];
-  var caseButton:EditorButton;
   var findVisible:Bool = false;
   var findCase:Bool = false;
   var completionItems:Array<String> = [];
   var completionIndex:Int = 0;
   var completionCaret:Int = -1;
   var errorLine:Int = -1;
+  var lastError:Null<String> = null;
   var matchFormat:TextFormat = new TextFormat(null, null, 0xFFE066, true);
-  var rows:Array<EditorButton> = [];
+
+  var bot:LuaBotEngine;
+  var apiNames:Array<String> = [];
+  var pendingCode:Null<String> = null;
+  var botPortuguese:Bool = false;
 
   var baseFormat:TextFormat;
   var numberFormat:TextFormat = new TextFormat(null, null, 0xD19A66);
@@ -112,7 +117,6 @@ class LuaScriptEditorState extends MusicBeatState
   var apiPattern:Null<EReg> = null;
 
   var scripts:Array<String> = [];
-  var listOffset:Int = 0;
   var currentPath:String = '';
   var dirty:Bool = false;
   var exitArmed:Bool = false;
@@ -128,46 +132,48 @@ class LuaScriptEditorState extends MusicBeatState
   var gutterLines:Int = -1;
   var consoleLines:Int = 0;
   var lastStatus:String = '';
+  var dialogOpen:Bool = false;
+  var exitDialog:Null<haxe.ui.containers.dialogs.Dialog> = null;
 
   override function create():Void
   {
+    WindowManager.instance.reset();
+
+    camBackdrop = new FunkinCamera('scriptEditorBackdrop');
+    camBackdrop.bgColor = 0xFF14161A;
+    camUI = new FunkinCamera('scriptEditorUI');
+    camUI.bgColor.alpha = 0;
+
+    FlxG.cameras.reset(camBackdrop);
+    FlxG.cameras.add(camUI, false);
+    FlxG.cameras.setDefaultDrawTarget(camBackdrop, true);
+
+    persistentUpdate = false;
+
     super.create();
 
+    root.scrollFactor.set();
+    root.cameras = [camUI];
+    root.width = FlxG.width;
+    root.height = FlxG.height;
+
+    menubar.height = 35;
+
+    WindowManager.instance.container = root;
+    Screen.instance.addComponent(root);
+
     touchMode = EditorTouch.enabled;
-
-    var shift:Float = touchMode ? 18.0 : 0.0;
-
-    barHeight = touchMode ? 34 : 26;
-    editorTop = 80 + shift;
-    listTop = 80 + shift;
-    listRowHeight = touchMode ? 30 : 20;
-    listRows = touchMode ? 13 : 20;
-    editorHeight = 368 - shift;
-    editorWidth = FlxG.width - EDITOR_X - 8;
-    findBarY = editorTop + editorHeight + 6;
     fontSize = touchMode ? 18 : 15;
-
-    add(new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF14161A));
-
-    var title:FlxText = new FlxText(16, 10, 0, 'LUA SCRIPT EDITOR', 22);
-    title.color = 0xFF8FB8E8;
-    add(title);
-
-    statusText = new FlxText(FlxG.width - 270, 14, 262, '', 14);
-    statusText.alignment = RIGHT;
-    statusText.color = 0xFFAAB2BF;
-    add(statusText);
 
     baseFormat = new TextFormat(resolveFontName(), fontSize, 0xD4D8E0, false, false, false, null, null, TextFormatAlign.LEFT);
 
-    pathField = createField(300, 10, 620, 26, true, false);
-    gutter = createField(EDITOR_X, editorTop, GUTTER_WIDTH, editorHeight, false, true);
+    gutter = createField(0, 0, GUTTER_WIDTH, 100, false, true);
     gutter.backgroundColor = 0x16181D;
     gutter.selectable = false;
     gutter.mouseEnabled = false;
     gutter.defaultTextFormat = new TextFormat(baseFormat.font, fontSize, 0x5C6370, false, false, false, null, null, TextFormatAlign.RIGHT);
-    editor = createField(EDITOR_X + GUTTER_WIDTH, editorTop, editorWidth - GUTTER_WIDTH, editorHeight, true, true);
-    console = createField(8, CONSOLE_Y, FlxG.width - 16, CONSOLE_HEIGHT, false, true);
+    editor = createField(0, 0, 400, 100, true, true);
+    console = createField(0, 0, 400, 100, false, true);
     console.backgroundColor = 0x101216;
 
     editor.addEventListener(Event.CHANGE, onEditorChange);
@@ -175,32 +181,44 @@ class LuaScriptEditorState extends MusicBeatState
     editor.addEventListener(KeyboardEvent.KEY_DOWN, onEditorKeyDown);
     editor.addEventListener(TextEvent.TEXT_INPUT, onEditorTextInput);
 
-    createFindBar();
     createCompletion();
 
-    createButtons();
+    editorSnapshot = new FlxSprite();
+    gutterSnapshot = new FlxSprite();
+    consoleSnapshot = new FlxSprite();
 
-    for (i in 0...listRows)
+    for (snapshot in [gutterSnapshot, editorSnapshot, consoleSnapshot])
     {
-      var row:EditorButton = new EditorButton(LIST_X, listTop + (i * listRowHeight), LIST_WIDTH, listRowHeight - 1, '', true, 0xFF1B1E24);
-      row.triggerOnRelease = touchMode;
-      row.visible = false;
-      rows.push(row);
-      add(row);
+      snapshot.scrollFactor.set(0, 0);
+      snapshot.cameras = [camBackdrop];
+      snapshot.visible = false;
+      add(snapshot);
     }
 
-    var apiNames:Array<String> = FunkinLua.getApiNames();
-
+    apiNames = FunkinLua.getApiNames();
     apiPattern = new EReg('\\b(' + apiNames.join('|') + ')\\b', 'g');
 
     FunkinLua.logSink = onLuaLog;
+
+    bot = new LuaBotEngine(apiNames);
+
+    registerInputEvents();
+    populateRecipes();
+    botSay('bot', LuaBotEngine.helpText(false));
 
     Cursor.show();
 
     refreshScripts();
     newScript();
 
-    logLine('info', 'Lua script editor ready. Ctrl+S save, F5 run, F6 stop, F7 check, Ctrl+F find, Ctrl+H replace, Ctrl+G go to line, Ctrl+Space complete, Ctrl+/ comment, Ctrl+D duplicate, Alt+Up/Down move line, Ctrl+Z undo, Esc exit.');
+    logLine('info', 'Lua script editor ready. Ctrl+S save, F5 run, F6 stop, F7 check, Ctrl+F find, Ctrl+H replace, Ctrl+G go to line, Ctrl+Space complete, Ctrl+/ comment, F4 bot, F1 guide, Esc exit.');
+
+    haxe.ui.Toolkit.callLater(() ->
+    {
+      var focused = FocusManager.instance.focus;
+
+      if (focused != null) focused.focus = false;
+    });
   }
 
   function resolveFontName():String
@@ -213,49 +231,17 @@ class LuaScriptEditorState extends MusicBeatState
     return EditorText.createField(baseFormat, x, y, width, height, input, multiline);
   }
 
-  function createButtons():Void
-  {
-    var buttons:Array<{label:String, action:Void->Void}> = [
-      {label: 'SAVE', action: save},
-      {label: 'CHECK', action: check},
-      {label: 'RUN', action: run},
-      {label: 'STOP', action: stop},
-      {label: 'NEW', action: newScript},
-      {label: 'RELOAD', action: refreshScripts},
-      {label: 'API', action: printApi},
-      {label: 'CLEAR', action: clearConsole},
-      {label: 'UNDO', action: undo},
-      {label: 'REDO', action: redo},
-      {label: 'FIND', action: () -> openFind(false)},
-      {label: 'GOTO', action: focusGoto},
-      {label: 'CMT', action: toggleComment},
-      {label: 'EXIT', action: requestExit}
-    ];
-
-    for (i in 0...buttons.length)
-    {
-      var button:EditorButton = new EditorButton(8 + (i * 90), 44, 86, barHeight, buttons[i].label);
-      button.onClick = buttons[i].action;
-      add(button);
-    }
-
-    var smaller:EditorButton = new EditorButton(930, 10, 32, barHeight, 'A-');
-    smaller.onClick = () -> changeFontSize(-1);
-    add(smaller);
-
-    var larger:EditorButton = new EditorButton(966, 10, 32, barHeight, 'A+');
-    larger.onClick = () -> changeFontSize(1);
-    add(larger);
-  }
-
   override function update(elapsed:Float):Void
   {
+    updateLayout();
+
     super.update(elapsed);
 
     changeClock += elapsed;
 
+    updateOverlay();
+    arbitrateFocus();
     handleShortcuts();
-    handleListWheel();
 
     if (highlightTimer > 0)
     {
@@ -288,14 +274,162 @@ class LuaScriptEditorState extends MusicBeatState
     }
   }
 
+  function placeField(field:TextField, x:Float, y:Float, width:Float, height:Float):Void
+  {
+    field.x = x;
+    field.y = y;
+    field.width = Math.max(40, width);
+    field.height = Math.max(24, height);
+  }
+
+  function updateLayout():Void
+  {
+    if (editorArea.width <= 0 || consoleArea.width <= 0) return;
+
+    var key:String = [
+      editorArea.screenLeft,
+      editorArea.screenTop,
+      editorArea.width,
+      editorArea.height,
+      consoleArea.screenLeft,
+      consoleArea.screenTop,
+      consoleArea.width,
+      consoleArea.height
+    ].join(',');
+
+    if (key == lastLayout) return;
+
+    lastLayout = key;
+
+    placeField(gutter, editorArea.screenLeft, editorArea.screenTop, GUTTER_WIDTH, editorArea.height);
+    placeField(editor, editorArea.screenLeft + GUTTER_WIDTH, editorArea.screenTop, editorArea.width - GUTTER_WIDTH, editorArea.height);
+    placeField(console, consoleArea.screenLeft, consoleArea.screenTop, consoleArea.width, consoleArea.height);
+
+    if (overlayShown) captureSnapshots();
+  }
+
+  function overlayOpen():Bool
+  {
+    for (component in Screen.instance.rootComponents)
+    {
+      if (component == root) continue;
+
+      var name:String = Type.getClassName(Type.getClass(component));
+
+      if (name.indexOf('Notification') >= 0 || name.indexOf('ToolTip') >= 0) continue;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  function captureSnapshot(field:TextField, sprite:FlxSprite):Void
+  {
+    var width:Int = Std.int(field.width);
+    var height:Int = Std.int(field.height);
+
+    if (width <= 0 || height <= 0) return;
+
+    var bitmap:BitmapData = new BitmapData(width, height, false, 0x1B1E24);
+
+    bitmap.draw(field);
+
+    sprite.pixels = bitmap;
+    sprite.x = field.x;
+    sprite.y = field.y;
+  }
+
+  function captureSnapshots():Void
+  {
+    captureSnapshot(gutter, gutterSnapshot);
+    captureSnapshot(editor, editorSnapshot);
+    captureSnapshot(console, consoleSnapshot);
+  }
+
+  function updateOverlay():Void
+  {
+    var open:Bool = overlayOpen();
+
+    if (open == overlayShown) return;
+
+    overlayShown = open;
+
+    if (open) captureSnapshots();
+
+    for (field in [gutter, editor, console]) field.visible = !open;
+
+    for (snapshot in [gutterSnapshot, editorSnapshot, consoleSnapshot]) snapshot.visible = open;
+
+    if (open) completionField.visible = false;
+    else if (completionItems.length > 0) completionField.visible = true;
+  }
+
+  function arbitrateFocus():Void
+  {
+    var haxeFocus:Bool = FocusManager.instance.focus != null;
+    var nativeFocus:Bool = FlxG.stage.focus == editor;
+
+    if (nativeFocus && !lastNativeFocus && haxeFocus)
+    {
+      FocusManager.instance.focus.focus = false;
+      haxeFocus = false;
+    }
+    else if (haxeFocus && !lastHaxeFocus && nativeFocus)
+    {
+      FlxG.stage.focus = null;
+      nativeFocus = false;
+    }
+
+    lastNativeFocus = nativeFocus;
+    lastHaxeFocus = haxeFocus;
+  }
+
+  function isTypingInUI():Bool
+  {
+    var focused = FocusManager.instance.focus;
+
+    return focused != null
+      && (Std.isOfType(focused, haxe.ui.components.TextField) || Std.isOfType(focused, haxe.ui.components.NumberStepper)
+        || Std.isOfType(focused, haxe.ui.components.DropDown));
+  }
+
   function handleShortcuts():Void
   {
+    if (dialogOpen) return;
+
     var keys = FlxG.keys;
     var ctrl:Bool = keys.pressed.CONTROL;
     var shift:Bool = keys.pressed.SHIFT;
     var alt:Bool = keys.pressed.ALT;
+    var typing:Bool = isTypingInUI();
+
+    if (keys.justPressed.F1)
+    {
+      openGuide();
+      return;
+    }
+
+    if (keys.justPressed.F4) setBotPanel(botPanel.hidden);
 
     if (ctrl && keys.justPressed.S) save();
+    else if (keys.justPressed.F5) run();
+    else if (keys.justPressed.F6) stop();
+    else if (keys.justPressed.F7) check();
+    else if (keys.justPressed.ESCAPE)
+    {
+      if (completionItems.length > 0) hideCompletion();
+      else if (findVisible)
+        closeFind();
+      else if (typing)
+        FocusManager.instance.focus.focus = false;
+      else
+        requestExit();
+    }
+    else if (typing)
+    {
+      return;
+    }
     else if (ctrl && keys.justPressed.Z) undo();
     else if (ctrl && keys.justPressed.Y) redo();
     else if (ctrl && keys.justPressed.F) openFind(false);
@@ -312,59 +446,6 @@ class LuaScriptEditorState extends MusicBeatState
     else if (alt && keys.justPressed.UP) moveLines(-1);
     else if (alt && keys.justPressed.DOWN) moveLines(1);
     else if (keys.justPressed.F3) findNext(shift ? -1 : 1);
-    else if (keys.justPressed.F5) run();
-    else if (keys.justPressed.F6) stop();
-    else if (keys.justPressed.F7) check();
-    else if (keys.justPressed.ESCAPE)
-    {
-      if (completionItems.length > 0) hideCompletion();
-      else if (findVisible)
-        closeFind();
-      else
-        requestExit();
-    }
-  }
-
-  function handleListWheel():Void
-  {
-    if (touchMode) handleListDrag();
-
-    if (FlxG.mouse.wheel == 0) return;
-
-    if (FlxG.mouse.x < LIST_X || FlxG.mouse.x > LIST_X + LIST_WIDTH || FlxG.mouse.y < listTop || FlxG.mouse.y > listTop + (listRows * listRowHeight)) return;
-
-    listOffset = Std.int(Math.max(0, Math.min(scripts.length - listRows, listOffset - FlxG.mouse.wheel)));
-
-    refreshList();
-  }
-
-  function handleListDrag():Void
-  {
-    var inside:Bool = FlxG.mouse.x >= LIST_X && FlxG.mouse.x <= LIST_X + LIST_WIDTH && FlxG.mouse.y >= listTop && FlxG.mouse.y <= listTop + (listRows * listRowHeight);
-
-    if (FlxG.mouse.justPressed && inside)
-    {
-      listDragging = true;
-      listDragY = FlxG.mouse.y;
-    }
-
-    if (!FlxG.mouse.pressed)
-    {
-      listDragging = false;
-      return;
-    }
-
-    if (!listDragging) return;
-
-    var moved:Float = FlxG.mouse.y - listDragY;
-    var rowsMoved:Int = Std.int(moved / listRowHeight);
-
-    if (rowsMoved == 0) return;
-
-    listDragY += rowsMoved * listRowHeight;
-    listOffset = Std.int(Math.max(0, Math.min(scripts.length - listRows, listOffset - rowsMoved)));
-
-    refreshList();
   }
 
   function refreshScripts():Void
@@ -377,8 +458,6 @@ class LuaScriptEditorState extends MusicBeatState
     #end
 
     scripts.sort((a, b) -> a < b ? -1 : (a > b ? 1 : 0));
-
-    listOffset = 0;
 
     refreshList();
   }
@@ -401,26 +480,33 @@ class LuaScriptEditorState extends MusicBeatState
 
   function refreshList():Void
   {
-    for (i in 0...listRows)
+    if (scriptList == null) return;
+
+    var filter:String = scriptFilter.text != null ? scriptFilter.text.toLowerCase() : '';
+
+    updatingList = true;
+
+    scriptList.dataSource.clear();
+
+    var selectedIndex:Int = -1;
+    var count:Int = 0;
+
+    for (path in scripts)
     {
-      var row:EditorButton = rows[i];
-      var index:Int = listOffset + i;
+      if (filter != '' && path.toLowerCase().indexOf(filter) < 0) continue;
 
-      if (index >= scripts.length)
-      {
-        row.visible = false;
-        row.onClick = null;
-        continue;
-      }
+      var shown:String = path.length > 36 ? '..' + path.substr(path.length - 34) : path;
 
-      var path:String = scripts[index];
-      var shown:String = path.length > 34 ? '..' + path.substr(path.length - 32) : path;
+      scriptList.dataSource.add({text: shown, path: path});
 
-      row.visible = true;
-      row.setLabel(shown);
-      row.selected = path == currentPath;
-      row.onClick = () -> openScript(path);
+      if (path == currentPath) selectedIndex = count;
+
+      count++;
     }
+
+    if (selectedIndex >= 0) scriptList.selectedIndex = selectedIndex;
+
+    updatingList = false;
   }
 
   function openScript(path:String):Void
@@ -434,7 +520,7 @@ class LuaScriptEditorState extends MusicBeatState
     }
 
     currentPath = path;
-    pathField.text = path;
+    pathInput.text = path;
 
     setEditorText(StringTools.replace(StringTools.replace(content, '\r\n', '\n'), '\r', '\n'));
 
@@ -450,7 +536,7 @@ class LuaScriptEditorState extends MusicBeatState
     var path:String = modDirs.length > 0 ? '${PolymodHandler.getModFolder()}/${modDirs[0]}/scripts/new_script.lua' : 'new_script.lua';
 
     currentPath = '';
-    pathField.text = path;
+    pathInput.text = path;
 
     setEditorText(TEMPLATE);
 
@@ -637,17 +723,17 @@ class LuaScriptEditorState extends MusicBeatState
     var caret:Int = editor.caretIndex;
     var line:Int = Std.int(Math.max(0, editor.getLineIndexOfChar(caret)));
     var column:Int = caret - editor.getLineOffset(line) + 1;
-    var status:String = 'Ln ${line + 1}, Col $column' + (dirty ? '  MODIFIED' : '') + (runner != null ? '  RUNNING' : '');
+    var status:String = 'Ln ' + (line + 1) + ', Col ' + column + '   ' + editor.numLines + ' lines' + (dirty ? '   MODIFIED' : '') + (runner != null ? '   RUNNING' : '');
 
     if (status == lastStatus) return;
 
     lastStatus = status;
-    statusText.text = status;
+    statusLabel.text = status;
   }
 
   function save():Void
   {
-    var path:String = StringTools.trim(pathField.text).split('\\').join('/');
+    var path:String = StringTools.trim(pathInput.text).split('\\').join('/');
 
     if (path == '' || !StringTools.endsWith(path.toLowerCase(), '.lua'))
     {
@@ -681,6 +767,7 @@ class LuaScriptEditorState extends MusicBeatState
     }
 
     logLine('error', message);
+    lastError = message;
 
     if (ERROR_LINE_PATTERN.match(message))
     {
@@ -699,7 +786,7 @@ class LuaScriptEditorState extends MusicBeatState
 
     if (!check()) return;
 
-    var name:String = StringTools.trim(pathField.text);
+    var name:String = StringTools.trim(pathInput.text);
 
     logLine('info', 'Running ${name == '' ? 'script' : name} (onCreate and onUpdate are called; PlayState callbacks are not available here)');
 
@@ -747,6 +834,8 @@ class LuaScriptEditorState extends MusicBeatState
 
   function onLuaLog(script:String, level:String, message:String):Void
   {
+    if (level == 'error') lastError = message;
+
     logLine(level, message);
   }
 
@@ -774,123 +863,44 @@ class LuaScriptEditorState extends MusicBeatState
     console.scrollV = console.maxScrollV;
   }
 
-  function createFindBar():Void
-  {
-    findField = createField(EDITOR_X, findBarY, 230, barHeight, true, false);
-    replaceField = createField(EDITOR_X + 236, findBarY, 200, barHeight, true, false);
-    gotoField = createField(EDITOR_X + 880, findBarY, 60, barHeight, true, false);
-
-    findField.addEventListener(Event.CHANGE, onFindChange);
-    findField.addEventListener(KeyboardEvent.KEY_DOWN, onFindKeyDown);
-    replaceField.addEventListener(KeyboardEvent.KEY_DOWN, onReplaceKeyDown);
-    gotoField.addEventListener(KeyboardEvent.KEY_DOWN, onGotoKeyDown);
-
-    var actions:Array<{label:String, x:Float, width:Int, action:Void->Void}> = [
-      {label: 'PREV', x: EDITOR_X + 442, width: 52, action: () -> findNext(-1)},
-      {label: 'NEXT', x: EDITOR_X + 498, width: 52, action: () -> findNext(1)},
-      {label: 'REPL', x: EDITOR_X + 554, width: 52, action: replaceCurrent},
-      {label: 'ALL', x: EDITOR_X + 610, width: 44, action: replaceAll},
-      {label: 'Aa', x: EDITOR_X + 658, width: 36, action: toggleCase},
-      {label: 'X', x: EDITOR_X + 698, width: 30, action: closeFind}
-    ];
-
-    for (entry in actions)
-    {
-      var button:EditorButton = new EditorButton(entry.x, findBarY, entry.width, barHeight, entry.label);
-      button.onClick = entry.action;
-      button.visible = false;
-      findButtons.push(button);
-      add(button);
-
-      if (entry.label == 'Aa') caseButton = button;
-    }
-
-    findInfo = new FlxText(EDITOR_X + 736, findBarY + 5, 140, '', 14);
-    findInfo.color = 0xFFAAB2BF;
-    findInfo.visible = false;
-    add(findInfo);
-
-    var gotoLabel:FlxText = new FlxText(EDITOR_X + 836, findBarY + 5, 44, 'Line', 14);
-    gotoLabel.color = 0xFFAAB2BF;
-    gotoLabel.visible = false;
-    findLabels.push(gotoLabel);
-    add(gotoLabel);
-
-    setFindVisible(false);
-  }
-
-  function setFindVisible(visible:Bool):Void
-  {
-    findVisible = visible;
-
-    findField.visible = visible;
-    replaceField.visible = visible;
-    gotoField.visible = visible;
-    findInfo.visible = visible;
-
-    for (button in findButtons) button.visible = visible;
-    for (label in findLabels) label.visible = visible;
-  }
-
   function openFind(withReplace:Bool):Void
   {
-    setFindVisible(true);
+    findVisible = true;
+    findBar.hidden = false;
 
     var selection:String = editor.text.substring(editor.selectionBeginIndex, editor.selectionEndIndex);
 
-    if (selection != '' && selection.indexOf('\n') == -1) findField.text = selection;
+    if (selection != '' && selection.indexOf('\n') == -1) findInput.text = selection;
 
-    FlxG.stage.focus = withReplace ? replaceField : findField;
-
-    findField.setSelection(0, findField.text.length);
+    (withReplace ? replaceInput : findInput).focus = true;
 
     updateFindInfo();
   }
 
   function closeFind():Void
   {
-    setFindVisible(false);
+    findVisible = false;
+    findBar.hidden = true;
+
+    var focused = FocusManager.instance.focus;
+
+    if (focused != null) focused.focus = false;
 
     FlxG.stage.focus = editor;
   }
 
   function focusGoto():Void
   {
-    setFindVisible(true);
+    findVisible = true;
+    findBar.hidden = false;
 
-    gotoField.text = '';
-
-    FlxG.stage.focus = gotoField;
+    gotoInput.text = '';
+    gotoInput.focus = true;
   }
 
-  function toggleCase():Void
+  function submitGoto():Void
   {
-    findCase = !findCase;
-    caseButton.selected = findCase;
-
-    updateFindInfo();
-  }
-
-  function onFindChange(_:Event):Void
-  {
-    findNext(1, true);
-  }
-
-  function onFindKeyDown(event:KeyboardEvent):Void
-  {
-    if (event.keyCode == Keyboard.ENTER) findNext(event.shiftKey ? -1 : 1);
-  }
-
-  function onReplaceKeyDown(event:KeyboardEvent):Void
-  {
-    if (event.keyCode == Keyboard.ENTER) replaceCurrent();
-  }
-
-  function onGotoKeyDown(event:KeyboardEvent):Void
-  {
-    if (event.keyCode != Keyboard.ENTER) return;
-
-    var line:Null<Int> = Std.parseInt(StringTools.trim(gotoField.text));
+    var line:Null<Int> = Std.parseInt(StringTools.trim(gotoInput.text));
 
     if (line == null)
     {
@@ -903,6 +913,29 @@ class LuaScriptEditorState extends MusicBeatState
     FlxG.stage.focus = editor;
   }
 
+  function registerInputEvents():Void
+  {
+    findInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) findNext(event.shiftKey ? -1 : 1);
+    });
+
+    replaceInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) replaceCurrent();
+    });
+
+    gotoInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) submitGoto();
+    });
+
+    botInput.registerEvent(haxe.ui.events.KeyboardEvent.KEY_DOWN, function(event:haxe.ui.events.KeyboardEvent):Void
+    {
+      if (event.keyCode == 13) sendBot();
+    });
+  }
+
   function haystackFor(text:String):String
   {
     return findCase ? text : text.toLowerCase();
@@ -910,7 +943,7 @@ class LuaScriptEditorState extends MusicBeatState
 
   function findMatches():Array<Int>
   {
-    var needle:String = haystackFor(findField.text);
+    var needle:String = haystackFor(findInput.text);
     var matches:Array<Int> = [];
 
     if (needle == '') return matches;
@@ -933,7 +966,7 @@ class LuaScriptEditorState extends MusicBeatState
 
     if (matches.length == 0)
     {
-      findInfo.text = findField.text == '' ? '' : 'no matches';
+      findInfo.text = findInput.text == '' ? '' : 'no matches';
       return;
     }
 
@@ -971,7 +1004,7 @@ class LuaScriptEditorState extends MusicBeatState
       if (target < 0) target = matches[matches.length - 1];
     }
 
-    selectRange(target, target + findField.text.length);
+    selectRange(target, target + findInput.text.length);
     updateFindInfo();
   }
 
@@ -992,7 +1025,7 @@ class LuaScriptEditorState extends MusicBeatState
 
     var matches:Array<Int> = findMatches();
 
-    if (findField.text == '')
+    if (findInput.text == '')
     {
       findInfo.text = '';
       return;
@@ -1011,7 +1044,7 @@ class LuaScriptEditorState extends MusicBeatState
 
   function selectionMatchesFind():Bool
   {
-    var needle:String = findField.text;
+    var needle:String = findInput.text;
 
     if (needle == '' || editor.selectionEndIndex - editor.selectionBeginIndex != needle.length) return false;
 
@@ -1028,7 +1061,7 @@ class LuaScriptEditorState extends MusicBeatState
 
     var start:Int = editor.selectionBeginIndex;
     var text:String = editor.text;
-    var replacement:String = replaceField.text;
+    var replacement:String = replaceInput.text;
 
     applyEdit(text.substring(0, start) + replacement + text.substring(editor.selectionEndIndex), start + replacement.length, start + replacement.length);
     findNext(1);
@@ -1036,7 +1069,7 @@ class LuaScriptEditorState extends MusicBeatState
 
   function replaceAll():Void
   {
-    var needle:String = findField.text;
+    var needle:String = findInput.text;
 
     if (needle == '') return;
 
@@ -1049,7 +1082,7 @@ class LuaScriptEditorState extends MusicBeatState
     }
 
     var pattern:EReg = new EReg(REGEX_ESCAPE.replace(needle, '\\$0'), findCase ? 'g' : 'gi');
-    var replacement:String = replaceField.text;
+    var replacement:String = replaceInput.text;
     var result:String = pattern.map(editor.text, (_) -> replacement);
 
     applyEdit(result, 0, 0);
@@ -1242,7 +1275,7 @@ class LuaScriptEditorState extends MusicBeatState
   {
     var format:TextFormat = new TextFormat(baseFormat.font, 14, 0xD4D8E0);
 
-    completionField = createField(EDITOR_X + GUTTER_WIDTH + 12, editorTop + editorHeight - 120, 320, 110, false, true);
+    completionField = createField(0, 0, 320, 110, false, true);
     completionField.defaultTextFormat = format;
     completionField.backgroundColor = 0x242933;
     completionField.borderColor = 0x61AFEF;
@@ -1320,7 +1353,8 @@ class LuaScriptEditorState extends MusicBeatState
     completionField.setTextFormat(new TextFormat(null, null, 0x7CFC9A), start, start + completionField.getLineLength(completionIndex));
 
     completionField.height = completionItems.length * 19 + 8;
-    completionField.y = editorTop + editorHeight - completionField.height - 6;
+    completionField.x = editor.x + 12;
+    completionField.y = editor.y + editor.height - completionField.height - 6;
     completionField.visible = true;
   }
 
@@ -1398,16 +1432,525 @@ class LuaScriptEditorState extends MusicBeatState
 
   function requestExit():Void
   {
-    if (dirty && !exitArmed)
+    if (dirty)
     {
-      exitArmed = true;
-      logLine('warn', 'Unsaved changes. Press ESC or EXIT again to discard them.');
+      if (exitDialog == null)
+      {
+        exitDialog = Dialogs.messageBox('You are about to leave the editor without saving.\n\nAre you sure?', 'Leave Editor', MessageBoxType.TYPE_YESNO, true,
+          function(button:DialogButton):Void
+          {
+            exitDialog = null;
+
+            if (button == DialogButton.YES) leave();
+          });
+      }
+
       return;
     }
 
+    leave();
+  }
+
+  function leave():Void
+  {
     stop();
 
     FlxG.switchState(() -> new funkin.ui.mainmenu.MainMenuState());
+  }
+
+  function confirmDiscard(action:Void->Void, ?cancel:Void->Void):Void
+  {
+    if (!dirty)
+    {
+      action();
+      return;
+    }
+
+    Dialogs.messageBox('This script has unsaved changes. Discard them?', 'Unsaved Changes', MessageBoxType.TYPE_YESNO, true, function(button:DialogButton):Void
+    {
+      if (button == DialogButton.YES) action();
+      else if (cancel != null)
+        cancel();
+    });
+  }
+
+  function openGuide():Void
+  {
+    var guide:ScriptUserGuideDialog = new ScriptUserGuideDialog();
+
+    dialogOpen = true;
+    guide.onDialogClosed = function(_):Void
+    {
+      dialogOpen = false;
+    };
+    guide.showDialog(true);
+  }
+
+  function setBotPanel(visible:Bool):Void
+  {
+    botPanel.hidden = !visible;
+    menubarItemBotPanel.selected = visible;
+  }
+
+  function populateRecipes():Void
+  {
+    botRecipes.dataSource.clear();
+
+    for (recipe in funkin.ui.debug.scripteditor.bot.LuaBotRecipes.ALL) botRecipes.dataSource.add({id: recipe.id, text: recipe.title});
+  }
+
+  function botSay(who:String, text:String, code:Bool = false):Void
+  {
+    var label:Label = new Label();
+
+    label.percentWidth = 100;
+    label.text = (who == 'you' ? 'You: ' : (who == 'bot' ? 'Bot: ' : '')) + text;
+    label.customStyle.color = who == 'you' ? 0xE5C07B : (code ? 0x98C379 : 0xD4D8E0);
+
+    botLog.addComponent(label);
+
+    haxe.ui.Toolkit.callLater(() ->
+    {
+      botScroll.vscrollPos = botScroll.vscrollMax;
+    });
+  }
+
+  function setPendingCode(code:Null<String>):Void
+  {
+    pendingCode = code;
+
+    botInsert.disabled = code == null;
+    botReplace.disabled = code == null;
+    botCopy.disabled = code == null;
+  }
+
+  function sendBot():Void
+  {
+    var text:String = botInput.text != null ? StringTools.trim(botInput.text) : '';
+
+    if (text == '') return;
+
+    botInput.text = '';
+    botPortuguese = new BotContext(text).portuguese;
+
+    botSay('you', text);
+
+    var reply:LuaBotReply = bot.respond(text, editor.text);
+
+    botSay('bot', reply.message);
+
+    if (reply.code != null)
+    {
+      botSay('code', reply.code, true);
+      setPendingCode(reply.code);
+
+      var error:Null<String> = FunkinLua.checkSyntax(reply.code);
+
+      if (error != null) botSay('bot', 'The generated code did not pass the syntax check: ' + error);
+    }
+
+    if (reply.kind == 'review') showFindings(reply);
+  }
+
+  function showFindings(reply:LuaBotReply):Void
+  {
+    for (finding in reply.findings) logLine(finding.level == 'error' ? 'error' : 'warn', 'Line ' + (finding.line + 1) + ': ' + finding.message);
+
+    if (reply.findings.length > 0) markErrorLine(reply.findings[0].line + 1);
+  }
+
+  function insertGenerated():Void
+  {
+    if (pendingCode == null) return;
+
+    if (LuaScan.scan(editor.text).issues.length > 0)
+    {
+      botSay('bot', botPortuguese ? 'Seu script tem blocos sem end. Corrija primeiro, ou use Substituir.' : 'Your script has blocks without an end. Fix them first, or use Replace.');
+      return;
+    }
+
+    var merged:String = LuaMerge.merge(editor.text, pendingCode);
+
+    applyEdit(merged, 0, 0);
+
+    var error:Null<String> = FunkinLua.checkSyntax(editor.text);
+
+    logLine(error == null ? 'ok' : 'error', error == null ? 'Inserted the generated code. Syntax OK.' : error);
+  }
+
+  function replaceWithGenerated():Void
+  {
+    if (pendingCode == null) return;
+
+    applyEdit(pendingCode, 0, 0);
+    logLine('ok', 'Replaced the script with the generated code. Undo brings the old one back.');
+  }
+
+  function copyGenerated():Void
+  {
+    if (pendingCode == null) return;
+
+    Clipboard.text = pendingCode;
+    logLine('ok', 'Copied the generated code.');
+  }
+
+  function explainLastError():Void
+  {
+    var message:Null<String> = lastError;
+
+    if (message == null) message = FunkinLua.checkSyntax(editor.text);
+
+    if (message == null)
+    {
+      botSay('bot', botPortuguese ? 'Nao ha erros para explicar. O script passa na checagem de sintaxe.' : 'There is no error to explain. The script passes the syntax check.');
+      return;
+    }
+
+    botSay('bot', message);
+    botSay('bot', LuaBotEngine.explainError(message, apiNames, botPortuguese));
+  }
+
+  @:bind(scriptReload, haxe.ui.events.MouseEvent.CLICK)
+  function onScriptReloadClick(_):Void
+  {
+    refreshScripts();
+  }
+
+  @:bind(scriptNew, haxe.ui.events.MouseEvent.CLICK)
+  function onScriptNewClick(_):Void
+  {
+    confirmDiscard(newScript);
+  }
+
+  @:bind(toolSave, haxe.ui.events.MouseEvent.CLICK)
+  function onToolSaveClick(_):Void
+  {
+    save();
+  }
+
+  @:bind(toolCheck, haxe.ui.events.MouseEvent.CLICK)
+  function onToolCheckClick(_):Void
+  {
+    check();
+  }
+
+  @:bind(toolRun, haxe.ui.events.MouseEvent.CLICK)
+  function onToolRunClick(_):Void
+  {
+    run();
+  }
+
+  @:bind(toolStop, haxe.ui.events.MouseEvent.CLICK)
+  function onToolStopClick(_):Void
+  {
+    stop();
+  }
+
+  @:bind(toolUndo, haxe.ui.events.MouseEvent.CLICK)
+  function onToolUndoClick(_):Void
+  {
+    undo();
+  }
+
+  @:bind(toolRedo, haxe.ui.events.MouseEvent.CLICK)
+  function onToolRedoClick(_):Void
+  {
+    redo();
+  }
+
+  @:bind(findPreviousButton, haxe.ui.events.MouseEvent.CLICK)
+  function onFindPreviousClick(_):Void
+  {
+    findNext(-1);
+  }
+
+  @:bind(findNextButton, haxe.ui.events.MouseEvent.CLICK)
+  function onFindNextClick(_):Void
+  {
+    findNext(1);
+  }
+
+  @:bind(findReplaceButton, haxe.ui.events.MouseEvent.CLICK)
+  function onFindReplaceClick(_):Void
+  {
+    replaceCurrent();
+  }
+
+  @:bind(findReplaceAllButton, haxe.ui.events.MouseEvent.CLICK)
+  function onFindReplaceAllClick(_):Void
+  {
+    replaceAll();
+  }
+
+  @:bind(findCloseButton, haxe.ui.events.MouseEvent.CLICK)
+  function onFindCloseClick(_):Void
+  {
+    closeFind();
+  }
+
+  @:bind(botInsert, haxe.ui.events.MouseEvent.CLICK)
+  function onBotInsertClick(_):Void
+  {
+    insertGenerated();
+  }
+
+  @:bind(botReplace, haxe.ui.events.MouseEvent.CLICK)
+  function onBotReplaceClick(_):Void
+  {
+    replaceWithGenerated();
+  }
+
+  @:bind(botCopy, haxe.ui.events.MouseEvent.CLICK)
+  function onBotCopyClick(_):Void
+  {
+    copyGenerated();
+  }
+
+  @:bind(botReview, haxe.ui.events.MouseEvent.CLICK)
+  function onBotReviewClick(_):Void
+  {
+    botInput.text = 'review';
+    sendBot();
+  }
+
+  @:bind(botExplain, haxe.ui.events.MouseEvent.CLICK)
+  function onBotExplainClick(_):Void
+  {
+    explainLastError();
+  }
+
+  @:bind(botSend, haxe.ui.events.MouseEvent.CLICK)
+  function onBotSendClick(_):Void
+  {
+    sendBot();
+  }
+
+  @:bind(botClear, haxe.ui.events.MouseEvent.CLICK)
+  function onBotClearClick(_):Void
+  {
+    clearBot();
+  }
+
+  @:bind(menubarItemNew, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemNewClick(_):Void
+  {
+    confirmDiscard(newScript);
+  }
+
+  @:bind(menubarItemReload, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemReloadClick(_):Void
+  {
+    refreshScripts();
+  }
+
+  @:bind(menubarItemSave, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemSaveClick(_):Void
+  {
+    save();
+  }
+
+  @:bind(menubarItemExit, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemExitClick(_):Void
+  {
+    requestExit();
+  }
+
+  @:bind(menubarItemUndo, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemUndoClick(_):Void
+  {
+    undo();
+  }
+
+  @:bind(menubarItemRedo, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemRedoClick(_):Void
+  {
+    redo();
+  }
+
+  @:bind(menubarItemComment, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemCommentClick(_):Void
+  {
+    toggleComment();
+  }
+
+  @:bind(menubarItemDuplicate, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemDuplicateClick(_):Void
+  {
+    duplicateLines();
+  }
+
+  @:bind(menubarItemDeleteLine, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemDeleteLineClick(_):Void
+  {
+    deleteLines();
+  }
+
+  @:bind(menubarItemMoveUp, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemMoveUpClick(_):Void
+  {
+    moveLines(-1);
+  }
+
+  @:bind(menubarItemMoveDown, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemMoveDownClick(_):Void
+  {
+    moveLines(1);
+  }
+
+  @:bind(menubarItemComplete, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemCompleteClick(_):Void
+  {
+    updateCompletion(true);
+  }
+
+  @:bind(menubarItemFind, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemFindClick(_):Void
+  {
+    openFind(false);
+  }
+
+  @:bind(menubarItemReplace, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemReplaceClick(_):Void
+  {
+    openFind(true);
+  }
+
+  @:bind(menubarItemFindNext, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemFindNextClick(_):Void
+  {
+    findNext(1);
+  }
+
+  @:bind(menubarItemGoto, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemGotoClick(_):Void
+  {
+    focusGoto();
+  }
+
+  @:bind(menubarItemFontLarger, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemFontLargerClick(_):Void
+  {
+    changeFontSize(1);
+  }
+
+  @:bind(menubarItemFontSmaller, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemFontSmallerClick(_):Void
+  {
+    changeFontSize(-1);
+  }
+
+  @:bind(menubarItemClearConsole, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemClearConsoleClick(_):Void
+  {
+    clearConsole();
+  }
+
+  @:bind(menubarItemCheck, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemCheckClick(_):Void
+  {
+    check();
+  }
+
+  @:bind(menubarItemRun, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemRunClick(_):Void
+  {
+    run();
+  }
+
+  @:bind(menubarItemStop, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemStopClick(_):Void
+  {
+    stop();
+  }
+
+  @:bind(menubarItemApi, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemApiClick(_):Void
+  {
+    printApi();
+  }
+
+  @:bind(menubarItemBotReview, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemBotReviewClick(_):Void
+  {
+    setBotPanel(true);
+    botInput.text = 'review';
+    sendBot();
+  }
+
+  @:bind(menubarItemBotExplain, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemBotExplainClick(_):Void
+  {
+    setBotPanel(true);
+    explainLastError();
+  }
+
+  @:bind(menubarItemBotClear, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemBotClearClick(_):Void
+  {
+    clearBot();
+  }
+
+  @:bind(menubarItemGuide, haxe.ui.events.MouseEvent.CLICK)
+  function onMenubarItemGuideClick(_):Void
+  {
+    openGuide();
+  }
+
+  @:bind(scriptFilter, UIEvent.CHANGE)
+  function onScriptFilterChange(_):Void
+  {
+    refreshList();
+  }
+
+  @:bind(findInput, UIEvent.CHANGE)
+  function onFindInputChange(_):Void
+  {
+    if (findInput.text != null && findInput.text != '') findNext(1, true);
+    else
+      updateFindInfo();
+  }
+
+  @:bind(findCaseBox, UIEvent.CHANGE)
+  function onFindCaseChange(_):Void
+  {
+    findCase = findCaseBox.selected;
+    updateFindInfo();
+  }
+
+  @:bind(menubarItemBotPanel, UIEvent.CHANGE)
+  function onBotPanelChange(_):Void
+  {
+    if (botPanel.hidden == menubarItemBotPanel.selected) setBotPanel(menubarItemBotPanel.selected);
+  }
+
+  @:bind(botRecipes, UIEvent.CHANGE)
+  function onBotRecipeChange(_):Void
+  {
+    if (botRecipes.selectedItem == null) return;
+
+    var recipe = funkin.ui.debug.scripteditor.bot.LuaBotRecipes.find(Std.string(botRecipes.selectedItem.id));
+
+    if (recipe != null) botInput.text = recipe.example;
+  }
+
+  @:bind(scriptList, UIEvent.CHANGE)
+  function onScriptListChange(_):Void
+  {
+    if (updatingList || scriptList.selectedItem == null) return;
+
+    var path:String = Std.string(scriptList.selectedItem.path);
+
+    if (path == currentPath) return;
+
+    confirmDiscard(() -> openScript(path), refreshList);
+  }
+
+  function clearBot():Void
+  {
+    botLog.removeAllComponents();
+    bot.reset();
+    setPendingCode(null);
+    botSay('bot', LuaBotEngine.helpText(botPortuguese));
   }
 
   override function destroy():Void
@@ -1420,12 +1963,14 @@ class LuaScriptEditorState extends MusicBeatState
       runner = null;
     }
 
-    for (field in [editor, gutter, pathField, console, findField, replaceField, gotoField, completionField])
+    for (field in [editor, gutter, console, completionField])
     {
       if (field != null && field.parent != null) field.parent.removeChild(field);
     }
 
     if (FlxG.stage != null) FlxG.stage.focus = null;
+
+    haxe.ui.notifications.NotificationManager.instance.clearNotifications();
 
     Cursor.hide();
 

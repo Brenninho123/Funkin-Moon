@@ -82,7 +82,7 @@ class DebugMenuSubState extends MusicBeatSubState
     #if FEATURE_MODCHART_EDITOR
     createItem("MODCHART EDITOR", openModchartEditor);
     #end
-    #if FEATURE_LUA_SCRIPTS
+    #if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
     createItem("LUA SCRIPT EDITOR", openLuaScriptEditor);
     #end
     #if (sys && !mobile)
@@ -289,7 +289,7 @@ class DebugMenuSubState extends MusicBeatSubState
   }
   #end
 
-  #if FEATURE_LUA_SCRIPTS
+  #if (FEATURE_LUA_SCRIPTS && FEATURE_HAXEUI)
   function openLuaScriptEditor():Void
   {
     FlxG.switchState(() -> new funkin.ui.debug.scripteditor.LuaScriptEditorState());

@@ -475,7 +475,7 @@ Global module scripts receive the engine's script events with the same names and
 
 ## Script editor
 
-The debug menu has a **LUA SCRIPT EDITOR** entry (desktop and mobile builds). It lists every `.lua` file under `assets/songs` and the mods folder, and edits them in place.
+The debug menu has a **LUA SCRIPT EDITOR** entry (desktop and mobile builds). It uses HaxeUI like the other editors: a menu bar, a script list with a filter on the left, the code with line numbers in the middle, the console under it and the Lua Bot on the right. It lists every `.lua` file under `assets/songs` and the mods folder, and edits them in place. F1 opens the guide.
 
 | Key | Action |
 | --- | --- |
@@ -492,11 +492,32 @@ The debug menu has a **LUA SCRIPT EDITOR** entry (desktop and mobile builds). It
 | Alt+Up / Alt+Down | Move the selected lines |
 | Ctrl+Space | Show completions (they also appear while you type three letters). Ctrl+N and Ctrl+P choose, clicking a row accepts it |
 | Ctrl+Plus / Ctrl+Minus, A+ / A- | Change the font size |
-| Esc | Close the completion list or the find bar, then leave (press twice to discard unsaved changes) |
+| F4 | Show or hide the Lua Bot |
+| Esc | Close the completion list or the find bar, then leave (the editor asks before it discards unsaved changes) |
 
 Completions include every Lua function of the engine, the Lua keywords and snippets. Typing `onBeatHit`, `onNoteHit`, `for`, `ifelse` and similar names offers a full template with the cursor inside. A syntax error marks its line number in red and moves the cursor there.
 
-On a touch screen the buttons and the script list are larger, the list scrolls by dragging and the on-screen keyboard is used for typing. The UNDO, REDO, FIND, GOTO and CMT buttons replace the keyboard shortcuts.
+On a touch screen the on-screen keyboard is used for typing and the toolbar buttons and the menus replace the keyboard shortcuts.
+
+### Lua Bot
+
+The panel on the right writes Lua for you. It works offline, it does not send anything anywhere, and it understands English and Portuguese. Describe what you want:
+
+- `shake the camera every 4 beats`
+- `flash the hud in red when I hit a note`
+- `show the combo at 20, 40`
+- `drain 0.03 health per second`
+- `fade the opponent strumline to 0.3 in 2 seconds`
+- `tremer a camera a cada 2 batidas`
+
+It picks a recipe, reads the numbers, colors, names, positions, durations, characters, cameras and eases from your sentence, and answers with the code and a one line summary. When it is sure of the timing it writes the right callback: every N beats or steps, on beat N, when you hit or miss a note, when the song starts, every N seconds or after N seconds. The Ideas list shows an example of each recipe (camera shake, flash, fade and zoom, stats on screen, health drain and heal, combo milestones, character animations, fades, moves and scaling, darkening the stage, images, tweens, song speed, sounds, messages, debug lines, counters that survive restarts, strumline fades, slides and swaps, and a template with every callback).
+
+- **Insert** merges the code into your script. When your script already has a callback such as onBeatHit, the new lines are added inside it instead of creating a second function, and an argument with a different name gets an alias.
+- **Replace** starts from the generated code (undo brings your script back) and **Copy** puts it on the clipboard.
+- Ask again with a change ("change the duration to 2 seconds") and it edits the previous answer.
+- **Review script** reads the script in the editor and reports unbalanced blocks, calls to functions that do not exist with a "did you mean" suggestion taken from the API, and misspelled callbacks such as onBeathit.
+- **Explain error** translates the last syntax or runtime error into plain language.
+- Generated code is checked with the game's Lua parser before it is offered, and every function it calls is part of this API.
 
 Running a buffer creates a temporary script, calls `onCreate()` once and `onUpdate(elapsed)` every frame. Song callbacks are not available there, and error dialogs are replaced by console messages. Scripts that are already loaded by the game keep running the previous version until they are reloaded.
 

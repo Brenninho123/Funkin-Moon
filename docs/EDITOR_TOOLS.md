@@ -33,6 +33,10 @@ Notes changed by these tools fade in when they are redrawn, which makes it easy 
 
 The music editor was rebuilt with the same approach as the camera editor and uses HaxeUI like the modchart editor: menus, a properties panel, undo and redo, a zoomable timeline with a waveform, notifications, autosave and backups. See [MUSIC_EDITOR.md](MUSIC_EDITOR.md).
 
+## Lua script editor
+
+The Lua script editor now uses HaxeUI like the rest, and has a built in assistant, the Lua Bot, that writes and reviews Lua for you. See the Script editor section of [LUA_API.md](../LUA_API.md).
+
 ## Modchart editor
 
 A new HaxeUI editor builds strumline and camera effects with a live preview and a timeline. See [MODCHART_EDITOR.md](MODCHART_EDITOR.md).
