@@ -244,6 +244,23 @@ class Strumline extends FlxSpriteGroup
 
   static final BACKGROUND_PAD:Int = 16;
 
+  /**
+   * Hand this strumline over to the bot or give it back to the player while a song is running.
+   * @param bot Whether the bot should play this strumline.
+   */
+  public function setBotControlled(bot:Bool):Void
+  {
+    isPlayer = !bot;
+
+    for (child in strumlineNotes.members)
+    {
+      if (child == null) continue;
+
+      child.isPlayer = isPlayer;
+      child.playStatic();
+    }
+  }
+
   public function new(noteStyle:NoteStyle, isPlayer:Bool, ?scrollSpeed:Float)
   {
     super();

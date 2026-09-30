@@ -1065,6 +1065,11 @@ class FunkinLua
 
     query('getDeaths', (s, a) -> PlayState.instance?.deathCounter ?? 0);
     query('isPracticeMode', (s, a) -> PlayState.instance?.isPracticeMode ?? false);
+    query('isShowcaseMode', (s, a) -> PlayState.instance?.isShowcaseMode ?? false);
+    command('setShowcaseMode', (s, a) ->
+    {
+      if (PlayState.instance != null) PlayState.instance.setShowcaseMode(argBool(a, 0, true));
+    });
     query('isBotPlayMode', (s, a) -> PlayState.instance?.isBotPlayMode ?? false);
 
     query('getSongPosition', (s, a) -> Conductor.instance?.songPosition ?? 0.0);

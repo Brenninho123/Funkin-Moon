@@ -33,7 +33,16 @@ class VolumePlugin extends FlxBasic
     if (!isHaxeUIFocused && !isTextInputFocused)
     {
       // Rebindable volume keys.
-      if (PlayerSettings.player1.controls.VOLUME_MUTE) FlxG.sound.toggleMuted();
+      #if !mobile
+      var showcaseKey:Bool = funkin.play.PlayState.instance != null
+        && !funkin.play.PlayState.instance.isGamePaused
+        && (FlxG.keys.justPressed.ZERO || FlxG.keys.justPressed.NUMPADZERO);
+      #else
+      var showcaseKey:Bool = false;
+      #end
+
+      if (showcaseKey) {}
+      else if (PlayerSettings.player1.controls.VOLUME_MUTE) FlxG.sound.toggleMuted();
       else if (PlayerSettings.player1.controls.VOLUME_UP) FlxG.sound.changeVolume(0.1);
       else if (PlayerSettings.player1.controls.VOLUME_DOWN) FlxG.sound.changeVolume(-0.1);
     }

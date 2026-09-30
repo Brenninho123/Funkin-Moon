@@ -406,6 +406,24 @@ class PlayState extends MusicBeatSubState
    */
   public var isBotPlayMode:Bool = false;
 
+  /**
+   * Whether showcase mode is on. Showcase mode hands the song to the bot and hides the HUD.
+   */
+  public var isShowcaseMode(default, null):Bool = false;
+
+  var showcaseRestoresBotPlay:Bool = false;
+  var showcaseUsed:Bool = false;
+
+  /**
+   * Whether the bot played any part of this run, which means the score does not count.
+   */
+  var botPlayUsed(get, never):Bool;
+
+  function get_botPlayUsed():Bool
+  {
+    return isBotPlayMode || showcaseUsed;
+  }
+
   public var isMultiplayerMode:Bool = false;
 
   /**
@@ -682,7 +700,7 @@ class PlayState extends MusicBeatSubState
    * - The Game Over screen is open.
    * - The Chart Editor screen is open.
    */
-  var isGamePaused(get, never):Bool;
+  public var isGamePaused(get, never):Bool;
 
   function get_isGamePaused():Bool
   {
@@ -1239,6 +1257,10 @@ class PlayState extends MusicBeatSubState
     FunkinLow.update(elapsed);
 
     if (camMovement != null) camMovement.update(elapsed);
+
+    #if !mobile
+    if (!isGamePaused && (FlxG.keys.justPressed.ZERO || FlxG.keys.justPressed.NUMPADZERO)) setShowcaseMode(!isShowcaseMode);
+    #end
 
     callLuaEvent('onUpdate', [elapsed]);
     callMoonEvent('onUpdate', [elapsed]);
@@ -2763,6 +2785,35 @@ class PlayState extends MusicBeatSubState
     #end
   }
 
+  /**
+   * Turn showcase mode on or off.
+   * While it is on the bot plays the song and the HUD is hidden, which is meant for recording gameplay.
+   * A run that used showcase mode never counts for scores or medals, even after it is turned off.
+   *
+   * @param enabled Whether showcase mode should be on.
+   */
+  public function setShowcaseMode(enabled:Bool):Void
+  {
+    if (enabled == isShowcaseMode) return;
+
+    isShowcaseMode = enabled;
+
+    if (enabled)
+    {
+      showcaseRestoresBotPlay = isBotPlayMode;
+      showcaseUsed = true;
+      isBotPlayMode = true;
+    }
+    else
+    {
+      isBotPlayMode = showcaseRestoresBotPlay;
+    }
+
+    if (playerStrumline != null) playerStrumline.setBotControlled(isBotPlayMode);
+
+    if (camHUD != null) camHUD.visible = !enabled;
+  }
+
   public function getDebugInfo():Array<String>
   {
     var conductor:Conductor = Conductor.instance;
@@ -2771,7 +2822,7 @@ class PlayState extends MusicBeatSubState
     var variation:String = currentVariation != Constants.DEFAULT_VARIATION ? ' / $currentVariation' : '';
 
     var info:Array<String> = [
-      'SONG: $songId [$currentDifficulty$variation]',
+      (isShowcaseMode ? 'SHOWCASE MODE  ' : '') + 'SONG: $songId [$currentDifficulty$variation]',
       'BPM: ${Math.round(conductor.bpm * 100) / 100}  STEP: ${conductor.currentStep}  BEAT: ${conductor.currentBeat}',
       'HEALTH: ${Math.round(health / Constants.HEALTH_MAX * 100)}%  SCORE: ${Math.round(songScore)}',
       'COMBO: ${tallies.combo}  MISS: ${tallies.missed}  ACC: ${Math.round(Highscore.calculateAccuracy(tallies) * 10) / 10}%'
@@ -4101,7 +4152,7 @@ class PlayState extends MusicBeatSubState
       Leaderboards.submitSongScore(currentSong.id, suffixedDifficulty, Std.int(songScore));
       #end
 
-      if (!isPracticeMode && !isBotPlayMode)
+      if (!isPracticeMode && !botPlayUsed)
       {
         #if FEATURE_NEWGROUNDS
         Events.logCompleteSong(currentSong.id, currentVariation);
@@ -4122,7 +4173,7 @@ class PlayState extends MusicBeatSubState
 
     #if FEATURE_NEWGROUNDS
     // Only award medals if we are LEGIT.
-    if (!isPracticeMode && !isBotPlayMode && !isChartingMode && currentSong.validScore)
+    if (!isPracticeMode && !botPlayUsed && !isChartingMode && currentSong.validScore)
     {
       // Award a medal for beating at least one song on any difficulty on a Friday.
       if (Date.now().getDay() == 5) Medals.award(FridayNight);
@@ -4300,7 +4351,7 @@ class PlayState extends MusicBeatSubState
     {
       if (isSubState)
       {
-        if (isPlaytestResults && !isBotPlayMode)
+        if (isPlaytestResults && !botPlayUsed)
         {
           moveToResultsScreen(false, prevScoreData);
         }
@@ -4556,7 +4607,7 @@ class PlayState extends MusicBeatSubState
       },
       isNewHighscore: isNewHighscore,
       isPracticeMode: isPracticeMode,
-      isBotPlayMode: isBotPlayMode,
+      isBotPlayMode: botPlayUsed,
     });
     this.persistentDraw = false;
     openSubState(res);

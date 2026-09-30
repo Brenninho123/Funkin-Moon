@@ -74,6 +74,16 @@ class PauseSubState extends MusicBeatSubState
       filter: () -> !(PlayState.instance?.isPracticeMode ?? false)
     },
     {
+      text: 'Enable Showcase Mode',
+      callback: enableShowcaseMode,
+      filter: () -> !(PlayState.instance?.isShowcaseMode ?? false)
+    },
+    {
+      text: 'Disable Showcase Mode',
+      callback: disableShowcaseMode,
+      filter: () -> PlayState.instance?.isShowcaseMode ?? false
+    },
+    {
       text: 'Exit to Menu',
       callback: quitToMenu
     },
@@ -1222,6 +1232,30 @@ class PauseSubState extends MusicBeatSubState
     #else
     state.close();
     #end
+  }
+
+  /**
+   * Turn showcase mode on, then resume the game.
+   * @param state The current PauseSubState.
+   */
+  static function enableShowcaseMode(state:PauseSubState):Void
+  {
+    if (PlayState.instance == null) return;
+
+    PlayState.instance.setShowcaseMode(true);
+    resume(state);
+  }
+
+  /**
+   * Turn showcase mode off, then resume the game.
+   * @param state The current PauseSubState.
+   */
+  static function disableShowcaseMode(state:PauseSubState):Void
+  {
+    if (PlayState.instance == null) return;
+
+    PlayState.instance.setShowcaseMode(false);
+    resume(state);
   }
 
   /**

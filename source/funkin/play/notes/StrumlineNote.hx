@@ -13,7 +13,7 @@ class StrumlineNote extends FunkinSprite
   /**
    * Whether this strumline note is on the player's side or the opponent's side.
    */
-  public var isPlayer(default, null):Bool;
+  public var isPlayer:Bool;
 
   /**
    * The direction which this strumline note is facing.

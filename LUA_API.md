@@ -51,6 +51,8 @@ logWarn("this stage has no light rig defined")
 | `getDeaths` | `getDeaths()` | number — death counter for the current attempt |
 | `isPracticeMode` | `isPracticeMode()` | bool |
 | `isBotPlayMode` | `isBotPlayMode()` | bool |
+| `isShowcaseMode` | `isShowcaseMode()` | bool |
+| `setShowcaseMode` | `setShowcaseMode(enabled)` | Turns showcase mode (bot plays, HUD hidden) on or off, see `docs/SHOWCASE_MODE.md` |
 
 ## Health, score & judgement
 
