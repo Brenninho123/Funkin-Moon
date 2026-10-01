@@ -1048,8 +1048,151 @@ class PlayState extends MusicBeatSubState
     return MultiplayerServer.instance != null && MultiplayerServer.instance.running;
   }
 
+  var multiplayerScoreboard:Null<funkin.online.play.MultiplayerScoreboard> = null;
+  var multiplayerFinishedPlayers:Map<String, Bool> = new Map();
+  var multiplayerBoardTimer:Float = 0;
+  var leavingForLobby:Bool = false;
+
+  function useServerMatch():Bool
+  {
+    return funkin.online.play.FunkinMultiplayer.instance.inMatch;
+  }
+
+  function localMultiplayerScore():funkin.online.play.MultiplayerData.MultiplayerScore
+  {
+    var user = funkin.online.FunkinUser.instance;
+
+    return {
+      userId: user.getLocalUserId(),
+      username: user.localUser?.username ?? 'You',
+      score: Std.int(songScore),
+      combo: Highscore.tallies.combo,
+      health: health,
+      accuracy: Highscore.calculateAccuracy(Highscore.tallies)
+    };
+  }
+
+  function initServerMatch():Void
+  {
+    var multiplayer = funkin.online.play.FunkinMultiplayer.instance;
+
+    multiplayerFinishedPlayers = new Map();
+
+    multiplayerScoreboard = new funkin.online.play.MultiplayerScoreboard();
+    multiplayerScoreboard.cameras = [camHUD];
+    add(multiplayerScoreboard);
+
+    multiplayer.onRelay.add(onServerRelay);
+    multiplayer.onPlayerFinished.add(onServerPlayerFinished);
+    multiplayer.onPlayerLeft.add(onServerPlayerLeft);
+    multiplayer.onResults.add(onServerResults);
+  }
+
+  function cleanupServerMatch():Void
+  {
+    var multiplayer = funkin.online.play.FunkinMultiplayer.instance;
+
+    multiplayer.onRelay.remove(onServerRelay);
+    multiplayer.onPlayerFinished.remove(onServerPlayerFinished);
+    multiplayer.onPlayerLeft.remove(onServerPlayerLeft);
+    multiplayer.onResults.remove(onServerResults);
+
+    if (multiplayer.inMatch && !multiplayer.localFinished) multiplayer.leaveRoom();
+  }
+
+  function spotlightPlayerId():String
+  {
+    var room = funkin.online.play.FunkinMultiplayer.instance.currentRoom;
+    var localId:String = funkin.online.FunkinUser.instance.getLocalUserId();
+
+    if (room == null) return '';
+
+    for (member in room.members)
+    {
+      if (member.id != localId) return member.id;
+    }
+
+    return '';
+  }
+
+  function onServerRelay(userId:String, payload:Dynamic):Void
+  {
+    if (userId != spotlightPlayerId()) return;
+
+    handleMultiplayerMessage(payload);
+  }
+
+  function onServerPlayerFinished(score:funkin.online.play.MultiplayerData.MultiplayerScore):Void
+  {
+    multiplayerFinishedPlayers.set(score.userId, true);
+
+    multiplayerScoreboard?.say(score.username + ' finished with ' + funkin.online.play.MultiplayerData.formatScore(score.score));
+  }
+
+  function onServerResults(results:funkin.online.play.MultiplayerData.MultiplayerResults):Void
+  {
+    finishMultiplayerMatch(true);
+  }
+
+  function onServerPlayerLeft(userId:String):Void
+  {
+    multiplayerFinishedPlayers.remove(userId);
+
+    multiplayerScoreboard?.say('A player left the match.');
+  }
+
+  function updateServerMatch(elapsed:Float):Void
+  {
+    var multiplayer = funkin.online.play.FunkinMultiplayer.instance;
+    var local = localMultiplayerScore();
+
+    multiplayer.sendScoreUpdate(elapsed, local.score, local.combo, local.health, local.accuracy);
+
+    multiplayerBoardTimer += elapsed;
+
+    if (multiplayerBoardTimer >= 0.25)
+    {
+      multiplayerBoardTimer = 0;
+      multiplayerScoreboard?.refresh(local, multiplayer.getAllOpponentScores(), multiplayerFinishedPlayers);
+    }
+  }
+
+  function finishMultiplayerMatch(roundEnded:Bool = false):Bool
+  {
+    var multiplayer = funkin.online.play.FunkinMultiplayer.instance;
+
+    if (leavingForLobby) return true;
+
+    if (!roundEnded && (!multiplayer.inMatch || multiplayer.localFinished)) return false;
+
+    leavingForLobby = true;
+
+    if (!roundEnded)
+    {
+      var local = localMultiplayerScore();
+
+      multiplayer.sendFinished(local.score, local.combo, local.health, local.accuracy);
+    }
+
+    if (FlxG.sound.music != null) FlxG.sound.music.stop();
+    if (vocals != null) vocals.stop();
+
+    FlxTransitionableState.skipNextTransIn = true;
+    FlxTransitionableState.skipNextTransOut = true;
+
+    FlxG.switchState(() -> new funkin.ui.online.OnlineLobbyState());
+
+    return true;
+  }
+
   function initMultiplayerSync():Void
   {
+    if (useServerMatch())
+    {
+      initServerMatch();
+      return;
+    }
+
     if (isMultiplayerHost && MultiplayerServer.instance != null)
     {
       trace('[MP] PlayState sincronizando como HOST (via MultiplayerServer)');
@@ -1074,7 +1217,11 @@ class PlayState extends MusicBeatSubState
    */
   function sendMultiplayerMessage(data:Dynamic):Void
   {
-    if (isMultiplayerHost && MultiplayerServer.instance != null)
+    if (useServerMatch())
+    {
+      funkin.online.play.FunkinMultiplayer.instance.sendRelay(data);
+    }
+    else if (isMultiplayerHost && MultiplayerServer.instance != null)
     {
       MultiplayerServer.instance.broadcast(data);
     }
@@ -1304,6 +1451,10 @@ class PlayState extends MusicBeatSubState
 
     updateHealthBar();
     updateScoreText();
+
+    #if FEATURE_ONLINE
+    if (multiplayerMatchActive && useServerMatch() && !isSongEnd) updateServerMatch(elapsed);
+    #end
 
     callLuaEvent('onUpdatePost', [elapsed]);
 
@@ -1718,6 +1869,10 @@ class PlayState extends MusicBeatSubState
 
   function moveToGameOver():Void
   {
+    #if FEATURE_ONLINE
+    if (finishMultiplayerMatch()) return;
+    #end
+
     // Reset and update a bunch of values in advance for the transition back from the game over substate.
     playerStrumline.clean();
     opponentStrumline.clean();
@@ -4256,6 +4411,8 @@ class PlayState extends MusicBeatSubState
         songScore: Std.int(songScore)
       });
     }
+
+    if (finishMultiplayerMatch()) return;
     #end
 
     if (PlayStatePlaylist.isStoryMode)
@@ -4432,6 +4589,8 @@ class PlayState extends MusicBeatSubState
     modchart = null;
 
     #if FEATURE_ONLINE
+    if (multiplayerScoreboard != null) cleanupServerMatch();
+
     if (isMultiplayerHost && MultiplayerServer.instance != null)
     {
       MultiplayerServer.instance.onClientMessage = null;

@@ -3,60 +3,68 @@ package funkin.online.play;
 import flixel.util.FlxSignal.FlxTypedSignal;
 import funkin.online.FunkinOnline;
 import funkin.online.FunkinUser;
+import funkin.online.play.MultiplayerData;
+import funkin.online.play.MultiplayerData.MultiplayerChatMessage;
+import funkin.online.play.MultiplayerData.MultiplayerLeaderboardEntry;
+import funkin.online.play.MultiplayerData.MultiplayerMember;
+import funkin.online.play.MultiplayerData.MultiplayerResults;
+import funkin.online.play.MultiplayerData.MultiplayerRoom;
+import funkin.online.play.MultiplayerData.MultiplayerRoomSummary;
+import funkin.online.play.MultiplayerData.MultiplayerScore;
 
-typedef FunkinMultiplayerRoomInfo =
-{
-  var roomId:String;
-  var hostId:String;
-  var songId:Null<String>;
-  var difficultyId:Null<String>;
-  var variation:Null<String>;
-  var players:Array<String>;
-}
-
-typedef FunkinMultiplayerPlayerScore =
-{
-  var userId:String;
-  var score:Int;
-  var combo:Int;
-  var health:Float;
-  var accuracy:Float;
-}
+typedef FunkinMultiplayerRoomInfo = MultiplayerRoom;
+typedef FunkinMultiplayerPlayerScore = MultiplayerScore;
 
 class FunkinMultiplayer
 {
   public static var instance(default, null):FunkinMultiplayer = new FunkinMultiplayer();
 
-  public var currentRoom(default, null):Null<FunkinMultiplayerRoomInfo> = null;
+  public var currentRoom(default, null):Null<MultiplayerRoom> = null;
+
+  public var inMatch(default, null):Bool = false;
+  public var localFinished(default, null):Bool = false;
+  public var lastResults(default, null):Null<MultiplayerResults> = null;
+  public var lastCloseReason(default, null):String = '';
+  public var rooms(default, null):Array<MultiplayerRoomSummary> = [];
+  public var chatLog(default, null):Array<MultiplayerChatMessage> = [];
 
   public var isHost(get, never):Bool;
 
   function get_isHost():Bool
   {
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    return currentRoom != null && localId != null && currentRoom.hostId == localId;
+    var localId:String = FunkinUser.instance.getLocalUserId();
+
+    return currentRoom != null && localId != '' && currentRoom.hostId == localId;
   }
 
-  public var onRoomCreated:FlxTypedSignal<FunkinMultiplayerRoomInfo->Void> = new FlxTypedSignal<FunkinMultiplayerRoomInfo->Void>();
-  public var onRoomJoined:FlxTypedSignal<FunkinMultiplayerRoomInfo->Void> = new FlxTypedSignal<FunkinMultiplayerRoomInfo->Void>();
+  public var onRoomCreated:FlxTypedSignal<MultiplayerRoom->Void> = new FlxTypedSignal<MultiplayerRoom->Void>();
+  public var onRoomJoined:FlxTypedSignal<MultiplayerRoom->Void> = new FlxTypedSignal<MultiplayerRoom->Void>();
   public var onRoomJoinFailed:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
   public var onRoomClosed:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
+  public var onRoomUpdated:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
   public var onPlayerJoined:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
   public var onPlayerLeft:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
-  public var onSongSelected:FlxTypedSignal<FunkinMultiplayerRoomInfo->Void> = new FlxTypedSignal<FunkinMultiplayerRoomInfo->Void>();
+  public var onHostChanged:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
+  public var onSongSelected:FlxTypedSignal<MultiplayerRoom->Void> = new FlxTypedSignal<MultiplayerRoom->Void>();
   public var onPlayerReadyChanged:FlxTypedSignal<String->Bool->Void> = new FlxTypedSignal<String->Bool->Void>();
   public var onSongStart:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
-  public var onOpponentScoreUpdate:FlxTypedSignal<FunkinMultiplayerPlayerScore->Void> = new FlxTypedSignal<FunkinMultiplayerPlayerScore->Void>();
-  public var onPlayerFinished:FlxTypedSignal<FunkinMultiplayerPlayerScore->Void> = new FlxTypedSignal<FunkinMultiplayerPlayerScore->Void>();
+  public var onOpponentScoreUpdate:FlxTypedSignal<MultiplayerScore->Void> = new FlxTypedSignal<MultiplayerScore->Void>();
+  public var onPlayerFinished:FlxTypedSignal<MultiplayerScore->Void> = new FlxTypedSignal<MultiplayerScore->Void>();
+  public var onResults:FlxTypedSignal<MultiplayerResults->Void> = new FlxTypedSignal<MultiplayerResults->Void>();
+  public var onChat:FlxTypedSignal<MultiplayerChatMessage->Void> = new FlxTypedSignal<MultiplayerChatMessage->Void>();
+  public var onRelay:FlxTypedSignal<String->Dynamic->Void> = new FlxTypedSignal<String->Dynamic->Void>();
+  public var onRoomsListed:FlxTypedSignal<Array<MultiplayerRoomSummary>->Void> = new FlxTypedSignal<Array<MultiplayerRoomSummary>->Void>();
+  public var onLeaderboard:FlxTypedSignal<String->String->Array<MultiplayerLeaderboardEntry>->Void> = new FlxTypedSignal<String->String->Array<MultiplayerLeaderboardEntry>->Void>();
+  public var onError:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
 
-  var readyPlayers:Map<String, Bool> = new Map();
-  var opponentScores:Map<String, FunkinMultiplayerPlayerScore> = new Map();
+  var opponentScores:Map<String, MultiplayerScore> = new Map();
 
   var initialized:Bool = false;
 
   var scoreUpdateAccumTime:Float = 0.0;
 
   static final SCORE_UPDATE_INTERVAL:Float = 0.2;
+  static final CHAT_HISTORY:Int = 60;
 
   function new():Void
   {
@@ -67,143 +75,173 @@ class FunkinMultiplayer
     if (initialized) return;
     initialized = true;
 
-    FunkinOnline.instance.registerHandler('mp_roomCreated', onRoomCreatedMessage);
-    FunkinOnline.instance.registerHandler('mp_roomJoined', onRoomJoinedMessage);
-    FunkinOnline.instance.registerHandler('mp_roomJoinFailed', onRoomJoinFailedMessage);
-    FunkinOnline.instance.registerHandler('mp_roomClosed', onRoomClosedMessage);
-    FunkinOnline.instance.registerHandler('mp_playerJoined', onPlayerJoinedMessage);
-    FunkinOnline.instance.registerHandler('mp_playerLeft', onPlayerLeftMessage);
-    FunkinOnline.instance.registerHandler('mp_songSelected', onSongSelectedMessage);
-    FunkinOnline.instance.registerHandler('mp_playerReady', onPlayerReadyMessage);
-    FunkinOnline.instance.registerHandler('mp_startSong', onStartSongMessage);
-    FunkinOnline.instance.registerHandler('mp_scoreUpdate', onScoreUpdateMessage);
-    FunkinOnline.instance.registerHandler('mp_playerFinished', onPlayerFinishedMessage);
+    var online:FunkinOnline = FunkinOnline.instance;
 
-    FunkinOnline.instance.onDisconnected.add(onOnlineDisconnected);
+    online.registerHandler('mp_roomCreated', onRoomCreatedMessage);
+    online.registerHandler('mp_roomJoined', onRoomJoinedMessage);
+    online.registerHandler('mp_roomJoinFailed', onRoomJoinFailedMessage);
+    online.registerHandler('mp_roomClosed', onRoomClosedMessage);
+    online.registerHandler('mp_roomState', onRoomStateMessage);
+    online.registerHandler('mp_playerJoined', onPlayerJoinedMessage);
+    online.registerHandler('mp_playerLeft', onPlayerLeftMessage);
+    online.registerHandler('mp_hostChanged', onHostChangedMessage);
+    online.registerHandler('mp_memberUpdated', onMemberUpdatedMessage);
+    online.registerHandler('mp_songSelected', onSongSelectedMessage);
+    online.registerHandler('mp_playerReady', onPlayerReadyMessage);
+    online.registerHandler('mp_startSong', onStartSongMessage);
+    online.registerHandler('mp_scoreUpdate', onScoreUpdateMessage);
+    online.registerHandler('mp_playerFinished', onPlayerFinishedMessage);
+    online.registerHandler('mp_results', onResultsMessage);
+    online.registerHandler('mp_relay', onRelayMessage);
+    online.registerHandler('mp_chat', onChatMessage);
+    online.registerHandler('mp_rooms', onRoomsMessage);
+    online.registerHandler('leaderboard', onLeaderboardMessage);
+    online.registerHandler('error', onErrorMessage);
+
+    online.onDisconnected.add(onOnlineDisconnected);
   }
 
   function onOnlineDisconnected():Void
   {
+    var hadRoom:Bool = currentRoom != null;
+
     resetLocalState();
-    onRoomClosed.dispatch();
+
+    if (hadRoom)
+    {
+      lastCloseReason = 'disconnected';
+      onRoomClosed.dispatch();
+    }
   }
 
   function resetLocalState():Void
   {
     currentRoom = null;
-    readyPlayers = new Map();
+    inMatch = false;
+    localFinished = false;
     opponentScores = new Map();
     scoreUpdateAccumTime = 0.0;
+    chatLog = [];
   }
 
-  public function createRoom():Void
+  function canSend(action:String):Bool
   {
     if (!FunkinOnline.instance.isConnected())
     {
-      FlxG.log.warn('[FunkinMultiplayer] Cannot create a room while offline.');
-      return;
+      FlxG.log.warn('[FunkinMultiplayer] Cannot ' + action + ' while offline.');
+      onError.dispatch('disconnected');
+      return false;
     }
 
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    if (localId == null)
-    {
-      FlxG.log.warn('[FunkinMultiplayer] Cannot create a room before FunkinUser is initialized.');
-      return;
-    }
+    return true;
+  }
 
-    FunkinOnline.instance.send('mp_createRoom', {hostId: localId});
+  public function createRoom(?name:String, isPublic:Bool = true, maxPlayers:Int = 4):Void
+  {
+    if (!canSend('create a room')) return;
+
+    var data:Dynamic = {isPublic: isPublic, maxPlayers: maxPlayers};
+
+    if (name != null && StringTools.trim(name) != '') data.name = StringTools.trim(name);
+
+    FunkinOnline.instance.send('mp_createRoom', data);
   }
 
   public function joinRoom(roomId:String):Void
   {
-    if (!FunkinOnline.instance.isConnected())
-    {
-      FlxG.log.warn('[FunkinMultiplayer] Cannot join a room while offline.');
-      return;
-    }
+    if (!canSend('join a room')) return;
 
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    if (localId == null)
-    {
-      FlxG.log.warn('[FunkinMultiplayer] Cannot join a room before FunkinUser is initialized.');
-      return;
-    }
-
-    FunkinOnline.instance.send('mp_joinRoom', {roomId: roomId, userId: localId});
+    FunkinOnline.instance.send('mp_joinRoom', {roomId: MultiplayerData.normalizeCode(roomId)});
   }
 
   public function leaveRoom():Void
   {
     if (currentRoom == null) return;
 
-    FunkinOnline.instance.send('mp_leaveRoom', {roomId: currentRoom.roomId});
+    FunkinOnline.instance.send('mp_leaveRoom');
 
     resetLocalState();
   }
 
+  public function listRooms():Void
+  {
+    if (!canSend('list the rooms')) return;
+
+    FunkinOnline.instance.send('mp_listRooms');
+  }
+
+  public function requestLeaderboard(songId:String, difficulty:String):Void
+  {
+    if (!FunkinOnline.instance.isConnected()) return;
+
+    FunkinOnline.instance.send('leaderboard', {songId: songId, difficulty: difficulty, limit: 10});
+  }
+
   public function selectSong(songId:String, difficultyId:String, variation:String = 'default'):Void
   {
-    if (currentRoom == null) return;
+    if (currentRoom == null || !isHost) return;
 
-    if (!isHost)
-    {
-      FlxG.log.warn('[FunkinMultiplayer] Only the host can select the song.');
-      return;
-    }
-
-    FunkinOnline.instance.send('mp_selectSong', {
-      roomId: currentRoom.roomId,
-      songId: songId,
-      difficultyId: difficultyId,
-      variation: variation
-    });
+    FunkinOnline.instance.send('mp_selectSong', {songId: songId, difficultyId: difficultyId, variation: variation});
   }
 
   public function setReady(ready:Bool):Void
   {
     if (currentRoom == null) return;
 
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    if (localId == null) return;
+    FunkinOnline.instance.send('mp_setReady', {ready: ready});
+  }
 
-    readyPlayers.set(localId, ready);
+  public function setRoomSettings(?name:String, ?isPublic:Bool, ?maxPlayers:Int):Void
+  {
+    if (currentRoom == null || !isHost) return;
 
-    FunkinOnline.instance.send('mp_setReady', {roomId: currentRoom.roomId, userId: localId, ready: ready});
+    var data:Dynamic = {};
+
+    if (name != null) data.name = name;
+    if (isPublic != null) data.isPublic = isPublic;
+    if (maxPlayers != null) data.maxPlayers = maxPlayers;
+
+    FunkinOnline.instance.send('mp_roomSettings', data);
+  }
+
+  public function kick(userId:String):Void
+  {
+    if (currentRoom == null || !isHost) return;
+
+    FunkinOnline.instance.send('mp_kick', {userId: userId});
+  }
+
+  public function sendChat(text:String, global:Bool = false):Void
+  {
+    var clean:String = StringTools.trim(text);
+
+    if (clean == '' || !FunkinOnline.instance.isConnected()) return;
+
+    FunkinOnline.instance.send('mp_chat', {text: clean, scope: global || currentRoom == null ? 'global' : 'room'});
   }
 
   public function isPlayerReady(userId:String):Bool
   {
-    return readyPlayers.get(userId) ?? false;
+    var member:Null<MultiplayerMember> = currentRoom != null ? MultiplayerData.memberById(currentRoom, userId) : null;
+
+    return member != null && member.ready;
   }
 
   public function areAllPlayersReady():Bool
   {
-    if (currentRoom == null || currentRoom.players.length == 0) return false;
-
-    for (playerId in currentRoom.players)
-    {
-      if (!isPlayerReady(playerId)) return false;
-    }
-
-    return true;
+    return currentRoom != null && currentRoom.members.length > 0 && MultiplayerData.everyoneReady(currentRoom);
   }
 
   public function startSong():Void
   {
-    if (currentRoom == null) return;
+    if (currentRoom == null || !isHost) return;
 
-    if (!isHost)
-    {
-      FlxG.log.warn('[FunkinMultiplayer] Only the host can start the song.');
-      return;
-    }
-
-    FunkinOnline.instance.send('mp_startSong', {roomId: currentRoom.roomId});
+    FunkinOnline.instance.send('mp_startSong');
   }
 
   public function sendScoreUpdate(elapsed:Float, score:Int, combo:Int, health:Float, accuracy:Float, force:Bool = false):Void
   {
-    if (currentRoom == null) return;
+    if (currentRoom == null || !inMatch || localFinished) return;
 
     scoreUpdateAccumTime += elapsed;
 
@@ -211,179 +249,254 @@ class FunkinMultiplayer
 
     scoreUpdateAccumTime = 0.0;
 
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    if (localId == null) return;
+    FunkinOnline.instance.send('mp_scoreUpdate', {score: score, combo: combo, health: health, accuracy: accuracy});
+  }
 
-    FunkinOnline.instance.send('mp_scoreUpdate', {
-      roomId: currentRoom.roomId,
-      userId: localId,
-      score: score,
-      combo: combo,
-      health: health,
-      accuracy: accuracy
-    });
+  public function sendRelay(payload:Dynamic):Void
+  {
+    if (currentRoom == null || !inMatch || localFinished) return;
+
+    FunkinOnline.instance.send('mp_relay', {payload: payload});
   }
 
   public function sendFinished(score:Int, combo:Int, health:Float, accuracy:Float):Void
   {
-    if (currentRoom == null) return;
+    if (currentRoom == null || !inMatch || localFinished) return;
 
-    var localId:Null<String> = FunkinUser.instance.localUser?.id;
-    if (localId == null) return;
+    localFinished = true;
 
-    FunkinOnline.instance.send('mp_playerFinished', {
-      roomId: currentRoom.roomId,
-      userId: localId,
-      score: score,
-      combo: combo,
-      health: health,
-      accuracy: accuracy
-    });
+    FunkinOnline.instance.send('mp_playerFinished', {score: score, combo: combo, health: health, accuracy: accuracy});
   }
 
-  public function getOpponentScore(userId:String):Null<FunkinMultiplayerPlayerScore>
+  public function takeResults():Null<MultiplayerResults>
+  {
+    var results:Null<MultiplayerResults> = lastResults;
+
+    lastResults = null;
+
+    return results;
+  }
+
+  public function getOpponentScore(userId:String):Null<MultiplayerScore>
   {
     return opponentScores.get(userId);
   }
 
-  public function getAllOpponentScores():Array<FunkinMultiplayerPlayerScore>
+  public function getAllOpponentScores():Array<MultiplayerScore>
   {
-    var result:Array<FunkinMultiplayerPlayerScore> = [];
-    for (score in opponentScores) result.push(score);
-    return result;
+    return [for (score in opponentScores) score];
   }
 
-  function parseRoomInfo(data:Dynamic):Null<FunkinMultiplayerRoomInfo>
+  function updated():Void
   {
-    if (data == null) return null;
-
-    var roomId:Null<String> = data.roomId;
-    var hostId:Null<String> = data.hostId;
-    if (roomId == null || hostId == null) return null;
-
-    var players:Array<String> = [];
-
-    if (data.players != null)
-    {
-      var rawPlayers:Array<Dynamic> = data.players;
-      for (rawPlayer in rawPlayers)
-        players.push(Std.string(rawPlayer));
-    }
-    else
-    {
-      players.push(hostId);
-    }
-
-    return {
-      roomId: roomId,
-      hostId: hostId,
-      songId: data.songId,
-      difficultyId: data.difficultyId,
-      variation: data.variation,
-      players: players
-    };
+    onRoomUpdated.dispatch();
   }
 
   function onRoomCreatedMessage(data:Dynamic):Void
   {
-    var room:Null<FunkinMultiplayerRoomInfo> = parseRoomInfo(data);
+    var room:Null<MultiplayerRoom> = MultiplayerData.parseRoom(data);
+
     if (room == null) return;
 
     currentRoom = room;
-    readyPlayers = new Map();
+    inMatch = false;
+    localFinished = false;
+    lastResults = null;
+    chatLog = [];
     opponentScores = new Map();
 
     onRoomCreated.dispatch(room);
+    updated();
   }
 
   function onRoomJoinedMessage(data:Dynamic):Void
   {
-    var room:Null<FunkinMultiplayerRoomInfo> = parseRoomInfo(data);
+    var room:Null<MultiplayerRoom> = MultiplayerData.parseRoom(data);
+
     if (room == null) return;
 
     currentRoom = room;
-    readyPlayers = new Map();
+    inMatch = false;
+    localFinished = false;
+    lastResults = null;
+    chatLog = [];
     opponentScores = new Map();
 
     onRoomJoined.dispatch(room);
+    updated();
   }
 
   function onRoomJoinFailedMessage(data:Dynamic):Void
   {
-    var reason:String = (data != null && data.reason != null) ? data.reason : 'Unknown error';
+    var reason:String = (data != null && data.reason != null) ? Std.string(data.reason) : 'unknown';
+
     onRoomJoinFailed.dispatch(reason);
   }
 
   function onRoomClosedMessage(data:Dynamic):Void
   {
+    lastCloseReason = (data != null && data.reason != null) ? Std.string(data.reason) : 'closed';
+
     resetLocalState();
     onRoomClosed.dispatch();
+  }
+
+  function onRoomStateMessage(data:Dynamic):Void
+  {
+    var room:Null<MultiplayerRoom> = MultiplayerData.parseRoom(data);
+
+    if (room == null || currentRoom == null || room.roomId != currentRoom.roomId) return;
+
+    currentRoom = room;
+
+    if (room.state == MultiplayerData.STATE_LOBBY)
+    {
+      inMatch = false;
+      localFinished = false;
+    }
+
+    updated();
   }
 
   function onPlayerJoinedMessage(data:Dynamic):Void
   {
     if (currentRoom == null || data == null) return;
 
-    var userId:Null<String> = data.userId;
-    if (userId == null) return;
+    var member:Null<MultiplayerMember> = MultiplayerData.parseMember(data.member);
+    var userId:String = data.userId != null ? Std.string(data.userId) : (member != null ? member.id : '');
+
+    if (userId == '') return;
 
     if (currentRoom.players.indexOf(userId) == -1) currentRoom.players.push(userId);
 
+    if (member != null && MultiplayerData.memberById(currentRoom, userId) == null) currentRoom.members.push(member);
+
     onPlayerJoined.dispatch(userId);
+    updated();
   }
 
   function onPlayerLeftMessage(data:Dynamic):Void
   {
-    if (currentRoom == null || data == null) return;
+    if (currentRoom == null || data == null || data.userId == null) return;
 
-    var userId:Null<String> = data.userId;
-    if (userId == null) return;
+    var userId:String = Std.string(data.userId);
 
     currentRoom.players.remove(userId);
-    readyPlayers.remove(userId);
+    currentRoom.members = [for (member in currentRoom.members) if (member.id != userId) member];
     opponentScores.remove(userId);
 
+    if (data.hostId != null) applyHost(Std.string(data.hostId));
+
     onPlayerLeft.dispatch(userId);
+    updated();
+  }
+
+  function applyHost(hostId:String):Void
+  {
+    if (currentRoom == null) return;
+
+    currentRoom.hostId = hostId;
+
+    for (member in currentRoom.members) member.isHost = member.id == hostId;
+  }
+
+  function onHostChangedMessage(data:Dynamic):Void
+  {
+    if (currentRoom == null || data == null || data.hostId == null) return;
+
+    applyHost(Std.string(data.hostId));
+
+    onHostChanged.dispatch(currentRoom.hostId);
+    updated();
+  }
+
+  function onMemberUpdatedMessage(data:Dynamic):Void
+  {
+    if (currentRoom == null || data == null) return;
+
+    var member:Null<MultiplayerMember> = MultiplayerData.parseMember(data.member);
+
+    if (member == null) return;
+
+    var oldId:String = data.oldId != null ? Std.string(data.oldId) : member.id;
+    var index:Int = currentRoom.players.indexOf(oldId);
+
+    if (index >= 0) currentRoom.players[index] = member.id;
+
+    for (i in 0...currentRoom.members.length)
+    {
+      if (currentRoom.members[i].id == oldId) currentRoom.members[i] = member;
+    }
+
+    if (data.hostId != null) applyHost(Std.string(data.hostId));
+
+    updated();
   }
 
   function onSongSelectedMessage(data:Dynamic):Void
   {
     if (currentRoom == null || data == null) return;
 
-    currentRoom.songId = data.songId;
-    currentRoom.difficultyId = data.difficultyId;
-    currentRoom.variation = data.variation;
+    currentRoom.songId = data.songId != null ? Std.string(data.songId) : null;
+    currentRoom.difficultyId = data.difficultyId != null ? Std.string(data.difficultyId) : null;
+    currentRoom.variation = data.variation != null ? Std.string(data.variation) : null;
 
-    readyPlayers = new Map();
+    for (member in currentRoom.members) member.ready = false;
 
     onSongSelected.dispatch(currentRoom);
+    updated();
   }
 
   function onPlayerReadyMessage(data:Dynamic):Void
   {
-    if (data == null) return;
+    if (currentRoom == null || data == null || data.userId == null) return;
 
-    var userId:Null<String> = data.userId;
-    if (userId == null) return;
+    var userId:String = Std.string(data.userId);
+    var ready:Bool = data.ready == true;
+    var member:Null<MultiplayerMember> = MultiplayerData.memberById(currentRoom, userId);
 
-    var ready:Bool = data.ready ?? false;
-
-    readyPlayers.set(userId, ready);
+    if (member != null) member.ready = ready;
 
     onPlayerReadyChanged.dispatch(userId, ready);
+    updated();
   }
 
   function onStartSongMessage(data:Dynamic):Void
   {
+    if (currentRoom == null) return;
+
+    if (data != null)
+    {
+      if (data.songId != null) currentRoom.songId = Std.string(data.songId);
+      if (data.difficultyId != null) currentRoom.difficultyId = Std.string(data.difficultyId);
+      if (data.variation != null) currentRoom.variation = Std.string(data.variation);
+      if (data.seed != null) currentRoom.seed = Std.int(data.seed);
+      if (data.round != null) currentRoom.round = Std.int(data.round);
+    }
+
+    currentRoom.state = MultiplayerData.STATE_PLAYING;
+
+    for (member in currentRoom.members)
+    {
+      member.finished = false;
+      member.score = 0;
+      member.combo = 0;
+    }
+
+    inMatch = true;
+    localFinished = false;
+    lastResults = null;
     opponentScores = new Map();
     scoreUpdateAccumTime = 0.0;
 
     onSongStart.dispatch();
+    updated();
   }
 
   function onScoreUpdateMessage(data:Dynamic):Void
   {
-    var scoreInfo:Null<FunkinMultiplayerPlayerScore> = parsePlayerScore(data);
+    var scoreInfo:Null<MultiplayerScore> = MultiplayerData.parseScore(data);
+
     if (scoreInfo == null) return;
 
     opponentScores.set(scoreInfo.userId, scoreInfo);
@@ -393,27 +506,83 @@ class FunkinMultiplayer
 
   function onPlayerFinishedMessage(data:Dynamic):Void
   {
-    var scoreInfo:Null<FunkinMultiplayerPlayerScore> = parsePlayerScore(data);
+    var scoreInfo:Null<MultiplayerScore> = MultiplayerData.parseScore(data);
+
     if (scoreInfo == null) return;
 
     opponentScores.set(scoreInfo.userId, scoreInfo);
 
+    if (currentRoom != null)
+    {
+      var member:Null<MultiplayerMember> = MultiplayerData.memberById(currentRoom, scoreInfo.userId);
+
+      if (member != null)
+      {
+        member.finished = true;
+        member.score = scoreInfo.score;
+      }
+    }
+
     onPlayerFinished.dispatch(scoreInfo);
   }
 
-  function parsePlayerScore(data:Dynamic):Null<FunkinMultiplayerPlayerScore>
+  function onResultsMessage(data:Dynamic):Void
   {
-    if (data == null) return null;
+    var results:Null<MultiplayerResults> = MultiplayerData.parseResults(data);
 
-    var userId:Null<String> = data.userId;
-    if (userId == null) return null;
+    if (results == null) return;
 
-    return {
-      userId: userId,
-      score: data.score ?? 0,
-      combo: data.combo ?? 0,
-      health: data.health ?? 0.0,
-      accuracy: data.accuracy ?? 0.0
-    };
+    lastResults = results;
+    inMatch = false;
+    localFinished = false;
+
+    if (currentRoom != null) currentRoom.state = MultiplayerData.STATE_LOBBY;
+
+    onResults.dispatch(results);
+    updated();
+  }
+
+  function onRelayMessage(data:Dynamic):Void
+  {
+    if (data == null || data.userId == null || data.payload == null) return;
+
+    onRelay.dispatch(Std.string(data.userId), data.payload);
+  }
+
+  function onChatMessage(data:Dynamic):Void
+  {
+    var message:Null<MultiplayerChatMessage> = MultiplayerData.parseChat(data);
+
+    if (message == null) return;
+
+    chatLog.push(message);
+
+    while (chatLog.length > CHAT_HISTORY) chatLog.shift();
+
+    onChat.dispatch(message);
+  }
+
+  function onRoomsMessage(data:Dynamic):Void
+  {
+    rooms = MultiplayerData.parseRooms(data);
+
+    onRoomsListed.dispatch(rooms);
+  }
+
+  function onLeaderboardMessage(data:Dynamic):Void
+  {
+    if (data == null) return;
+
+    onLeaderboard.dispatch(data.songId != null ? Std.string(data.songId) : '', data.difficulty != null ? Std.string(data.difficulty) : '',
+      MultiplayerData.parseLeaderboard(data));
+  }
+
+  function onErrorMessage(data:Dynamic):Void
+  {
+    var reason:String = (data != null && data.reason != null) ? Std.string(data.reason) : 'unknown';
+
+    if (reason == 'logged_in_elsewhere') return;
+
+    onError.dispatch(reason);
   }
 }

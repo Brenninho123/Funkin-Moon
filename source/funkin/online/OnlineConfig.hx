@@ -37,6 +37,32 @@ class OnlineConfig
     return '$host:$port';
   }
 
+  public static function set(newHost:String, newPort:Int):Bool
+  {
+    var cleanHost:String = StringTools.trim(newHost);
+
+    if (cleanHost == '' || cleanHost.length > 253 || cleanHost.indexOf(' ') >= 0 || newPort < 1 || newPort > 65535) return false;
+
+    load();
+
+    configuredHost = cleanHost;
+    configuredPort = newPort;
+
+    #if sys
+    try
+    {
+      File.saveContent(CONFIG_FILE, Json.stringify({host: cleanHost, port: newPort}, null, '  ') + '
+');
+    }
+    catch (e:Dynamic)
+    {
+      FlxG.log.warn('[OnlineConfig] Could not write $CONFIG_FILE: $e');
+    }
+    #end
+
+    return true;
+  }
+
   static function load():Void
   {
     if (loaded) return;

@@ -93,7 +93,7 @@ class OnlineMenuState extends MusicBeatState
     hostButton.antialiasing = true;
     add(hostButton);
 
-    connectButton = new FlxButton(460, 280, 'CONNECT', connectOnline);
+    connectButton = new FlxButton(460, 280, 'ROOMS', connectOnline);
     if (connectButton != null)
     {
       connectButton.color = 0xFF27C7A4;
@@ -244,7 +244,6 @@ class OnlineMenuState extends MusicBeatState
 
     FunkinMultiplayer.instance.onRoomJoined.add(onRoomReady);
     FunkinMultiplayer.instance.onRoomCreated.add(onRoomReady);
-    FunkinMultiplayer.instance.onSongStart.add(onSongStart);
   }
 
   function unregisterOnlineHandlers():Void
@@ -257,7 +256,6 @@ class OnlineMenuState extends MusicBeatState
 
     FunkinMultiplayer.instance.onRoomJoined.remove(onRoomReady);
     FunkinMultiplayer.instance.onRoomCreated.remove(onRoomReady);
-    FunkinMultiplayer.instance.onSongStart.remove(onSongStart);
   }
 
   override function update(elapsed:Float):Void
@@ -375,12 +373,16 @@ class OnlineMenuState extends MusicBeatState
    */
   function connectOnline():Void
   {
+    #if FEATURE_HAXEUI
+    FlxG.switchState(() -> new OnlineLobbyState(false));
+    #else
     if (FunkinOnline.instance.state == Disconnected)
     {
       FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
     }
 
     refreshStatus();
+    #end
   }
 
   function onOnlineConnected():Void
@@ -450,24 +452,12 @@ class OnlineMenuState extends MusicBeatState
 
   function startHost():Void
   {
-    trace('[MP] HOST clicked - abrindo HostMenuSubState');
-    if (statusText != null) statusText.text = 'Abrindo host...';
-
-    openSubState(new HostMenuSubState(currentAccount, (success:Bool) ->
-    {
-      hostLocked = false;
-      if (hostButton != null) hostButton.animation.play('idle', true);
-
-      if (success)
-      {
-        if (statusText != null) statusText.text = 'Indo pro Freeplay escolher a música...';
-        FlxG.switchState(() -> new funkin.ui.freeplay.FreeplayState());
-      }
-      else if (statusText != null)
-      {
-        refreshStatus();
-      }
-    }));
+    #if FEATURE_HAXEUI
+    FlxG.switchState(() -> new OnlineLobbyState(true));
+    #else
+    hostLocked = false;
+    if (hostButton != null) hostButton.animation.play('idle', true);
+    #end
   }
 
   override function destroy():Void

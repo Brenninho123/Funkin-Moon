@@ -55,6 +55,18 @@ class PauseSubState extends MusicBeatSubState
   // ===============
 
   /**
+   * Whether the game is in the middle of a round from the online server, where the song cannot be restarted or changed.
+   */
+  static function inOnlineMatch():Bool
+  {
+    #if FEATURE_ONLINE
+    return funkin.online.play.FunkinMultiplayer.instance.inMatch;
+    #else
+    return false;
+    #end
+  }
+
+  /**
    * Pause menu entries for when the game is paused during a song.
    */
   static final PAUSE_MENU_ENTRIES_STANDARD:Array<PauseMenuEntry> = [
@@ -64,21 +76,23 @@ class PauseSubState extends MusicBeatSubState
     },
     {
       text: 'Restart Song',
-      callback: restartPlayState
+      callback: restartPlayState,
+      filter: () -> !inOnlineMatch()
     },
     {
       text: 'Change Difficulty',
-      callback: switchMode.bind(_, Difficulty)
+      callback: switchMode.bind(_, Difficulty),
+      filter: () -> !inOnlineMatch()
     },
     {
       text: 'Enable Practice Mode',
       callback: enablePracticeMode,
-      filter: () -> !(PlayState.instance?.isPracticeMode ?? false)
+      filter: () -> !inOnlineMatch() && !(PlayState.instance?.isPracticeMode ?? false)
     },
     {
       text: 'Enable Showcase Mode',
       callback: enableShowcaseMode,
-      filter: () -> !(PlayState.instance?.isShowcaseMode ?? false)
+      filter: () -> !inOnlineMatch() && !(PlayState.instance?.isShowcaseMode ?? false)
     },
     {
       text: 'Disable Showcase Mode',
