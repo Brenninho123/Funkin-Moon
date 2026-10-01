@@ -4,6 +4,45 @@ All notable changes will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Moon 0.1.0] - 2026-10-01
+
+The first release of Moon Engine, a fork of Friday Night Funkin' 0.8.8 with a scripting API, new editors, an online mode with its own server, and video recording. The sections below are about Moon Engine only; the older entries are the changes of the original game.
+
+### Added
+
+- Lua scripting API for songs, stages and characters, with sprites, tweens, properties and script tools, and an HScript bridge between Lua and Haxe scripts. See `LUA_API.md` and `docs/SCRIPT_BRIDGE.md`.
+- Lua Script Editor in the Debug Menu with syntax checking, find and replace, go to line, completion, and a Lua Bot that runs a script against a fake song.
+- Cosmic Editor, a file editor for the game and mod files, with file watching, backups, a console, and the Mod Doctor that reports mod problems. See `docs/COSMIC_EDITOR.md`.
+- Modchart Editor and modchart files in JSON v2, with beats, repeats and macros, and new modifiers. See `docs/MODCHART_EDITOR.md`.
+- Music Editor for the tempo and time changes of a song, with a timeline, undo and autosave. See `docs/MUSIC_EDITOR.md`.
+- Animation Editor with playback, undo and character tools. See `docs/ANIMATION_EDITOR.md`.
+- Mod Menu to enable, disable and sort mods, with haptic feedback on mobile.
+- Video recording: F5 starts and stops recording the game window to the `videos` folder, Shift+F5 opens the folder. See `docs/VIDEO_RECORDING.md`.
+- Online mode and its server. See `docs/ONLINE.md` and `server/README.md`.
+  - A standalone C++ server with player presence, rooms, chat, a leaderboard, player records and quick match.
+  - Rooms with a host, public and private rooms, ready flags, kicking, results and ranking, and a shared seed for each round.
+  - Discord login run by the server, so the game never sees the application secret.
+  - Reconnecting: a player who loses the connection keeps the place in the room for 30 seconds and gets the room, and the results they missed, back.
+  - Checks for impossible scores, rate limits and connection limits.
+  - An admin API with bans, kicks, announcements and closing rooms, plus a `/metrics` page.
+  - Online menu and lobby built with HaxeUI, with the Discord login card, the server card, the list of players online, the leaderboard and your record.
+- JSON title screen: the title screen can be changed by a mod with a data file. See `docs/TITLE_SCREEN.md`.
+- Touch controls in the Debug Menu and the editors, and a back button for mobile.
+- Frame time metrics and stutter detection in the debug display.
+
+### Changed
+
+- The Debug Menu, the Pause menu, the Cosmic Editor, the Music Editor, the Lua Script Editor and the Animation Editor were rebuilt with the new interface.
+- Fullscreen is more reliable.
+- The hot reload of the assets moved from F5 to Ctrl+F5, because F5 records videos now. The Cosmic Editor and the Lua Script Editor keep F5 for reloading and running while they are open.
+- The release workflow is started by hand, builds Windows, Linux, macOS, Android and iOS (not HTML5), and takes the release notes from this file.
+
+### Fixed
+
+- Bitmaps that cannot be decoded are reported instead of crashing the game with a null reference.
+- The heartbeat of the online connection stopped after leaving a song, which made the server drop the player. The online timers now survive state changes.
+- Polymod reads Lua scripts correctly.
+
 ## [0.8.7] - 2026-08-23
 
 ### Fixed

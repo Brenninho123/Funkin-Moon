@@ -2,19 +2,260 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Moon Engine version to release, without the v (the section of CHANGELOG.md with this version becomes the release notes)'
+        required: true
+        default: '0.1.0'
+        type: string
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        required: true
+        default: true
+        type: boolean
+      draft:
+        description: 'Create the release as a draft so it can be checked before publishing'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   HAXE_VERSION: 4.3.7
-  RELEASE_TAG: v0.8.5.1-playtest
+  VERSION: ${{ inputs.version }}
+  RELEASE_TAG: v${{ inputs.version }}
 
 jobs:
+  check:
+    name: Check the version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the version format
+        shell: bash
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "The version '$VERSION' is not valid. Use something like 0.1.0 or 0.2.0-beta.1."
+            exit 1
+          fi
+
+  windows:
+    name: Windows
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Build hxcpp
+        shell: bash
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\r\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime
+        shell: bash
+        run: haxelib run lime rebuild windows
+
+      - name: Build Windows
+        shell: bash
+        run: haxelib run lime build windows -release -DGITHUB_BUILD
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-artifacts | Out-Null
+          Compress-Archive -Path "export/release/windows/bin/*" -DestinationPath "release-artifacts/MoonEngine-$env:VERSION-windows.zip" -CompressionLevel Optimal
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: release-artifacts/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  linux:
+    name: Linux
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Linux dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ \
+            libdbus-1-dev \
+            libasound2-dev \
+            libudev-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libwayland-bin \
+            wayland-protocols \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxss-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libvlc-dev \
+            libvlccore-dev \
+            pkg-config
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Build hxcpp
+        shell: bash
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime
+        shell: bash
+        run: haxelib run lime rebuild linux
+
+      - name: Build Linux
+        shell: bash
+        run: haxelib run lime build linux -release -DGITHUB_BUILD
+
+      - name: Package Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          tar -czf "release-artifacts/MoonEngine-$VERSION-linux.tar.gz" -C export/release/linux/bin .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: release-artifacts/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  macos:
+    name: macOS
+    needs: check
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Install HMM
+        shell: bash
+        run: haxelib install hmm --quiet
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          rm -rf .haxelib
+          haxelib run hmm install
+
+      - name: Build hxcpp
+        shell: bash
+        run: |
+          HXCPP_PATH=$(haxelib libpath hxcpp | tr -d '\n')
+          cd "$HXCPP_PATH/tools/hxcpp"
+          haxe compile.hxml
+
+      - name: Rebuild Lime
+        shell: bash
+        run: haxelib run lime rebuild mac -arm64
+
+      - name: Build macOS
+        shell: bash
+        run: haxelib run lime build mac -arm64 -release -DGITHUB_BUILD
+
+      - name: Package macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          cd export/release/macos/bin
+          zip -ryq "$GITHUB_WORKSPACE/release-artifacts/MoonEngine-$VERSION-macos.zip" .
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: release-artifacts/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
   android:
     name: Android
+    needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -119,18 +360,34 @@ jobs:
         shell: bash
         run: haxelib run lime build android -release -DGITHUB_BUILD
 
+      - name: Package Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          APK=$(find export/release/android -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "Could not find an APK in export/release/android"
+            exit 1
+          fi
+
+          cp "$APK" "release-artifacts/MoonEngine-$VERSION-android.apk"
+
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: export/release/android/**/*.apk
+          path: release-artifacts/*.apk
           if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
   ios:
     name: iOS
+    needs: check
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -190,14 +447,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CONFIGURATION_BUILD_DIR=build/Release-iphoneos
 
-      - name: Package iOS artifact
+      - name: Package iOS
         shell: bash
         run: |
           set -euo pipefail
           BUILD_DIR=export/release/ios/build/Release-iphoneos
 
           cd "$BUILD_DIR"
-          APP_PATH=$(find . -maxdepth 1 -name "*.app")
+          APP_PATH=$(find . -maxdepth 1 -name "*.app" | head -n 1)
 
           if [ -z "$APP_PATH" ]; then
             echo "Could not find .app bundle in $BUILD_DIR"
@@ -206,10 +463,10 @@ jobs:
 
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
-          zip -r "Funkin-PlayTest-${{ env.RELEASE_TAG }}-ios.ipa" Payload
+          zip -ryq "MoonEngine-$VERSION-ios.ipa" Payload
 
           mkdir -p "$GITHUB_WORKSPACE/release-artifacts"
-          cp "Funkin-PlayTest-${{ env.RELEASE_TAG }}-ios.ipa" "$GITHUB_WORKSPACE/release-artifacts/"
+          cp "MoonEngine-$VERSION-ios.ipa" "$GITHUB_WORKSPACE/release-artifacts/"
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
@@ -217,11 +474,12 @@ jobs:
           name: ios-release
           path: release-artifacts/*.ipa
           if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
   release:
     name: Publish Release
-    needs: [android, ios]
+    needs: [windows, linux, macos, android, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -231,24 +489,52 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Download Android artifact
+      - name: Download the builds
         uses: actions/download-artifact@v4
         with:
-          name: android-release
           path: release-artifacts
+          merge-multiple: true
 
-      - name: Download iOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-release
-          path: release-artifacts
+      - name: Write the release notes
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          awk -v v="$VERSION" '
+            /^## \[/ {
+              if (printing) exit
+              if (index($0, "[" v "]") > 0 || index($0, "[Moon " v "]") > 0) printing = 1
+            }
+            printing
+          ' CHANGELOG.md > release-notes.md
+
+          if [ -s release-notes.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No section for $VERSION in CHANGELOG.md, the notes will be generated from the commits."
+            echo "Moon Engine $VERSION" > release-notes.md
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          cat release-notes.md
+
+      - name: Checksums
+        shell: bash
+        run: |
+          cd release-artifacts
+          sha256sum * > "SHA256SUMS-$VERSION.txt"
+          cat "SHA256SUMS-$VERSION.txt"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: ${{ env.RELEASE_TAG }}
-          draft: false
-          prerelease: true
-          generate_release_notes: true
+          target_commitish: ${{ github.sha }}
+          name: Moon Engine ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
+          fail_on_unmatched_files: true
           files: release-artifacts/*
