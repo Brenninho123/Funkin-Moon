@@ -11,6 +11,7 @@ typedef MultiplayerMember =
   var combo:Int;
   var accuracy:Float;
   var isHost:Bool;
+  var away:Bool;
 }
 
 typedef MultiplayerRoom =
@@ -77,6 +78,24 @@ typedef MultiplayerChatMessage =
   var scope:String;
 }
 
+typedef MultiplayerStats =
+{
+  var id:String;
+  var username:String;
+  var found:Bool;
+  var roundsPlayed:Int;
+  var roundsWon:Int;
+  var songsFinished:Int;
+  var totalScore:Int;
+  var bestScore:Int;
+}
+
+typedef MultiplayerResume =
+{
+  var room:MultiplayerRoom;
+  var results:Null<MultiplayerResults>;
+}
+
 typedef MultiplayerLeaderboardEntry =
 {
   var rank:Int;
@@ -128,8 +147,56 @@ class MultiplayerData
       score: integer(data.score),
       combo: integer(data.combo),
       accuracy: number(data.accuracy),
-      isHost: flag(data.isHost)
+      isHost: flag(data.isHost),
+      away: flag(data.away)
     };
+  }
+
+  public static function parseStats(data:Dynamic):Null<MultiplayerStats>
+  {
+    if (data == null) return null;
+
+    return {
+      id: text(data.id),
+      username: text(data.username, 'Player'),
+      found: flag(data.found),
+      roundsPlayed: integer(data.roundsPlayed),
+      roundsWon: integer(data.roundsWon),
+      songsFinished: integer(data.songsFinished),
+      totalScore: integer(data.totalScore),
+      bestScore: integer(data.bestScore)
+    };
+  }
+
+  public static function parseResume(data:Dynamic):Null<MultiplayerResume>
+  {
+    var room:Null<MultiplayerRoom> = parseRoom(data);
+
+    if (room == null) return null;
+
+    return {
+      room: room,
+      results: data.results == null ? null : parseResults(data.results)
+    };
+  }
+
+  public static function describeStats(stats:MultiplayerStats):String
+  {
+    if (!stats.found || (stats.roundsPlayed == 0 && stats.songsFinished == 0)) return 'No songs finished on this server yet.';
+
+    var lines:Array<String> = [
+      plural(stats.songsFinished, 'song') + ' finished',
+      plural(stats.roundsPlayed, 'online round') + ', ' + stats.roundsWon + ' won'
+    ];
+
+    if (stats.bestScore > 0) lines.push('Best score ' + formatScore(stats.bestScore));
+
+    return lines.join('\n');
+  }
+
+  public static function plural(count:Int, noun:String):String
+  {
+    return count + ' ' + noun + (count == 1 ? '' : 's');
   }
 
   public static function parseRoom(data:Dynamic):Null<MultiplayerRoom>
@@ -295,7 +362,13 @@ class MultiplayerData
       case 'unknown_member': 'That player is not in the room.';
       case 'rate_limited': 'You are sending too much. Slow down.';
       case 'server_full': 'The server is full.';
-      case 'kicked': 'The host removed you from the room.';
+      case 'kicked': 'You were removed from the room.';
+      case 'banned': 'You are banned from this server.';
+      case 'cheating': 'You were removed from the room because your scores were not valid.';
+      case 'closed_by_admin': 'The room was closed by the server.';
+      case 'timeout': 'The player did not come back in time.';
+      case 'score_rejected': 'That score was rejected by the server.';
+      case 'logged_in_elsewhere': 'You logged in from another place.';
       case 'disconnected': 'The connection to the server was lost.';
       case 'not_joined': 'The server has not accepted you yet.';
       default: 'The server said: ' + reason;
@@ -348,6 +421,8 @@ class MultiplayerData
   {
     for (member in room.members)
     {
+      if (member.away) return false;
+
       if (member.id != room.hostId && !member.ready) return false;
     }
 

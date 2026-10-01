@@ -38,6 +38,7 @@ class OnlineLobbyState extends UIState
   static final MAX_CHAT_LINES:Int = 80;
 
   var autoCreate:Bool;
+  var autoQuick:Bool;
   var boardWanted:Bool;
   var syncing:Bool = true;
   var songIds:Array<String> = [];
@@ -49,11 +50,12 @@ class OnlineLobbyState extends UIState
   var starting:Bool = false;
   var multiplayer:FunkinMultiplayer;
 
-  public function new(autoCreate:Bool = false, openLeaderboard:Bool = false)
+  public function new(autoCreate:Bool = false, openLeaderboard:Bool = false, quickMatch:Bool = false)
   {
     super();
 
     this.autoCreate = autoCreate;
+    this.autoQuick = quickMatch;
     this.boardWanted = openLeaderboard;
     this.multiplayer = FunkinMultiplayer.instance;
   }
@@ -113,6 +115,7 @@ class OnlineLobbyState extends UIState
       refreshRooms();
 
       if (autoCreate) createRoomNow();
+      else if (autoQuick) quickMatchNow();
     }
 
     if (boardWanted && multiplayer.currentRoom == null)
@@ -157,6 +160,11 @@ class OnlineLobbyState extends UIState
     multiplayer.onRoomsListed.add(onRoomsListedSignal);
     multiplayer.onLeaderboard.add(onLeaderboardSignal);
     multiplayer.onError.add(onErrorSignal);
+    multiplayer.onConnectionLost.add(onConnectionLostSignal);
+    multiplayer.onConnectionRestored.add(onConnectionRestoredSignal);
+    multiplayer.onPlayerAway.add(onPlayerAwaySignal);
+    multiplayer.onPlayerBack.add(onPlayerBackSignal);
+    FunkinOnline.instance.onNotice.add(onNoticeSignal);
   }
 
   function unregisterSignals():Void
@@ -181,6 +189,11 @@ class OnlineLobbyState extends UIState
     multiplayer.onRoomsListed.remove(onRoomsListedSignal);
     multiplayer.onLeaderboard.remove(onLeaderboardSignal);
     multiplayer.onError.remove(onErrorSignal);
+    multiplayer.onConnectionLost.remove(onConnectionLostSignal);
+    multiplayer.onConnectionRestored.remove(onConnectionRestoredSignal);
+    multiplayer.onPlayerAway.remove(onPlayerAwaySignal);
+    multiplayer.onPlayerBack.remove(onPlayerBackSignal);
+    FunkinOnline.instance.onNotice.remove(onNoticeSignal);
   }
 
   function toast(message:String, type:NotificationType = NotificationType.Info):Void
@@ -267,6 +280,10 @@ class OnlineLobbyState extends UIState
       {
         autoCreate = false;
         createRoomNow();
+      }
+      else if (autoQuick && !starting)
+      {
+        quickMatchNow();
       }
     }
   }
@@ -394,6 +411,19 @@ class OnlineLobbyState extends UIState
     multiplayer.createRoom(createName.text, createPublic.selected, Std.int(createMax.pos));
   }
 
+  function quickMatchNow():Void
+  {
+    if (!FunkinOnline.instance.isConnected())
+    {
+      browserHint.text = 'Wait for the connection, then look for a match.';
+      return;
+    }
+
+    autoQuick = false;
+    browserHint.text = 'Looking for a match...';
+    multiplayer.quickMatch();
+  }
+
   function joinByCode():Void
   {
     var code:String = MultiplayerData.normalizeCode(joinCode.text);
@@ -495,6 +525,8 @@ class OnlineLobbyState extends UIState
   {
     if (room.state == MultiplayerData.STATE_PLAYING) return member.finished ? 'finished ' + MultiplayerData.formatScore(member.score) : 'playing';
 
+    if (member.away) return 'reconnecting';
+
     if (member.id == room.hostId) return 'host';
 
     return member.ready ? 'ready' : 'waiting';
@@ -565,7 +597,7 @@ class OnlineLobbyState extends UIState
     readyToggle.hidden = host;
 
     startMatch.hidden = !host;
-    startMatch.disabled = room.state != MultiplayerData.STATE_LOBBY || room.songId == null || !songKnown(room.songId) || room.members.length < 2
+    startMatch.disabled = multiplayer.connectionLost || room.state != MultiplayerData.STATE_LOBBY || room.songId == null || !songKnown(room.songId) || room.members.length < 2
       || !MultiplayerData.everyoneReady(room);
 
     lobbyStatus.text = describeLobby(room, host);
@@ -575,6 +607,12 @@ class OnlineLobbyState extends UIState
 
   function describeLobby(room:MultiplayerRoom, host:Bool):String
   {
+    if (multiplayer.connectionLost) return 'The connection was lost. Trying to bring you back to the room...';
+
+    var away:Array<String> = [for (member in room.members) if (member.away) member.username];
+
+    if (away.length > 0 && room.state != MultiplayerData.STATE_PLAYING) return 'Waiting for ' + away.join(', ') + ' to reconnect.';
+
     if (room.state == MultiplayerData.STATE_PLAYING) return 'A round is in progress.';
     if (room.songId == null) return host ? 'Pick a song to begin.' : 'The host is choosing a song.';
     if (room.members.length < 2) return 'Waiting for more players. Share the code ' + MultiplayerData.formatCode(room.roomId) + '.';
@@ -596,6 +634,35 @@ class OnlineLobbyState extends UIState
   function onPlayerLeftSignal(userId:String):Void
   {
     appendSystem('A player left the room.');
+  }
+
+  function onConnectionLostSignal():Void
+  {
+    toast('The connection was lost. Trying to bring you back to the room...', NotificationType.Warning);
+    refreshServerStatus();
+  }
+
+  function onConnectionRestoredSignal():Void
+  {
+    toast('You are back in the room.', NotificationType.Success);
+    refreshServerStatus();
+  }
+
+  function onPlayerAwaySignal(userId:String):Void
+  {
+    appendSystem(MultiplayerData.nameOf(multiplayer.currentRoom, userId) + ' lost the connection.');
+  }
+
+  function onPlayerBackSignal(userId:String):Void
+  {
+    appendSystem(MultiplayerData.nameOf(multiplayer.currentRoom, userId) + ' is back.');
+  }
+
+  function onNoticeSignal(text:String, kind:String):Void
+  {
+    if (text == '') return;
+
+    toast(text, kind == 'announcement' ? NotificationType.Info : NotificationType.Warning);
   }
 
   function onHostChangedSignal(hostId:String):Void

@@ -16,8 +16,10 @@
 
 #include "config.hpp"
 #include "http_client.hpp"
+#include "moderation.hpp"
 #include "net.hpp"
 #include "rooms.hpp"
+#include "stats.hpp"
 #include "util.hpp"
 
 using json = nlohmann::json;
@@ -35,11 +37,14 @@ constexpr int64_t JoinTimeoutMs = 10000;
 constexpr int64_t IdleTimeoutMs = 45000;
 constexpr int64_t HttpTimeoutMs = 30000;
 constexpr int64_t AuthTtlMs = 5 * 60 * 1000;
+constexpr int MaxScoreViolations = 5;
+constexpr size_t MaxAdminAttempts = 10;
 constexpr double RateBurst = 120.0;
 constexpr double RatePerSecond = 50.0;
 constexpr const char* UserAgent = "MoonEngineServer (https://github.com/Brenninho123/Funkin-Moon, 1.0)";
 
 std::atomic<bool> gRunning{true};
+std::string gLogFile;
 
 void onSignal(int)
 {
@@ -52,6 +57,13 @@ void log(const std::string& message)
   char stamp[32];
   std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
   std::cout << "[" << stamp << "] " << message << std::endl;
+
+  if (!gLogFile.empty())
+  {
+    std::ofstream file(gLogFile, std::ios::app);
+
+    if (file.good()) file << "[" << stamp << "] " << message << '\n';
+  }
 }
 
 std::string jsonString(const json& object, const char* key)
@@ -158,6 +170,8 @@ struct Client
   std::string tokenHash;
   std::string pendingState;
   std::string roomId;
+  std::string resumeKey;
+  bool forceLeave = false;
   int64_t lastChat = 0;
 };
 
@@ -165,6 +179,21 @@ struct PendingAuth
 {
   uint64_t clientSerial = 0;
   int64_t expires = 0;
+};
+
+struct Metrics
+{
+  uint64_t connections = 0;
+  uint64_t messages = 0;
+  uint64_t joins = 0;
+  uint64_t roomsCreated = 0;
+  uint64_t roundsStarted = 0;
+  uint64_t roundsFinished = 0;
+  uint64_t reconnects = 0;
+  uint64_t scoreViolations = 0;
+  uint64_t rateLimited = 0;
+  uint64_t bannedRefusals = 0;
+  uint64_t httpRequests = 0;
 };
 
 struct HttpConn
@@ -177,6 +206,7 @@ struct HttpConn
   bool waiting = false;
   bool closeWhenFlushed = false;
   bool closing = false;
+  std::string remote;
 };
 
 struct AuthResult
@@ -197,6 +227,43 @@ std::string firstToken(const std::string& text, size_t& position)
   while (position < text.size() && text[position] == ' ') position++;
 
   return token;
+}
+
+std::string headerValue(const std::string& request, const std::string& name)
+{
+  std::string lowerRequest = request;
+  std::string lowerName = name;
+
+  std::transform(lowerRequest.begin(), lowerRequest.end(), lowerRequest.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+  std::string needle = "\r\n" + lowerName + ":";
+  size_t start = lowerRequest.find(needle);
+
+  if (start == std::string::npos) return std::string();
+
+  start += needle.size();
+
+  size_t end = request.find("\r\n", start);
+
+  if (end == std::string::npos) end = request.size();
+
+  std::string value = request.substr(start, end - start);
+
+  while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) value.erase(value.begin());
+  while (!value.empty() && (value.back() == ' ' || value.back() == '\t')) value.pop_back();
+
+  return value;
+}
+
+bool sameSecret(const std::string& a, const std::string& b)
+{
+  unsigned char diff = static_cast<unsigned char>(a.size() != b.size());
+  size_t length = std::min(a.size(), b.size());
+
+  for (size_t i = 0; i < length; i++) diff |= static_cast<unsigned char>(a[i] ^ b[i]);
+
+  return diff == 0;
 }
 
 std::map<std::string, std::string> parseQuery(const std::string& query)
@@ -353,11 +420,17 @@ public:
     }
 
     std::filesystem::create_directories(config.dataDir);
+    gLogFile = config.logFile;
     loadSessions();
     leaderboard.load(leaderboardPath());
+    stats.load(statsPath());
+    bans.load(bansPath());
+    bans.purgeExpired(nowMs());
 
     log(config.serverName + " listening on " + config.bindAddress + ":" + std::to_string(config.port) + " (game) and :" + std::to_string(config.httpPort) + " (http)");
     log(config.discord.enabled() ? "discord login enabled, redirect uri " + config.discord.redirectUri : "discord login disabled (set MOON_DISCORD_CLIENT_ID and MOON_DISCORD_CLIENT_SECRET)");
+    log(config.adminToken.empty() ? "admin api disabled (set MOON_ADMIN_TOKEN to at least 16 characters)" : "admin api enabled");
+    log("loaded " + std::to_string(stats.size()) + " player stats and " + std::to_string(bans.size()) + " bans");
 
     int64_t lastTick = nowMs();
 
@@ -408,7 +481,8 @@ public:
 
     log("shutting down");
 
-    if (leaderboard.isDirty()) saveLeaderboard();
+    announceShutdown();
+    saveAll();
 
     for (auto& entry : clients) net::closeSocket(entry.second->socket);
     for (auto& entry : httpConns) net::closeSocket(entry.second->socket);
@@ -438,7 +512,12 @@ private:
   std::atomic<int> activeJobs{0};
   std::map<std::string, Room> rooms;
   Leaderboard leaderboard;
+  StatsBook stats;
+  BanList bans;
+  Metrics metrics;
+  std::map<std::string, size_t> adminFailures;
   int64_t lastScoreSave = 0;
+  int64_t lastAdminReset = 0;
   std::mt19937 rng{std::random_device{}()};
 
   static void addPoll(std::vector<net::PollFd>& fds, std::vector<std::pair<int, uint64_t>>& owners, net::Socket socket, int events, int kind,
@@ -537,6 +616,7 @@ private:
       client->lastReceive = client->connectedAt;
       client->lastRefill = client->connectedAt;
       clients[client->serial] = std::move(client);
+      metrics.connections++;
     }
   }
 
@@ -559,6 +639,7 @@ private:
       conn->serial = nextSerial++;
       conn->socket = socket;
       conn->createdAt = nowMs();
+      conn->remote = remote;
       httpConns[conn->serial] = std::move(conn);
     }
   }
@@ -580,7 +661,8 @@ private:
 
     client.detached = true;
 
-    leaveRoom(client, "disconnected");
+    if (!client.roomId.empty() && client.joined && !client.forceLeave && config.reconnectGraceSeconds > 0) markAway(client);
+    else leaveRoom(client, "disconnected");
 
     if (!client.pendingState.empty()) pendingAuth.erase(client.pendingState);
 
@@ -675,6 +757,8 @@ private:
       {
         if (!takeToken(client))
         {
+          metrics.rateLimited++;
+          client.forceLeave = true;
           sendError(client, "rate_limited");
           closeClient(client, "rate limited");
           return false;
@@ -794,6 +878,8 @@ private:
 
     if (message.is_discarded() || !message.is_object()) return;
 
+    metrics.messages++;
+
     std::string type = jsonString(message, "type");
     json data = message.contains("data") && message["data"].is_object() ? message["data"] : json::object();
 
@@ -828,6 +914,10 @@ private:
     else if (type == "leaderboard")
     {
       handleLeaderboard(client, data);
+    }
+    else if (type == "stats")
+    {
+      handleStats(client, data);
     }
     else if (type.rfind("mp_", 0) == 0)
     {
@@ -876,7 +966,8 @@ private:
                 {"score", member.score},
                 {"combo", member.combo},
                 {"accuracy", member.accuracy},
-                {"isHost", member.serial == room.hostSerial}};
+                {"isHost", member.serial != 0 && member.serial == room.hostSerial},
+                {"away", member.away}};
   }
 
   json roomJson(const Room& room) const
@@ -959,6 +1050,7 @@ private:
     member.username = client.player.username;
     member.avatarUrl = client.player.avatarUrl;
     member.joinedAt = nowMs();
+    member.authenticated = client.player.authenticated;
 
     return member;
   }
@@ -1016,6 +1108,7 @@ private:
 
     rooms[code] = room;
     client.roomId = code;
+    metrics.roomsCreated++;
 
     log("room " + code + " created by " + client.player.username + " (" + std::to_string(rooms.size()) + " rooms)");
 
@@ -1083,6 +1176,15 @@ private:
 
     removeMember(*room, client.serial);
 
+    finishRemoval(roomId, leavingId, wasHost, reason);
+  }
+
+  void finishRemoval(const std::string& roomId, const std::string& leavingId, bool wasHost, const std::string& reason)
+  {
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr) return;
+
     if (room->members.empty())
     {
       rooms.erase(roomId);
@@ -1090,21 +1192,123 @@ private:
       return;
     }
 
-    if (wasHost) room->hostSerial = room->members.front().serial;
+    bool hostChanged = false;
 
-    json left = {{"userId", leavingId}, {"reason", reason}, {"hostId", roomHostId(*room)}};
+    if (wasHost || room->hostSerial == 0)
+    {
+      uint64_t next = firstConnectedSerial(*room);
+      hostChanged = next != room->hostSerial;
+      room->hostSerial = next;
+    }
 
-    sendToRoom(*room, "mp_playerLeft", left);
+    sendToRoom(*room, "mp_playerLeft", json{{"userId", leavingId}, {"reason", reason}, {"hostId", roomHostId(*room)}});
 
     room = findRoom(roomId);
 
     if (room == nullptr) return;
 
-    if (wasHost) sendToRoom(*room, "mp_hostChanged", json{{"hostId", roomHostId(*room)}});
+    if (hostChanged && room->hostSerial != 0) sendToRoom(*room, "mp_hostChanged", json{{"hostId", roomHostId(*room)}});
 
     room = findRoom(roomId);
 
     if (room != nullptr && room->state == "playing") evaluateRound(roomId, false);
+  }
+
+  void markAway(Client& client)
+  {
+    std::string roomId = client.roomId;
+    client.roomId.clear();
+
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr) return;
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr) return;
+
+    bool wasHost = room->hostSerial == client.serial;
+
+    member->away = true;
+    member->awayUntil = nowMs() + static_cast<int64_t>(config.reconnectGraceSeconds) * 1000;
+    member->resumeKey = client.resumeKey;
+    member->serial = 0;
+    member->ready = member->ready && room->state == "lobby";
+
+    std::string memberId = member->id;
+    bool hostChanged = false;
+
+    if (wasHost)
+    {
+      room->hostSerial = firstConnectedSerial(*room);
+      hostChanged = room->hostSerial != 0;
+    }
+
+    log(client.player.username + " lost connection in room " + roomId + ", holding the place for " + std::to_string(config.reconnectGraceSeconds) + "s");
+
+    sendToRoom(*room, "mp_playerAway", json{{"userId", memberId}, {"graceSeconds", config.reconnectGraceSeconds}, {"hostId", roomHostId(*room)}});
+
+    room = findRoom(roomId);
+
+    if (room != nullptr && hostChanged) sendToRoom(*room, "mp_hostChanged", json{{"hostId", roomHostId(*room)}});
+  }
+
+  void dropAwayMember(const std::string& roomId, const std::string& memberId)
+  {
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr || findAwayMemberById(*room, memberId) == nullptr) return;
+
+    removeMemberById(*room, memberId);
+
+    log(memberId + " did not come back to room " + roomId);
+
+    finishRemoval(roomId, memberId, false, "timeout");
+  }
+
+  void expireAwayMembers(int64_t now)
+  {
+    std::vector<std::pair<std::string, std::string>> expired;
+
+    for (const auto& entry : rooms)
+    {
+      for (const auto& member : entry.second.members)
+      {
+        if (member.away && member.awayUntil <= now) expired.emplace_back(entry.first, member.id);
+      }
+    }
+
+    for (const auto& item : expired) dropAwayMember(item.first, item.second);
+  }
+
+  bool resumeRoom(Client& client, const std::string& key, RoomMember*& memberOut, Room*& roomOut)
+  {
+    if (!key.empty())
+    {
+      for (auto& entry : clients)
+      {
+        Client& other = *entry.second;
+
+        if (other.serial != client.serial && !other.detached && !other.closing && other.resumeKey == key) closeClient(other, "replaced by a reconnect");
+      }
+    }
+
+    for (auto& entry : rooms)
+    {
+      RoomMember* member = findMemberByResumeKey(entry.second, key);
+
+      if (member == nullptr && client.player.authenticated) member = findAwayMemberById(entry.second, client.player.id);
+
+      if (member != nullptr)
+      {
+        memberOut = member;
+        roomOut = &entry.second;
+
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void handleSelectSong(Client& client, const json& data)
@@ -1215,6 +1419,7 @@ private:
     room->firstFinishAt = 0;
     room->seed = static_cast<int64_t>(rng() & 0x7fffffff);
     room->round++;
+    metrics.roundsStarted++;
 
     json players = json::array();
 
@@ -1239,9 +1444,29 @@ private:
                     {"players", players}});
   }
 
-  void readScore(RoomMember& member, const json& data)
+  void readScore(Client& client, Room& room, RoomMember& member, const json& data)
   {
-    member.score = clampInt(jsonInt(data, "score", member.score), -2000000000, 2000000000);
+    int64_t ceiling = scoreCeiling(nowMs() - room.startedAt, config.maxScorePerSecond, config.scoreBurst);
+    int64_t reported = clampInt(jsonInt(data, "score", member.score), -2000000000, 2000000000);
+
+    if (reported > ceiling)
+    {
+      reported = std::max<int64_t>(std::min(member.score, ceiling), 0);
+      metrics.scoreViolations++;
+      member.violations++;
+
+      log("score out of range from " + member.username + " in room " + room.id + " (" + std::to_string(member.violations) + "/" + std::to_string(MaxScoreViolations) + ")");
+
+      if (member.violations >= MaxScoreViolations)
+      {
+        client.forceLeave = true;
+        send(client, "mp_roomClosed", json{{"reason", "cheating"}});
+        leaveRoom(client, "removed");
+        return;
+      }
+    }
+
+    member.score = reported;
     member.combo = clampInt(jsonInt(data, "combo", member.combo), 0, 1000000);
     member.health = clampDouble(jsonDouble(data, "health", member.health), 0.0, 2.0);
     member.accuracy = clampDouble(jsonDouble(data, "accuracy", member.accuracy), 0.0, 100.0);
@@ -1267,7 +1492,15 @@ private:
 
     if (member == nullptr || member->finished) return;
 
-    readScore(*member, data);
+    readScore(client, *room, *member, data);
+
+    room = roomOf(client);
+
+    if (room == nullptr) return;
+
+    member = findMember(*room, client.serial);
+
+    if (member == nullptr) return;
 
     sendToRoom(*room, "mp_scoreUpdate", scoreJson(*member), client.serial);
   }
@@ -1303,7 +1536,16 @@ private:
 
     if (member == nullptr || member->finished) return;
 
-    readScore(*member, data);
+    readScore(client, *room, *member, data);
+
+    room = roomOf(client);
+
+    if (room == nullptr) return;
+
+    member = findMember(*room, client.serial);
+
+    if (member == nullptr) return;
+
     member->finished = true;
 
     if (room->firstFinishAt == 0) room->firstFinishAt = nowMs();
@@ -1345,14 +1587,27 @@ private:
 
     json results = {{"songId", room->songId}, {"difficultyId", room->difficultyId}, {"variation", room->variation}, {"round", room->round}, {"rankings", rankings}};
 
+    bool contested = room->members.size() >= 2;
+    int64_t now = nowMs();
+
+    for (const auto& ranked : rankMembers(room->members))
+    {
+      const RoomMember& member = ranked.member;
+
+      stats.recordRound(StatsBook::keyFor(member.authenticated, member.id, member.username), member.username, contested && member.finished && ranked.rank == 1, now);
+    }
+
     room->state = "lobby";
     room->startedAt = 0;
     room->firstFinishAt = 0;
+    room->lastResults = results;
+    metrics.roundsFinished++;
 
     for (auto& member : room->members)
     {
       member.ready = false;
       member.finished = false;
+      member.missedResults = member.away;
     }
 
     log("room " + roomId + " finished " + room->songId);
@@ -1463,6 +1718,71 @@ private:
     sendToRoom(*room, "mp_roomState", roomJson(*room));
   }
 
+  void handleQuickMatch(Client& client)
+  {
+    if (!client.roomId.empty())
+    {
+      roomFailure(client, "already_in_room");
+      return;
+    }
+
+    Room* best = nullptr;
+
+    for (auto& entry : rooms)
+    {
+      Room& candidate = entry.second;
+
+      if (!candidate.isPublic || candidate.state != "lobby" || candidate.members.size() >= candidate.maxPlayers) continue;
+      if (firstConnectedSerial(candidate) == 0) continue;
+
+      if (best == nullptr || candidate.members.size() > best->members.size()) best = &candidate;
+    }
+
+    if (best != nullptr)
+    {
+      handleJoinRoom(client, json{{"roomId", best->id}});
+      return;
+    }
+
+    handleCreateRoom(client, json{{"isPublic", true}, {"maxPlayers", 4}, {"name", client.player.username + "'s match"}});
+  }
+
+  std::string statsKeyFor(const std::string& id)
+  {
+    if (id.empty()) return std::string();
+
+    for (const auto& entry : clients)
+    {
+      const Client& other = *entry.second;
+
+      if (other.joined && !other.closing && other.player.id == id) return StatsBook::keyFor(other.player.authenticated, other.player.id, other.player.username);
+    }
+
+    return id;
+  }
+
+  json statsJson(const std::string& key, const std::string& shownId)
+  {
+    const PlayerStats* found = stats.find(key);
+    PlayerStats empty;
+    json result = (found != nullptr ? *found : empty).toJson(shownId);
+
+    result["found"] = found != nullptr;
+
+    return result;
+  }
+
+  void handleStats(Client& client, const json& data)
+  {
+    std::string wanted = sanitizeText(jsonString(data, "userId"), 80);
+    std::string key = wanted.empty() ? StatsBook::keyFor(client.player.authenticated, client.player.id, client.player.username) : statsKeyFor(wanted);
+    json result = statsJson(key, wanted.empty() ? client.player.id : wanted);
+
+    if (wanted.empty() || wanted == client.player.id) result["username"] = client.player.username;
+
+    send(client, "stats", result);
+  }
+
   bool handleRoomMessage(Client& client, const std::string& type, const json& data)
   {
     if (type == "mp_createRoom") handleCreateRoom(client, data);
@@ -1478,6 +1798,7 @@ private:
     else if (type == "mp_chat") handleChat(client, data);
     else if (type == "mp_kick") handleKick(client, data);
     else if (type == "mp_roomSettings") handleRoomSettings(client, data);
+    else if (type == "mp_quickMatch") handleQuickMatch(client);
     else return false;
 
     return true;
@@ -1496,12 +1817,15 @@ private:
     member->id = client.player.id;
     member->username = client.player.username;
     member->avatarUrl = client.player.avatarUrl;
+    member->authenticated = client.player.authenticated;
 
     sendToRoom(*room, "mp_memberUpdated", json{{"oldId", oldId}, {"member", memberJson(*room, *member)}, {"hostId", roomHostId(*room)}});
   }
 
   void recordScore(Client& client, const std::string& songId, const std::string& difficulty, int64_t score)
   {
+    stats.recordSong(StatsBook::keyFor(client.player.authenticated, client.player.id, client.player.username), client.player.username, score, nowMs());
+
     ScoreEntry entry;
     entry.authenticated = client.player.authenticated;
     entry.id = client.player.authenticated ? client.player.id : "g:" + client.player.username;
@@ -1520,6 +1844,20 @@ private:
     if (difficulty.empty()) difficulty = jsonString(data, "difficultyId");
 
     int64_t score = clampInt(jsonInt(data, "score", 0), 0, 2000000000);
+
+    if (score > config.maxSongScore)
+    {
+      metrics.scoreViolations++;
+      log("rejected song result from " + client.player.username + ": " + std::to_string(score));
+      sendError(client, "score_rejected");
+      return;
+    }
+
+    if (!validIdentifier(songId) || !validIdentifier(difficulty))
+    {
+      sendError(client, "invalid_song");
+      return;
+    }
 
     log("song result from " + client.player.username + ": " + songId + " " + difficulty + " " + std::to_string(score));
 
@@ -1541,6 +1879,8 @@ private:
 
   void tickRooms(int64_t now)
   {
+    expireAwayMembers(now);
+
     std::vector<std::string> playing;
 
     for (const auto& entry : rooms)
@@ -1560,10 +1900,75 @@ private:
       if (timedOut || graceOver) finishRound(roomId);
     }
 
-    if (leaderboard.isDirty() && now - lastScoreSave >= 3000)
+    if (now - lastScoreSave >= 3000)
     {
       lastScoreSave = now;
-      saveLeaderboard();
+
+      if (leaderboard.isDirty()) saveLeaderboard();
+      if (stats.isDirty()) saveStats();
+    }
+
+    if (now - lastAdminReset >= 60000)
+    {
+      lastAdminReset = now;
+      adminFailures.clear();
+      bans.purgeExpired(now);
+
+      if (bans.isDirty()) saveBans();
+    }
+  }
+
+  std::string statsPath() const
+  {
+    return (std::filesystem::path(config.dataDir) / "stats.json").string();
+  }
+
+  std::string bansPath() const
+  {
+    return (std::filesystem::path(config.dataDir) / "bans.json").string();
+  }
+
+  void saveStats()
+  {
+    if (!stats.save(statsPath())) log("could not write " + statsPath());
+  }
+
+  void saveBans()
+  {
+    if (!bans.save(bansPath(), nowMs())) log("could not write " + bansPath());
+  }
+
+  void saveAll()
+  {
+    if (leaderboard.isDirty()) saveLeaderboard();
+    if (stats.isDirty()) saveStats();
+    if (bans.isDirty()) saveBans();
+  }
+
+  void announceShutdown()
+  {
+    broadcast("server_notice", json{{"text", "The server is restarting. Your room will wait for you for a moment."}, {"kind", "shutdown"}}, 0);
+
+    int64_t deadline = nowMs() + 500;
+
+    while (nowMs() < deadline)
+    {
+      bool pending = false;
+
+      for (auto& entry : clients)
+      {
+        Client& other = *entry.second;
+
+        if (!other.closing && !other.output.empty())
+        {
+          flushClient(other);
+          pending = pending || !other.output.empty();
+        }
+      }
+
+      if (!pending) break;
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
@@ -1596,6 +2001,16 @@ private:
     std::string platform = sanitizeText(jsonString(data, "platform"), 24);
     std::string activity = sanitizeText(jsonString(data, "activity"), 64);
 
+    const Ban* addressBan = bans.find(BanList::ipKey(client.remote), nowMs());
+
+    if (addressBan != nullptr)
+    {
+      refuseBanned(client, *addressBan);
+      return;
+    }
+
+    std::string previousKey = sanitizeText(jsonString(data, "resumeKey"), 64);
+
     client.player.id = "p" + std::to_string(nextPlayer++);
     client.player.username = username.empty() ? "Guest" + client.player.id.substr(1) : username;
     client.player.platform = platform.empty() ? "Unknown" : platform;
@@ -1612,12 +2027,45 @@ private:
 
       if (session != nullptr)
       {
+        const Ban* accountBan = bans.find("d" + session->profile.id, nowMs());
+
+        if (accountBan != nullptr)
+        {
+          client.joined = false;
+          refuseBanned(client, *accountBan);
+          return;
+        }
+
         applyIdentity(client, session->profile, sha256Hex(token), false);
         resumed = true;
       }
     }
 
-    log("player joined: " + client.player.username + " (" + client.player.id + ")" + (resumed ? " [discord]" : "") + ", " + std::to_string(joinedCount()) + " online");
+    Room* resumeRoomPtr = nullptr;
+    RoomMember* resumeMember = nullptr;
+
+    std::string resumeRoomId;
+    std::string resumeMemberId;
+
+    if (resumeRoom(client, previousKey, resumeMember, resumeRoomPtr) && resumeRoomPtr != nullptr && resumeMember != nullptr)
+    {
+      resumeRoomId = resumeRoomPtr->id;
+      resumeMemberId = resumeMember->id;
+
+      if (!client.player.authenticated)
+      {
+        client.player.id = resumeMember->id;
+        client.player.username = resumeMember->username;
+      }
+    }
+
+    client.resumeKey = randomHex(16);
+    metrics.joins++;
+
+    stats.touch(StatsBook::keyFor(client.player.authenticated, client.player.id, client.player.username), client.player.username, nowMs());
+
+    log("player joined: " + client.player.username + " (" + client.player.id + ")" + (resumed ? " [discord]" : "") + (!resumeRoomId.empty() ? " [resumed]" : "") + ", " +
+        std::to_string(joinedCount()) + " online");
 
     json welcome = {{"protocol", ProtocolVersion},
                     {"id", client.player.id},
@@ -1626,9 +2074,12 @@ private:
                     {"motd", config.motd},
                     {"discordEnabled", config.discord.enabled()},
                     {"players", joinedCount()},
-                    {"features", json::array({"rooms", "chat", "leaderboard"})},
+                    {"features", json::array({"rooms", "chat", "leaderboard", "resume", "quickmatch", "stats"})},
                     {"maxRoomPlayers", config.maxRoomPlayers},
-                    {"minPlayersToStart", config.minPlayersToStart}};
+                    {"minPlayersToStart", config.minPlayersToStart},
+                    {"resumeKey", client.resumeKey},
+                    {"resumed", !resumeRoomId.empty()},
+                    {"reconnectGraceSeconds", config.reconnectGraceSeconds}};
 
     if (client.player.authenticated)
     {
@@ -1638,6 +2089,67 @@ private:
     send(client, "welcome", welcome);
     send(client, "activeUsers", json{{"users", playersJson()}});
     broadcast("userJoined", client.player.toJson(), client.serial);
+
+    if (!resumeRoomId.empty()) completeResume(client, resumeRoomId, resumeMemberId);
+  }
+
+  void completeResume(Client& client, const std::string& roomId, const std::string& memberId)
+  {
+    Room* roomPtr = findRoom(roomId);
+
+    if (roomPtr == nullptr) return;
+
+    Room& room = *roomPtr;
+    RoomMember* memberPtr = findAwayMemberById(room, memberId);
+
+    if (memberPtr == nullptr) return;
+
+    RoomMember& member = *memberPtr;
+
+    member.away = false;
+    member.awayUntil = 0;
+    member.resumeKey.clear();
+    member.serial = client.serial;
+    member.authenticated = client.player.authenticated;
+    member.username = client.player.username;
+    member.avatarUrl = client.player.avatarUrl;
+
+    if (room.hostSerial == 0) room.hostSerial = client.serial;
+
+    client.roomId = roomId;
+    metrics.reconnects++;
+
+    json message = roomJson(room);
+
+    if (member.missedResults && !room.lastResults.is_null())
+    {
+      message["results"] = room.lastResults;
+      member.missedResults = false;
+    }
+
+    log(client.player.username + " came back to room " + roomId);
+
+    send(client, "mp_roomResumed", message);
+
+    Room* current = findRoom(roomId);
+
+    if (current == nullptr) return;
+
+    RoomMember* back = findMember(*current, client.serial);
+
+    if (back != nullptr) sendToRoom(*current, "mp_playerBack", json{{"userId", memberId}, {"member", memberJson(*current, *back)}, {"hostId", roomHostId(*current)}}, client.serial);
+  }
+
+  void refuseBanned(Client& client, const Ban& ban)
+  {
+    metrics.bannedRefusals++;
+
+    log("refused banned connection from " + client.remote);
+
+    client.forceLeave = true;
+
+    send(client, "error", json{{"reason", "banned"}, {"detail", ban.reason}, {"until", ban.expires}});
+    closeClient(client, "banned");
   }
 
   void handleActivity(Client& client, const json& data)
@@ -1744,6 +2256,14 @@ private:
 
     Profile profile = session->profile;
 
+    const Ban* accountBan = bans.find("d" + profile.id, nowMs());
+
+    if (accountBan != nullptr)
+    {
+      refuseBanned(client, *accountBan);
+      return;
+    }
+
     applyIdentity(client, profile, sha256Hex(token), true);
 
     send(client, "auth_ok", json{{"profile", profile.toJson()}, {"token", token}, {"id", client.player.id}});
@@ -1813,7 +2333,13 @@ private:
 
   void respond(HttpConn& conn, int status, const std::string& contentType, const std::string& body)
   {
-    const char* reason = status == 200 ? "OK" : status == 400 ? "Bad Request" : status == 404 ? "Not Found" : status == 405 ? "Method Not Allowed" : "Error";
+    const char* reason = status == 200   ? "OK"
+                         : status == 400 ? "Bad Request"
+                         : status == 401 ? "Unauthorized"
+                         : status == 404 ? "Not Found"
+                         : status == 405 ? "Method Not Allowed"
+                         : status == 429 ? "Too Many Requests"
+                                         : "Error";
 
     conn.output = "HTTP/1.1 " + std::to_string(status) + " " + reason + "\r\nContent-Type: " + contentType + "; charset=utf-8\r\nContent-Length: " +
                   std::to_string(body.size()) +
@@ -1854,11 +2380,7 @@ private:
     std::string method = firstToken(conn.input, position);
     std::string target = firstToken(conn.input, position);
 
-    if (method != "GET")
-    {
-      respond(conn, 405, "text/plain", "method not allowed");
-      return;
-    }
+    metrics.httpRequests++;
 
     std::string path = target;
     std::string query;
@@ -1870,9 +2392,33 @@ private:
       query = target.substr(question + 1);
     }
 
-    if (path == "/health")
+    bool adminPath = path.rfind("/admin/", 0) == 0;
+
+    if (method != "GET" && !(method == "POST" && adminPath))
+    {
+      respond(conn, 405, "text/plain", "method not allowed");
+      return;
+    }
+
+    if (adminPath)
+    {
+      handleAdmin(conn, path, parseQuery(query), headerValue(conn.input, "Authorization"));
+    }
+    else if (path == "/health")
     {
       respond(conn, 200, "text/plain", "ok");
+    }
+    else if (path == "/metrics")
+    {
+      respond(conn, 200, "text/plain", metricsText());
+    }
+    else if (path == "/player")
+    {
+      auto params = parseQuery(query);
+      std::string id = params.count("id") ? params["id"] : std::string();
+
+      if (id.empty()) respond(conn, 400, "application/json", dumpJson(json{{"error", "missing_id"}}));
+      else respond(conn, 200, "application/json", dumpJson(statsJson(statsKeyFor(id), id)));
     }
     else if (path == "/status")
     {
@@ -1914,6 +2460,262 @@ private:
     else
     {
       respond(conn, 404, "text/plain", "not found");
+    }
+  }
+
+  std::string metricsText()
+  {
+    std::string text;
+
+    auto line = [&](const char* name, const char* kind, uint64_t value) {
+      text += std::string("# TYPE ") + name + " " + kind + "\n" + name + " " + std::to_string(value) + "\n";
+    };
+
+    line("moon_players_online", "gauge", joinedCount());
+    line("moon_rooms", "gauge", rooms.size());
+    line("moon_rooms_playing", "gauge", playingRooms());
+    line("moon_uptime_seconds", "gauge", static_cast<uint64_t>((nowMs() - startedAt) / 1000));
+    line("moon_known_players", "gauge", stats.size());
+    line("moon_active_bans", "gauge", bans.size());
+    line("moon_connections_total", "counter", metrics.connections);
+    line("moon_messages_total", "counter", metrics.messages);
+    line("moon_joins_total", "counter", metrics.joins);
+    line("moon_rooms_created_total", "counter", metrics.roomsCreated);
+    line("moon_rounds_started_total", "counter", metrics.roundsStarted);
+    line("moon_rounds_finished_total", "counter", metrics.roundsFinished);
+    line("moon_reconnects_total", "counter", metrics.reconnects);
+    line("moon_score_violations_total", "counter", metrics.scoreViolations);
+    line("moon_rate_limited_total", "counter", metrics.rateLimited);
+    line("moon_banned_refusals_total", "counter", metrics.bannedRefusals);
+    line("moon_http_requests_total", "counter", metrics.httpRequests);
+
+    return text;
+  }
+
+  Client* findClientByPlayerId(const std::string& id)
+  {
+    for (auto& entry : clients)
+    {
+      Client& other = *entry.second;
+
+      if (other.joined && !other.closing && other.player.id == id) return &other;
+    }
+
+    return nullptr;
+  }
+
+  void removeFromServer(Client& target, const std::string& reason, const std::string& detail)
+  {
+    target.forceLeave = true;
+
+    send(target, "error", json{{"reason", reason}, {"detail", detail}});
+    closeClient(target, reason);
+  }
+
+  void handleAdmin(HttpConn& conn, const std::string& path, std::map<std::string, std::string> params, const std::string& authorization)
+  {
+    if (config.adminToken.empty())
+    {
+      respond(conn, 404, "text/plain", "not found");
+      return;
+    }
+
+    size_t& failures = adminFailures[conn.remote];
+
+    if (failures >= MaxAdminAttempts)
+    {
+      respond(conn, 429, "application/json", dumpJson(json{{"error", "too_many_attempts"}}));
+      return;
+    }
+
+    std::string supplied = params.count("token") ? params["token"] : std::string();
+
+    if (authorization.rfind("Bearer ", 0) == 0) supplied = authorization.substr(7);
+
+    if (!sameSecret(supplied, config.adminToken))
+    {
+      failures++;
+      log("admin request refused from " + conn.remote);
+      respond(conn, 401, "application/json", dumpJson(json{{"error", "unauthorized"}}));
+      return;
+    }
+
+    auto get = [&](const char* key) {
+      auto it = params.find(key);
+      return it == params.end() ? std::string() : it->second;
+    };
+
+    std::string action = path.substr(7);
+
+    if (action == "players")
+    {
+      json list = json::array();
+
+      for (const auto& entry : clients)
+      {
+        const Client& other = *entry.second;
+
+        if (!other.joined || other.closing) continue;
+
+        json item = other.player.toJson();
+        item["address"] = other.remote;
+        item["roomId"] = other.roomId;
+        item["connectedAt"] = other.connectedAt;
+        list.push_back(item);
+      }
+
+      respond(conn, 200, "application/json", dumpJson(json{{"players", list}}));
+    }
+    else if (action == "bans")
+    {
+      respond(conn, 200, "application/json", dumpJson(json{{"bans", bans.toJson(nowMs())}}));
+    }
+    else if (action == "kick")
+    {
+      Client* target = findClientByPlayerId(get("id"));
+
+      if (target == nullptr)
+      {
+        respond(conn, 404, "application/json", dumpJson(json{{"error", "unknown_player"}}));
+        return;
+      }
+
+      log("admin kicked " + target->player.username);
+      removeFromServer(*target, "kicked", get("reason"));
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}}));
+    }
+    else if (action == "drop")
+    {
+      Client* target = findClientByPlayerId(get("id"));
+
+      if (target == nullptr)
+      {
+        respond(conn, 404, "application/json", dumpJson(json{{"error", "unknown_player"}}));
+        return;
+      }
+
+      log("admin dropped the connection of " + target->player.username);
+      closeClient(*target, "dropped by an admin");
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}}));
+    }
+    else if (action == "ban")
+    {
+      std::string key = get("key");
+
+      if (key.empty())
+      {
+        Client* target = findClientByPlayerId(get("id"));
+
+        if (target == nullptr)
+        {
+          respond(conn, 404, "application/json", dumpJson(json{{"error", "unknown_player"}}));
+          return;
+        }
+
+        key = target->player.authenticated && get("scope") != "ip" ? "d" + target->discordId : BanList::ipKey(target->remote);
+      }
+
+      int64_t minutes = 0;
+
+      try
+      {
+        minutes = get("minutes").empty() ? 0 : std::stoll(get("minutes"));
+      }
+      catch (...)
+      {
+        minutes = 0;
+      }
+
+      if (!bans.add(key, sanitizeText(get("reason"), 120), nowMs(), minutes * 60 * 1000))
+      {
+        respond(conn, 400, "application/json", dumpJson(json{{"error", "invalid_key"}}));
+        return;
+      }
+
+      log("admin banned " + key + (minutes > 0 ? " for " + std::to_string(minutes) + " minutes" : " permanently"));
+      saveBans();
+
+      std::vector<uint64_t> victims;
+
+      for (const auto& entry : clients)
+      {
+        const Client& other = *entry.second;
+
+        if (other.closing) continue;
+
+        bool byIp = key.rfind("ip:", 0) == 0 && BanList::ipKey(other.remote) == key;
+        bool byAccount = key[0] == 'd' && !other.discordId.empty() && other.discordId == key.substr(1);
+
+        if (byIp || byAccount) victims.push_back(other.serial);
+      }
+
+      for (uint64_t serial : victims)
+      {
+        Client* victim = findClient(serial);
+
+        if (victim != nullptr) removeFromServer(*victim, "banned", get("reason"));
+      }
+
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}, {"key", key}, {"removed", victims.size()}}));
+    }
+    else if (action == "unban")
+    {
+      bool removed = bans.remove(get("key"));
+
+      if (removed) saveBans();
+
+      respond(conn, removed ? 200 : 404, "application/json", dumpJson(json{{"ok", removed}}));
+    }
+    else if (action == "announce")
+    {
+      std::string text = sanitizeText(get("text"), 200);
+
+      if (text.empty())
+      {
+        respond(conn, 400, "application/json", dumpJson(json{{"error", "missing_text"}}));
+        return;
+      }
+
+      log("admin announcement: " + text);
+      broadcast("server_notice", json{{"text", text}, {"kind", "announcement"}}, 0);
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}}));
+    }
+    else if (action == "closeRoom")
+    {
+      std::string code = normalizeRoomCode(get("room"));
+      Room* room = findRoom(code);
+
+      if (room == nullptr)
+      {
+        respond(conn, 404, "application/json", dumpJson(json{{"error", "not_found"}}));
+        return;
+      }
+
+      std::vector<uint64_t> serials;
+
+      for (const auto& member : room->members)
+      {
+        if (member.serial != 0) serials.push_back(member.serial);
+      }
+
+      rooms.erase(code);
+
+      for (uint64_t serial : serials)
+      {
+        Client* member = findClient(serial);
+
+        if (member == nullptr) continue;
+
+        member->roomId.clear();
+        send(*member, "mp_roomClosed", json{{"reason", "closed_by_admin"}});
+      }
+
+      log("admin closed room " + code);
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}, {"removed", serials.size()}}));
+    }
+    else
+    {
+      respond(conn, 404, "application/json", dumpJson(json{{"error", "unknown_action"}}));
     }
   }
 
@@ -1979,6 +2781,17 @@ private:
       if (client != nullptr && !client->closing) send(*client, "auth_error", json{{"reason", result.error}});
 
       if (conn != nullptr) respond(*conn, 400, "text/html", resultPage(false, "Login failed", "The server could not read your Discord profile. Try again in the game."));
+
+      return;
+    }
+
+    const Ban* accountBan = bans.find("d" + result.profile.id, nowMs());
+
+    if (accountBan != nullptr)
+    {
+      if (client != nullptr && !client->closing) refuseBanned(*client, *accountBan);
+
+      if (conn != nullptr) respond(*conn, 400, "text/html", resultPage(false, "Login refused", "This account is banned from this server."));
 
       return;
     }

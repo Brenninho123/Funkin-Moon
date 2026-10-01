@@ -13,6 +13,12 @@
   "songTimeoutSeconds": 1200,
   "finishGraceSeconds": 45,
   "chatCooldownMs": 700,
+  "reconnectGraceSeconds": 30,
+  "maxScorePerSecond": 8000,
+  "scoreBurst": 20000,
+  "maxSongScore": 100000000,
+  "adminToken": "",
+  "logFile": "",
   "sessionDays": 30,
   "discord": {
     "clientId": "",

@@ -81,13 +81,34 @@ class MultiplayerDataTests
 
     var everyReason:Bool = true;
 
-    for (reason in ['not_found', 'full', 'in_progress', 'already_in_room', 'not_in_room', 'not_host', 'no_song', 'not_enough_players', 'not_all_ready', 'invalid_song', 'room_limit', 'chat_cooldown', 'unknown_member', 'rate_limited', 'server_full', 'kicked', 'disconnected', 'not_joined'])
+    for (reason in ['not_found', 'full', 'in_progress', 'already_in_room', 'not_in_room', 'not_host', 'no_song', 'not_enough_players', 'not_all_ready', 'invalid_song', 'room_limit', 'chat_cooldown', 'unknown_member', 'rate_limited', 'server_full', 'kicked', 'disconnected', 'not_joined', 'banned', 'cheating', 'closed_by_admin', 'timeout', 'score_rejected', 'logged_in_elsewhere'])
     {
       if (MultiplayerData.describeError(reason).indexOf('The server said') == 0) everyReason = false;
     }
 
     check('every known server error has a sentence', everyReason);
     check('unknown errors keep their reason', MultiplayerData.describeError('weird') == 'The server said: weird');
+
+    Sys.println('stats and resuming');
+
+    var stats = MultiplayerData.parseStats(Json.parse('{"id":"d1","username":"Nelly","found":true,"roundsPlayed":12,"roundsWon":5,"songsFinished":30,"totalScore":900000,"bestScore":123456}'));
+    check('stats are parsed', stats != null && stats.found && stats.roundsPlayed == 12 && stats.roundsWon == 5 && stats.songsFinished == 30 && stats.bestScore == 123456 && stats.username == 'Nelly');
+    check('stats without data are rejected', MultiplayerData.parseStats(null) == null);
+    check('missing stats fields default to zero', MultiplayerData.parseStats(Json.parse('{"id":"x"}')).roundsPlayed == 0);
+    check('stats are described', MultiplayerData.describeStats(stats) == '30 songs finished\n12 online rounds, 5 won\nBest score 123,456', MultiplayerData.describeStats(stats));
+    check('singular nouns are used', MultiplayerData.plural(1, 'song') == '1 song' && MultiplayerData.plural(0, 'song') == '0 songs' && MultiplayerData.plural(2, 'song') == '2 songs');
+    check('a player without history gets a friendly line', MultiplayerData.describeStats(MultiplayerData.parseStats(Json.parse('{"id":"x","found":false}'))) == 'No songs finished on this server yet.');
+
+    var away = MultiplayerData.parseMember(Json.parse('{"id":"p2","username":"Guest","away":true}'));
+    check('the away flag is parsed', away != null && away.away && !MultiplayerData.parseMember(Json.parse('{"id":"p3"}')).away);
+
+    var resume = MultiplayerData.parseResume(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[{"id":"p1"}],"state":"lobby","results":{"songId":"bopeebo","difficultyId":"hard","round":2,"rankings":[{"userId":"p1","username":"Host","score":10,"rank":1,"finished":true}]}}'));
+    check('a resumed room carries the missed results', resume != null && resume.room.roomId == 'AB3DE' && resume.results != null && resume.results.rankings.length == 1 && resume.results.round == 2);
+    check('a resumed room without results is fine', MultiplayerData.parseResume(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[]}')).results == null);
+    check('a resume without a room is rejected', MultiplayerData.parseResume(Json.parse('{"state":"lobby"}')) == null);
+
+    var awayRoom = MultiplayerData.parseRoom(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[{"id":"p1"},{"id":"p2","ready":true,"away":true}]}'));
+    check('an away player keeps the round from starting', !MultiplayerData.everyoneReady(awayRoom));
 
     Sys.println(failures == 0 ? '\nall ' + checks + ' checks passed' : '\n' + failures + ' of ' + checks + ' checks failed');
     Sys.exit(failures == 0 ? 0 : 1);

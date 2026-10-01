@@ -1086,6 +1086,11 @@ class PlayState extends MusicBeatSubState
     multiplayer.onPlayerFinished.add(onServerPlayerFinished);
     multiplayer.onPlayerLeft.add(onServerPlayerLeft);
     multiplayer.onResults.add(onServerResults);
+    multiplayer.onConnectionLost.add(onServerConnectionLost);
+    multiplayer.onConnectionRestored.add(onServerConnectionRestored);
+    multiplayer.onPlayerAway.add(onServerPlayerAway);
+    multiplayer.onPlayerBack.add(onServerPlayerBack);
+    multiplayer.onRoomClosed.add(onServerRoomClosed);
   }
 
   function cleanupServerMatch():Void
@@ -1096,6 +1101,11 @@ class PlayState extends MusicBeatSubState
     multiplayer.onPlayerFinished.remove(onServerPlayerFinished);
     multiplayer.onPlayerLeft.remove(onServerPlayerLeft);
     multiplayer.onResults.remove(onServerResults);
+    multiplayer.onConnectionLost.remove(onServerConnectionLost);
+    multiplayer.onConnectionRestored.remove(onServerConnectionRestored);
+    multiplayer.onPlayerAway.remove(onServerPlayerAway);
+    multiplayer.onPlayerBack.remove(onServerPlayerBack);
+    multiplayer.onRoomClosed.remove(onServerRoomClosed);
 
     if (multiplayer.inMatch && !multiplayer.localFinished) multiplayer.leaveRoom();
   }
@@ -1132,6 +1142,31 @@ class PlayState extends MusicBeatSubState
   function onServerResults(results:funkin.online.play.MultiplayerData.MultiplayerResults):Void
   {
     finishMultiplayerMatch(true);
+  }
+
+  function onServerConnectionLost():Void
+  {
+    multiplayerScoreboard?.say('Connection lost. Trying to get back into the match...');
+  }
+
+  function onServerConnectionRestored():Void
+  {
+    multiplayerScoreboard?.say('You are back in the match.');
+  }
+
+  function onServerPlayerAway(userId:String):Void
+  {
+    multiplayerScoreboard?.say(funkin.online.play.MultiplayerData.nameOf(funkin.online.play.FunkinMultiplayer.instance.currentRoom, userId) + ' lost the connection.');
+  }
+
+  function onServerPlayerBack(userId:String):Void
+  {
+    multiplayerScoreboard?.say(funkin.online.play.MultiplayerData.nameOf(funkin.online.play.FunkinMultiplayer.instance.currentRoom, userId) + ' is back.');
+  }
+
+  function onServerRoomClosed():Void
+  {
+    multiplayerScoreboard?.say('You are no longer in the match: ' + funkin.online.play.MultiplayerData.describeError(funkin.online.play.FunkinMultiplayer.instance.lastCloseReason));
   }
 
   function onServerPlayerLeft(userId:String):Void

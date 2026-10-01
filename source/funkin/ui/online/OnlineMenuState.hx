@@ -11,6 +11,9 @@ import funkin.online.FunkinUser;
 import funkin.online.OnlineConfig;
 import funkin.online.OnlineText;
 import funkin.online.OnlineText.DiscordPanel;
+import funkin.online.play.FunkinMultiplayer;
+import funkin.online.play.MultiplayerData;
+import funkin.online.play.MultiplayerData.MultiplayerStats;
 import funkin.ui.mainmenu.MainMenuState;
 import haxe.ui.backend.flixel.UIState;
 import haxe.ui.containers.windows.WindowManager;
@@ -32,6 +35,8 @@ class OnlineMenuState extends UIState
   var panel:DiscordPanel;
   var refreshTimer:Float = 0;
   var lastPlayers:String = '';
+  var statsText:String = '';
+  var statsFor:String = '';
 
   override function create():Void
   {
@@ -63,7 +68,10 @@ class OnlineMenuState extends UIState
     FunkinUser.instance.setActivity('In the online menu');
 
     DiscordAuth.instance.init();
+    FunkinMultiplayer.instance.init();
 
+    FunkinMultiplayer.instance.onStats.add(onStatsReceived);
+    FunkinOnline.instance.onNotice.add(onNoticeReceived);
     FunkinOnline.instance.onConnected.add(refreshView);
     FunkinOnline.instance.onDisconnected.add(refreshView);
     FunkinOnline.instance.onError.add(onSocketError);
@@ -99,6 +107,41 @@ class OnlineMenuState extends UIState
       type: type,
       expiryMs: Constants.NOTIFICATION_DISMISS_TIME
     });
+  }
+
+  function onStatsReceived(stats:MultiplayerStats):Void
+  {
+    statsText = MultiplayerData.describeStats(stats);
+
+    refreshView();
+  }
+
+  function onNoticeReceived(text:String, kind:String):Void
+  {
+    if (text != '') toast(text, kind == 'announcement' ? NotificationType.Info : NotificationType.Warning);
+  }
+
+  function refreshStats():Void
+  {
+    var online:FunkinOnline = FunkinOnline.instance;
+    var localId:String = FunkinUser.instance.getLocalUserId();
+
+    if (!online.isConnected())
+    {
+      statsFor = '';
+      statsText = '';
+      profileStats.text = 'Connect to a server to see your record.';
+      return;
+    }
+
+    if (statsFor != localId)
+    {
+      statsFor = localId;
+      statsText = '';
+      FunkinMultiplayer.instance.requestStats();
+    }
+
+    profileStats.text = statsText != '' ? statsText : 'Loading...';
   }
 
   function onSocketError(message:String):Void
@@ -158,6 +201,8 @@ class OnlineMenuState extends UIState
     serverStatus.text = OnlineText.connection(Std.string(online.state), OnlineConfig.describe(), users.length);
     tint(serverStatus, online.isConnected() ? 0xFF7CF6CF : 0xFFFF9F6B);
     serverConnect.text = online.isConnected() ? 'Reconnect' : 'Connect';
+
+    refreshStats();
 
     actionHint.text = online.isConnected() ? '' : 'Connect to a server to play online. Start one with server/build/moon-server.exe.';
 
@@ -337,6 +382,12 @@ class OnlineMenuState extends UIState
     DiscordAuth.instance.reopenLoginPage();
   }
 
+  @:bind(actionQuick, MouseEvent.CLICK)
+  function onActionQuickClick(_):Void
+  {
+    FlxG.switchState(() -> new OnlineLobbyState(false, false, true));
+  }
+
   @:bind(actionHost, MouseEvent.CLICK)
   function onActionHostClick(_):Void
   {
@@ -357,6 +408,8 @@ class OnlineMenuState extends UIState
 
   override function destroy():Void
   {
+    FunkinMultiplayer.instance.onStats.remove(onStatsReceived);
+    FunkinOnline.instance.onNotice.remove(onNoticeReceived);
     FunkinOnline.instance.onConnected.remove(refreshView);
     FunkinOnline.instance.onDisconnected.remove(refreshView);
     FunkinOnline.instance.onError.remove(onSocketError);

@@ -7,6 +7,7 @@ import openfl.events.SecurityErrorEvent;
 import openfl.events.ProgressEvent;
 import flixel.util.FlxSignal.FlxTypedSignal;
 import flixel.util.FlxTimer;
+import flixel.util.FlxTimer.FlxTimerManager;
 import haxe.Json;
 
 typedef FunkinOnlineMessage =
@@ -27,6 +28,8 @@ class FunkinOnline
 {
   public static var instance(default, null):FunkinOnline = new FunkinOnline();
 
+  static var timerManager:Null<FlxTimerManager> = null;
+
   public var state(default, null):FunkinOnlineState = Disconnected;
 
   public var host(default, null):String = '';
@@ -36,6 +39,9 @@ class FunkinOnline
   public var onDisconnected:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
   public var onMessage:FlxTypedSignal<FunkinOnlineMessage->Void> = new FlxTypedSignal<FunkinOnlineMessage->Void>();
   public var onError:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
+  public var onNotice:FlxTypedSignal<String->String->Void> = new FlxTypedSignal<String->String->Void>();
+
+  public var refusedReason(default, null):String = '';
 
   var socket:Null<Socket> = null;
   var handlers:Map<String, Array<Dynamic->Void>> = new Map();
@@ -55,6 +61,17 @@ class FunkinOnline
   {
   }
 
+  public static function createTimer():FlxTimer
+  {
+    if (timerManager == null)
+    {
+      timerManager = new FlxTimerManager();
+      FlxG.plugins.addPlugin(timerManager);
+    }
+
+    return new FlxTimer(timerManager);
+  }
+
   public function connect(host:String, port:Int, autoReconnect:Bool = true):Void
   {
     if (state == Connected || state == Connecting)
@@ -67,6 +84,7 @@ class FunkinOnline
     this.port = port;
     this.autoReconnect = autoReconnect;
     this.reconnectDelay = BASE_RECONNECT_DELAY;
+    this.refusedReason = '';
 
     openSocket();
   }
@@ -132,6 +150,11 @@ class FunkinOnline
     return state == Connected;
   }
 
+  public function willReconnect():Bool
+  {
+    return autoReconnect;
+  }
+
   function openSocket():Void
   {
     state = Connecting;
@@ -194,10 +217,11 @@ class FunkinOnline
 
     FlxG.log.add('[FunkinOnline] Connected to $host:$port');
 
-    flushOutgoingQueue();
     startHeartbeat();
 
     onConnected.dispatch();
+
+    flushOutgoingQueue();
   }
 
   function onSocketClose(event:Event):Void
@@ -246,7 +270,7 @@ class FunkinOnline
 
     FlxG.log.add('[FunkinOnline] Reconnecting in ${reconnectDelay}s...');
 
-    reconnectTimer = new FlxTimer().start(reconnectDelay, (_) ->
+    reconnectTimer = createTimer().start(reconnectDelay, (_) ->
     {
       reconnectTimer = null;
       reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
@@ -267,7 +291,7 @@ class FunkinOnline
   {
     stopHeartbeat();
 
-    heartbeatTimer = new FlxTimer().start(HEARTBEAT_INTERVAL, (_) ->
+    heartbeatTimer = createTimer().start(HEARTBEAT_INTERVAL, (_) ->
     {
       send('ping');
     }, 0);
@@ -334,6 +358,21 @@ class FunkinOnline
   function dispatchMessage(message:FunkinOnlineMessage):Void
   {
     onMessage.dispatch(message);
+
+    if (message.type == 'server_notice' && message.data != null)
+    {
+      onNotice.dispatch(message.data.text != null ? Std.string(message.data.text) : '', message.data.kind != null ? Std.string(message.data.kind) : 'announcement');
+    }
+    else if (message.type == 'error' && message.data != null && message.data.reason == 'banned')
+    {
+      refusedReason = 'banned';
+      autoReconnect = false;
+      cancelReconnect();
+
+      var detail:String = message.data.detail != null ? Std.string(message.data.detail) : '';
+
+      onError.dispatch('You are banned from this server' + (detail != '' ? ': ' + detail : '.'));
+    }
 
     var callbacks:Null<Array<Dynamic->Void>> = handlers.get(message.type);
     if (callbacks == null) return;

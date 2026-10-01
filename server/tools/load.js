@@ -79,7 +79,8 @@ async function main() {
     MOON_DATA_DIR: dataDir,
     MOON_MAX_ROOMS: String(ROOMS + 10),
     MOON_MAX_PER_IP: String(ROOMS * PER_ROOM + 10),
-    MOON_MAX_PLAYERS: String(ROOMS * PER_ROOM + 10)
+    MOON_MAX_PLAYERS: String(ROOMS * PER_ROOM + 10),
+    MOON_RECONNECT_GRACE_SECONDS: '1'
   });
 
   const server = spawn(binary, [], { env, cwd: dataDir });
@@ -159,7 +160,7 @@ async function main() {
   console.log('  ' + messages + ' messages received in ' + (Date.now() - started) + ' ms');
 
   rooms.flat().forEach((bot) => bot.socket.destroy());
-  await sleep(600);
+  await sleep(1800);
   const after = await new Promise((resolve) => {
     require('http').get('http://127.0.0.1:' + HTTP_PORT + '/status', (res) => {
       let body = '';

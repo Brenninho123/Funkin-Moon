@@ -30,6 +30,7 @@ class FunkinUser
 
   var initialized:Bool = false;
   var currentActivity:String = 'Idle';
+  var resumeKey:String = '';
 
   var presenceTimer:Null<FlxTimer> = null;
 
@@ -59,6 +60,7 @@ class FunkinUser
     FunkinOnline.instance.registerHandler('userLeft', onUserLeftMessage);
     FunkinOnline.instance.registerHandler('userUpdated', onUserUpdatedMessage);
     FunkinOnline.instance.registerHandler('activeUsers', onActiveUsersMessage);
+    FunkinOnline.instance.registerHandler('welcome', onWelcomeMessage);
 
     FunkinOnline.instance.onConnected.add(onOnlineConnected);
     FunkinOnline.instance.onDisconnected.add(onOnlineDisconnected);
@@ -84,6 +86,8 @@ class FunkinUser
   {
     stopPresenceLoop();
 
+    if (!FunkinOnline.instance.willReconnect()) resumeKey = '';
+
     if (activeUsers.iterator().hasNext())
     {
       activeUsers = new Map();
@@ -101,8 +105,14 @@ class FunkinUser
       platform: localUser.platform,
       activity: localUser.activity,
       lastSeen: localUser.lastSeen,
-      token: DiscordAuth.instance.getSavedToken()
+      token: DiscordAuth.instance.getSavedToken(),
+      resumeKey: resumeKey
     });
+  }
+
+  function onWelcomeMessage(data:Dynamic):Void
+  {
+    resumeKey = (data != null && data.resumeKey != null) ? Std.string(data.resumeKey) : '';
   }
 
   function onAuthChanged():Void
@@ -140,7 +150,7 @@ class FunkinUser
   {
     stopPresenceLoop();
 
-    presenceTimer = new FlxTimer().start(PRESENCE_INTERVAL, (_) ->
+    presenceTimer = FunkinOnline.createTimer().start(PRESENCE_INTERVAL, (_) ->
     {
       if (localUser != null) localUser.lastSeen = Date.now().getTime();
       FunkinOnline.instance.send('presence');

@@ -1,6 +1,7 @@
 package funkin.online.play;
 
 import flixel.util.FlxSignal.FlxTypedSignal;
+import flixel.util.FlxTimer;
 import funkin.online.FunkinOnline;
 import funkin.online.FunkinUser;
 import funkin.online.play.MultiplayerData;
@@ -11,6 +12,7 @@ import funkin.online.play.MultiplayerData.MultiplayerResults;
 import funkin.online.play.MultiplayerData.MultiplayerRoom;
 import funkin.online.play.MultiplayerData.MultiplayerRoomSummary;
 import funkin.online.play.MultiplayerData.MultiplayerScore;
+import funkin.online.play.MultiplayerData.MultiplayerStats;
 
 typedef FunkinMultiplayerRoomInfo = MultiplayerRoom;
 typedef FunkinMultiplayerPlayerScore = MultiplayerScore;
@@ -22,6 +24,7 @@ class FunkinMultiplayer
   public var currentRoom(default, null):Null<MultiplayerRoom> = null;
 
   public var inMatch(default, null):Bool = false;
+  public var connectionLost(default, null):Bool = false;
   public var localFinished(default, null):Bool = false;
   public var lastResults(default, null):Null<MultiplayerResults> = null;
   public var lastCloseReason(default, null):String = '';
@@ -55,6 +58,11 @@ class FunkinMultiplayer
   public var onRelay:FlxTypedSignal<String->Dynamic->Void> = new FlxTypedSignal<String->Dynamic->Void>();
   public var onRoomsListed:FlxTypedSignal<Array<MultiplayerRoomSummary>->Void> = new FlxTypedSignal<Array<MultiplayerRoomSummary>->Void>();
   public var onLeaderboard:FlxTypedSignal<String->String->Array<MultiplayerLeaderboardEntry>->Void> = new FlxTypedSignal<String->String->Array<MultiplayerLeaderboardEntry>->Void>();
+  public var onConnectionLost:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
+  public var onConnectionRestored:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
+  public var onPlayerAway:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
+  public var onPlayerBack:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
+  public var onStats:FlxTypedSignal<MultiplayerStats->Void> = new FlxTypedSignal<MultiplayerStats->Void>();
   public var onError:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
 
   var opponentScores:Map<String, MultiplayerScore> = new Map();
@@ -62,8 +70,10 @@ class FunkinMultiplayer
   var initialized:Bool = false;
 
   var scoreUpdateAccumTime:Float = 0.0;
+  var resumeTimer:Null<FlxTimer> = null;
 
   static final SCORE_UPDATE_INTERVAL:Float = 0.2;
+  static final RESUME_TIMEOUT:Float = 45.0;
   static final CHAT_HISTORY:Int = 60;
 
   function new():Void
@@ -82,6 +92,11 @@ class FunkinMultiplayer
     online.registerHandler('mp_roomJoinFailed', onRoomJoinFailedMessage);
     online.registerHandler('mp_roomClosed', onRoomClosedMessage);
     online.registerHandler('mp_roomState', onRoomStateMessage);
+    online.registerHandler('mp_roomResumed', onRoomResumedMessage);
+    online.registerHandler('mp_playerAway', onPlayerAwayMessage);
+    online.registerHandler('mp_playerBack', onPlayerBackMessage);
+    online.registerHandler('welcome', onWelcomeMessage);
+    online.registerHandler('stats', onStatsMessage);
     online.registerHandler('mp_playerJoined', onPlayerJoinedMessage);
     online.registerHandler('mp_playerLeft', onPlayerLeftMessage);
     online.registerHandler('mp_hostChanged', onHostChangedMessage);
@@ -103,6 +118,24 @@ class FunkinMultiplayer
 
   function onOnlineDisconnected():Void
   {
+    if (currentRoom != null && FunkinOnline.instance.willReconnect())
+    {
+      if (!connectionLost)
+      {
+        connectionLost = true;
+        startResumeTimer();
+        onConnectionLost.dispatch();
+        updated();
+      }
+
+      return;
+    }
+
+    giveUpResuming();
+  }
+
+  function giveUpResuming():Void
+  {
     var hadRoom:Bool = currentRoom != null;
 
     resetLocalState();
@@ -114,8 +147,41 @@ class FunkinMultiplayer
     }
   }
 
+  function startResumeTimer():Void
+  {
+    cancelResumeTimer();
+
+    resumeTimer = FunkinOnline.createTimer().start(RESUME_TIMEOUT, (_) ->
+    {
+      resumeTimer = null;
+
+      if (connectionLost) giveUpResuming();
+    });
+  }
+
+  function cancelResumeTimer():Void
+  {
+    if (resumeTimer != null)
+    {
+      resumeTimer.cancel();
+      resumeTimer = null;
+    }
+  }
+
+  function onWelcomeMessage(data:Dynamic):Void
+  {
+    if (!connectionLost) return;
+
+    if (data != null && data.resumed == true) return;
+
+    giveUpResuming();
+  }
+
   function resetLocalState():Void
   {
+    cancelResumeTimer();
+
+    connectionLost = false;
     currentRoom = null;
     inMatch = false;
     localFinished = false;
@@ -154,11 +220,25 @@ class FunkinMultiplayer
     FunkinOnline.instance.send('mp_joinRoom', {roomId: MultiplayerData.normalizeCode(roomId)});
   }
 
+  public function quickMatch():Void
+  {
+    if (!canSend('find a match')) return;
+
+    FunkinOnline.instance.send('mp_quickMatch');
+  }
+
+  public function requestStats(userId:String = ''):Void
+  {
+    if (!FunkinOnline.instance.isConnected()) return;
+
+    FunkinOnline.instance.send('stats', userId == '' ? {} : {userId: userId});
+  }
+
   public function leaveRoom():Void
   {
     if (currentRoom == null) return;
 
-    FunkinOnline.instance.send('mp_leaveRoom');
+    if (FunkinOnline.instance.isConnected()) FunkinOnline.instance.send('mp_leaveRoom');
 
     resetLocalState();
   }
@@ -241,7 +321,7 @@ class FunkinMultiplayer
 
   public function sendScoreUpdate(elapsed:Float, score:Int, combo:Int, health:Float, accuracy:Float, force:Bool = false):Void
   {
-    if (currentRoom == null || !inMatch || localFinished) return;
+    if (currentRoom == null || !inMatch || localFinished || connectionLost) return;
 
     scoreUpdateAccumTime += elapsed;
 
@@ -254,7 +334,7 @@ class FunkinMultiplayer
 
   public function sendRelay(payload:Dynamic):Void
   {
-    if (currentRoom == null || !inMatch || localFinished) return;
+    if (currentRoom == null || !inMatch || localFinished || connectionLost) return;
 
     FunkinOnline.instance.send('mp_relay', {payload: payload});
   }
@@ -264,6 +344,16 @@ class FunkinMultiplayer
     if (currentRoom == null || !inMatch || localFinished) return;
 
     localFinished = true;
+
+    var me:Null<MultiplayerMember> = MultiplayerData.memberById(currentRoom, FunkinUser.instance.getLocalUserId());
+
+    if (me != null)
+    {
+      me.finished = true;
+      me.score = score;
+      me.combo = combo;
+      me.accuracy = accuracy;
+    }
 
     FunkinOnline.instance.send('mp_playerFinished', {score: score, combo: combo, health: health, accuracy: accuracy});
   }
@@ -356,6 +446,73 @@ class FunkinMultiplayer
     }
 
     updated();
+  }
+
+  function onRoomResumedMessage(data:Dynamic):Void
+  {
+    var resume:Null<MultiplayerData.MultiplayerResume> = MultiplayerData.parseResume(data);
+
+    if (resume == null) return;
+
+    cancelResumeTimer();
+
+    var wasLost:Bool = connectionLost;
+
+    connectionLost = false;
+    currentRoom = resume.room;
+
+    if (resume.room.state == MultiplayerData.STATE_LOBBY)
+    {
+      inMatch = false;
+      localFinished = false;
+    }
+
+    if (resume.results != null)
+    {
+      lastResults = resume.results;
+      onResults.dispatch(resume.results);
+    }
+
+    if (wasLost) onConnectionRestored.dispatch();
+
+    updated();
+  }
+
+  function onPlayerAwayMessage(data:Dynamic):Void
+  {
+    if (currentRoom == null || data == null || data.userId == null) return;
+
+    var userId:String = Std.string(data.userId);
+    var member:Null<MultiplayerMember> = MultiplayerData.memberById(currentRoom, userId);
+
+    if (member != null) member.away = true;
+
+    if (data.hostId != null) applyHost(Std.string(data.hostId));
+
+    onPlayerAway.dispatch(userId);
+    updated();
+  }
+
+  function onPlayerBackMessage(data:Dynamic):Void
+  {
+    if (currentRoom == null || data == null || data.userId == null) return;
+
+    var userId:String = Std.string(data.userId);
+    var member:Null<MultiplayerMember> = MultiplayerData.memberById(currentRoom, userId);
+
+    if (member != null) member.away = false;
+
+    if (data.hostId != null) applyHost(Std.string(data.hostId));
+
+    onPlayerBack.dispatch(userId);
+    updated();
+  }
+
+  function onStatsMessage(data:Dynamic):Void
+  {
+    var stats:Null<MultiplayerStats> = MultiplayerData.parseStats(data);
+
+    if (stats != null) onStats.dispatch(stats);
   }
 
   function onPlayerJoinedMessage(data:Dynamic):Void

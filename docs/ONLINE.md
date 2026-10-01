@@ -6,8 +6,8 @@ Moon Engine can play with other people through a Moon Engine server. The server 
 
 Open the main menu, then **Online**. The screen has three columns:
 
-- **You** (left). Your name and avatar, and the Discord login.
-- **Play** (middle). **Host a room** creates a room and opens its lobby. **Find a room** lists the open rooms and lets you join with a code. **Leaderboard** shows the best scores of every song on the server.
+- **You** (left). Your name and avatar, the Discord login and your record on this server (songs finished, online rounds played and won, best score).
+- **Play** (middle). **Quick match** puts you in a public room that has space, or opens a new one, so you can start playing without a code. **Host a room** creates a room and opens its lobby. **Find a room** lists the open rooms and lets you join with a code. **Leaderboard** shows the best scores of every song on the server.
 - **Server** (right). The server you are connected to, its message of the day, how many players are online and who they are (a star marks the players that logged in with Discord), and the address of the server.
 
 The game connects to `127.0.0.1:7777` by default, which is a server running on the same computer (`server/build/moon-server.exe`). To use another server type its address and port in the Server card and press **Connect**. The game remembers it in `online_server.json` next to the executable. Esc goes back.
@@ -36,6 +36,16 @@ The login is a real Discord login, run by the server so the game never sees the 
 - The host picks the **song** and the **difficulty**. Picking a song clears everybody's ready mark. The host can also rename the room, make it public or private and change the player limit.
 - Everybody else presses **Ready**. A player who does not have the song cannot get ready, and the screen says so. The host presses **Start** when there are at least two players and all of them are ready.
 - **Chat** is for the room. Messages sent from the lobby without a room go to everybody.
+
+## If the connection drops
+
+When the connection to the server is lost in a room, the game does not throw you out. It reconnects by itself and the server keeps your place for 30 seconds. A message tells you that the connection was lost, and the others see you as reconnecting. When you are back, the room is shown again as the server has it. If the round ended while you were away you get its results. In a round the song keeps playing on your computer and your score is sent again once you are back. If you do not come back in time you are removed from the room and the others carry on without you.
+
+Rooms never start a round while a player is reconnecting.
+
+## Messages from the server
+
+The server owner can send a message to everybody online (for example before a restart), and it appears as a notification in the online menu and in the lobby. A player who is banned sees the reason and the game stops trying to reconnect. A player whose scores are impossible for the time played (more than the server allows per second) is removed from the room.
 
 ## During a round
 

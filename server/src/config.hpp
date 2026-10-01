@@ -44,6 +44,12 @@ struct Config
   int songTimeoutSeconds = 1200;
   int finishGraceSeconds = 45;
   int chatCooldownMs = 700;
+  int reconnectGraceSeconds = 30;
+  int64_t maxScorePerSecond = 8000;
+  int64_t scoreBurst = 20000;
+  int64_t maxSongScore = 100000000;
+  std::string adminToken;
+  std::string logFile;
   DiscordConfig discord;
 };
 
@@ -164,6 +170,12 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
     config.songTimeoutSeconds = static_cast<int>(detail::intField(root, "songTimeoutSeconds", config.songTimeoutSeconds));
     config.finishGraceSeconds = static_cast<int>(detail::intField(root, "finishGraceSeconds", config.finishGraceSeconds));
     config.chatCooldownMs = static_cast<int>(detail::intField(root, "chatCooldownMs", config.chatCooldownMs));
+    config.reconnectGraceSeconds = static_cast<int>(detail::intField(root, "reconnectGraceSeconds", config.reconnectGraceSeconds));
+    config.maxScorePerSecond = detail::intField(root, "maxScorePerSecond", config.maxScorePerSecond);
+    config.scoreBurst = detail::intField(root, "scoreBurst", config.scoreBurst);
+    config.maxSongScore = detail::intField(root, "maxSongScore", config.maxSongScore);
+    config.adminToken = detail::stringField(root, "adminToken", config.adminToken);
+    config.logFile = detail::stringField(root, "logFile", config.logFile);
 
     auto discord = root.find("discord");
 
@@ -193,6 +205,10 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   int64_t songTimeout = config.songTimeoutSeconds;
   int64_t finishGrace = config.finishGraceSeconds;
   int64_t chatCooldown = config.chatCooldownMs;
+  int64_t reconnectGrace = config.reconnectGraceSeconds;
+  int64_t maxScorePerSecond = config.maxScorePerSecond;
+  int64_t scoreBurst = config.scoreBurst;
+  int64_t maxSongScore = config.maxSongScore;
 
   detail::overrideString(config.bindAddress, "MOON_BIND");
   detail::overrideNumber(port, "MOON_PORT");
@@ -205,6 +221,12 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   detail::overrideNumber(songTimeout, "MOON_SONG_TIMEOUT_SECONDS");
   detail::overrideNumber(finishGrace, "MOON_FINISH_GRACE_SECONDS");
   detail::overrideNumber(chatCooldown, "MOON_CHAT_COOLDOWN_MS");
+  detail::overrideNumber(reconnectGrace, "MOON_RECONNECT_GRACE_SECONDS");
+  detail::overrideNumber(maxScorePerSecond, "MOON_MAX_SCORE_PER_SECOND");
+  detail::overrideNumber(scoreBurst, "MOON_SCORE_BURST");
+  detail::overrideNumber(maxSongScore, "MOON_MAX_SONG_SCORE");
+  detail::overrideString(config.adminToken, "MOON_ADMIN_TOKEN");
+  detail::overrideString(config.logFile, "MOON_LOG_FILE");
   detail::overrideString(config.publicUrl, "MOON_PUBLIC_URL");
   detail::overrideString(config.dataDir, "MOON_DATA_DIR");
   detail::overrideString(config.serverName, "MOON_SERVER_NAME");
@@ -235,6 +257,12 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   config.songTimeoutSeconds = static_cast<int>(songTimeout < 30 ? 30 : songTimeout);
   config.finishGraceSeconds = static_cast<int>(finishGrace < 5 ? 5 : finishGrace);
   config.chatCooldownMs = static_cast<int>(chatCooldown < 0 ? 0 : chatCooldown);
+  config.reconnectGraceSeconds = static_cast<int>(reconnectGrace < 0 ? 0 : (reconnectGrace > 600 ? 600 : reconnectGrace));
+  config.maxScorePerSecond = maxScorePerSecond < 100 ? 100 : maxScorePerSecond;
+  config.scoreBurst = scoreBurst < 0 ? 0 : scoreBurst;
+  config.maxSongScore = maxSongScore < 1000 ? 1000 : maxSongScore;
+
+  if (config.adminToken.size() < 16) config.adminToken.clear();
 
   if (config.publicUrl.empty()) config.publicUrl = "http://127.0.0.1:" + std::to_string(config.httpPort);
 

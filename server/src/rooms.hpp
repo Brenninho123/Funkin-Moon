@@ -25,6 +25,7 @@ struct RoomMember
   std::string id;
   std::string username;
   std::string avatarUrl;
+  bool authenticated = false;
   bool ready = false;
   bool finished = false;
   int64_t score = 0;
@@ -32,6 +33,11 @@ struct RoomMember
   double health = 0.0;
   double accuracy = 0.0;
   int64_t joinedAt = 0;
+  std::string resumeKey;
+  bool away = false;
+  int64_t awayUntil = 0;
+  bool missedResults = false;
+  int violations = 0;
 };
 
 struct Room
@@ -51,6 +57,7 @@ struct Room
   int64_t firstFinishAt = 0;
   int64_t seed = 0;
   int round = 0;
+  nlohmann::json lastResults;
 };
 
 struct RankedMember
@@ -87,6 +94,8 @@ inline std::string makeRoomCode(const std::function<uint32_t()>& random)
 
 inline RoomMember* findMember(Room& room, uint64_t serial)
 {
+  if (serial == 0) return nullptr;
+
   for (auto& member : room.members)
   {
     if (member.serial == serial) return &member;
@@ -97,12 +106,67 @@ inline RoomMember* findMember(Room& room, uint64_t serial)
 
 inline const RoomMember* findMember(const Room& room, uint64_t serial)
 {
+  if (serial == 0) return nullptr;
+
   for (const auto& member : room.members)
   {
     if (member.serial == serial) return &member;
   }
 
   return nullptr;
+}
+
+inline int64_t scoreCeiling(int64_t elapsedMs, int64_t perSecond, int64_t burst)
+{
+  if (elapsedMs < 0) elapsedMs = 0;
+
+  return burst + perSecond * elapsedMs / 1000;
+}
+
+inline RoomMember* findMemberByResumeKey(Room& room, const std::string& key)
+{
+  if (key.empty()) return nullptr;
+
+  for (auto& member : room.members)
+  {
+    if (member.away && member.resumeKey == key) return &member;
+  }
+
+  return nullptr;
+}
+
+inline RoomMember* findAwayMemberById(Room& room, const std::string& id)
+{
+  for (auto& member : room.members)
+  {
+    if (member.away && member.id == id) return &member;
+  }
+
+  return nullptr;
+}
+
+inline bool removeMemberById(Room& room, const std::string& id)
+{
+  for (auto it = room.members.begin(); it != room.members.end(); ++it)
+  {
+    if (it->id == id)
+    {
+      room.members.erase(it);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+inline uint64_t firstConnectedSerial(const Room& room)
+{
+  for (const auto& member : room.members)
+  {
+    if (!member.away && member.serial != 0) return member.serial;
+  }
+
+  return 0;
 }
 
 inline bool removeMember(Room& room, uint64_t serial)
@@ -135,6 +199,8 @@ inline bool everyoneReady(const Room& room)
 {
   for (const auto& member : room.members)
   {
+    if (member.away) return false;
+
     if (member.serial != room.hostSerial && !member.ready) return false;
   }
 
