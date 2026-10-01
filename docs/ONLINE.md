@@ -2,17 +2,26 @@
 
 Moon Engine can play with other people through a Moon Engine server. The server is in the `server` folder, and [server/README.md](../server/README.md) explains how to build and run it. Everything below is about the game side.
 
-## Connecting
-
-1. Start a server. For a game with friends on the same network, or for testing, run `server/build/moon-server.exe` on one computer.
-2. In the game open the main menu, then **Online**.
-3. The game connects to `127.0.0.1:7777` by default. To use another server, type its address and port at the top of the lobby and press **Connect**. The game remembers it in `online_server.json` next to the executable.
-
-The top bar shows the connection and how many players are online. If the server has Discord login set up, the game offers to log you in, and the leaderboard then lists you by name instead of as a guest.
-
 ## The online menu
 
-**HOST** creates a room and opens its lobby. **ROOMS** opens the lobby without creating one. Back leaves.
+Open the main menu, then **Online**. The screen has three columns:
+
+- **You** (left). Your name and avatar, and the Discord login.
+- **Play** (middle). **Host a room** creates a room and opens its lobby. **Find a room** lists the open rooms and lets you join with a code. **Leaderboard** shows the best scores of every song on the server.
+- **Server** (right). The server you are connected to, its message of the day, how many players are online and who they are (a star marks the players that logged in with Discord), and the address of the server.
+
+The game connects to `127.0.0.1:7777` by default, which is a server running on the same computer (`server/build/moon-server.exe`). To use another server type its address and port in the Server card and press **Connect**. The game remembers it in `online_server.json` next to the executable. Esc goes back.
+
+## Logging in with Discord
+
+Without logging in you play as a guest with a name the game made up. Logging in gives you your Discord name and avatar, keeps your scores under your account and lets the leaderboard list you properly.
+
+1. Press **Log in with Discord**. Your browser opens the Discord page where you allow Moon Engine to read your name and avatar. It asks for nothing else.
+2. Discord sends the browser back to the server, and the game says you are logged in. This takes a few seconds.
+3. If the page did not open, or you closed it, use **Copy the login link** or **Open it again** while the game waits.
+4. **Log out** forgets the login. The game remembers it between sessions, so you only log in once per computer.
+
+The login is a real Discord login, run by the server so the game never sees the Discord application's secret. It only works when the server owner has set it up (a Discord application and two environment variables, see [server/README.md](../server/README.md)). Otherwise the card says that this server has Discord login turned off, and you keep playing as a guest. To try the login without a Discord application, run `node server/tools/mock-discord.js` and start the server as it prints.
 
 ## The lobby when you are not in a room
 

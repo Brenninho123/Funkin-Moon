@@ -1,474 +1,373 @@
 package funkin.ui.online;
 
-import flixel.FlxG;
-import flixel.text.FlxText;
-import flixel.ui.FlxButton;
-import flixel.math.FlxPoint;
-import funkin.audio.FunkinSound;
-import funkin.graphics.FunkinSprite;
-import funkin.ui.MusicBeatState;
-import funkin.ui.mainmenu.MainMenuState;
+#if FEATURE_ONLINE
+import flixel.FlxSprite;
+import funkin.graphics.FunkinCamera;
+import funkin.input.Cursor;
+import funkin.multiplayer.RemoteImageLoader;
 import funkin.online.DiscordAuth;
-import funkin.online.DiscordAuth.DiscordUserProfile;
 import funkin.online.FunkinOnline;
 import funkin.online.FunkinUser;
 import funkin.online.OnlineConfig;
-import funkin.online.play.FunkinMultiplayer;
-import funkin.ui.multiplayer.LoginSubState;
-import funkin.ui.multiplayer.HostMenuSubState;
-import funkin.ui.multiplayer.InviteNotificationSubState;
-import funkin.multiplayer.MultiplayerAccountManager;
-import funkin.multiplayer.MultiplayerInviteService;
-import funkin.multiplayer.MultiplayerInviteService.InviteInfo;
-import funkin.play.PlayState;
-import funkin.play.song.Song;
-import funkin.data.song.SongRegistry;
-import funkin.ui.transition.LoadingState;
+import funkin.online.OnlineText;
+import funkin.online.OnlineText.DiscordPanel;
+import funkin.ui.mainmenu.MainMenuState;
+import haxe.ui.backend.flixel.UIState;
+import haxe.ui.containers.windows.WindowManager;
+import haxe.ui.core.Screen;
+import haxe.ui.events.MouseEvent;
+import haxe.ui.focus.FocusManager;
+import haxe.ui.notifications.NotificationManager;
+import haxe.ui.notifications.NotificationType;
+import lime.system.Clipboard;
 
-class OnlineMenuState extends MusicBeatState
+@:build(haxe.ui.ComponentBuilder.build('assets/exclude/ui/online/menu-view.xml'))
+class OnlineMenuState extends UIState
 {
-  #if FEATURE_ONLINE
-  var bg:Null<FunkinSprite> = null;
-  var title:Null<FlxText> = null;
-  var watermarkText:Null<FlxText> = null;
-  var subtitle:Null<FlxText> = null;
-  var statusText:Null<FlxText> = null;
-  var hostButton:Null<FunkinSprite> = null;
-  var hostLocked:Bool = false;
-  var isMultiplayerMode:Bool;
-  var connectButton:Null<FlxButton> = null;
-  var exitButton:Null<FlxButton> = null;
-  var currentAccount:Dynamic = null;
-  var selectedIndex:Int = 0;
-  var playerListText:Null<FlxText> = null;
-  var loginPrompted:Bool = false;
-  var refreshTimer:Float = 0;
+  static final AVATAR_SIZE:Int = 96;
 
-  static final OPTION_COUNT:Int = 3;
+  var camTop:FunkinCamera;
+  var avatarSprite:FlxSprite;
+  var loadedAvatarUrl:String = '';
+  var panel:DiscordPanel;
+  var refreshTimer:Float = 0;
+  var lastPlayers:String = '';
 
   override function create():Void
   {
+    WindowManager.instance.reset();
+
+    camTop = new FunkinCamera('onlineMenuTop');
+    camTop.bgColor.alpha = 0;
+    FlxG.cameras.add(camTop, false);
+
     super.create();
 
+    root.scrollFactor.set();
+    root.width = FlxG.width;
+    root.height = FlxG.height;
+
+    WindowManager.instance.container = root;
+    Screen.instance.addComponent(root);
+
     FlxG.mouse.visible = true;
+    Cursor.show();
 
-    bg = new FunkinSprite(0, 0);
-    bg.makeSolidColor(FlxG.width, FlxG.height, 0xFF101722);
-    add(bg);
+    avatarSprite = new FlxSprite();
+    avatarSprite.makeGraphic(AVATAR_SIZE, AVATAR_SIZE, 0xFF2C3A52);
+    avatarSprite.cameras = [camTop];
+    avatarSprite.scrollFactor.set(0, 0);
+    avatarSprite.visible = false;
+    add(avatarSprite);
 
-    title = new FlxText(0, 40, FlxG.width, 'ONLINE MENU', 42);
-    if (title != null)
-    {
-      title.setFormat(Paths.font('vcr.ttf'), 42, 0xFFFFFFFF, CENTER);
-      add(title);
-    }
+    FunkinUser.instance.setActivity('In the online menu');
 
-    subtitle = new FlxText(0, 100, FlxG.width, 'Connecting...', 18);
-    if (subtitle != null)
-    {
-      subtitle.setFormat(Paths.font('vcr.ttf'), 18, 0xFFB7C8FF, CENTER);
-      add(subtitle);
-    }
+    DiscordAuth.instance.init();
 
-    watermarkText = new FlxText(0, 230, FlxG.width, '', 18);
-    if (watermarkText != null)
-    {
-      watermarkText.setFormat(Paths.font('vcr.ttf'), 18, 0xFFB7C8FF, CENTER);
-      add(watermarkText);
-    }
+    FunkinOnline.instance.onConnected.add(refreshView);
+    FunkinOnline.instance.onDisconnected.add(refreshView);
+    FunkinOnline.instance.onError.add(onSocketError);
+    FunkinUser.instance.onActiveUsersChanged.add(refreshView);
+    DiscordAuth.instance.onChanged.add(refreshView);
 
-    statusText = new FlxText(0, 150, FlxG.width, 'Offline', 22);
-    if (statusText != null)
-    {
-      statusText.setFormat(Paths.font('vcr.ttf'), 22, 0xFF7CF6CF, CENTER);
-      add(statusText);
-    }
-
-    // ---- HOST como FunkinSprite animado ----
-    hostButton = new FunkinSprite(220, 280);
-    hostButton.frames = Paths.getSparrowAtlas('mainmenu/host');
-    hostButton.animation.addByPrefix('idle', 'host idle', 24, true);
-    hostButton.animation.addByPrefix('confirm', 'host selected', 24, false);
-    hostButton.animation.play('idle');
-    hostButton.antialiasing = true;
-    add(hostButton);
-
-    connectButton = new FlxButton(460, 280, 'ROOMS', connectOnline);
-    if (connectButton != null)
-    {
-      connectButton.color = 0xFF27C7A4;
-      connectButton.scale.set(2.0, 2.0);
-      connectButton.updateHitbox();
-      connectButton.onOver.callback = () ->
-      {
-        connectButton.color = 0xFF3FE9D6;
-        connectButton.scale.set(2.1, 2.1);
-      };
-      connectButton.onOut.callback = () ->
-      {
-        connectButton.color = 0xFF27C7A4;
-        connectButton.scale.set(2.0, 2.0);
-      };
-      add(connectButton);
-    }
-
-    exitButton = new FlxButton(340, 400, 'BACK', () ->
-    {
-      trace('[MP] Back button clicked');
-      FlxG.switchState(() -> new MainMenuState());
-    });
-    if (exitButton != null)
-    {
-      exitButton.color = 0xFF8B8B8B;
-      exitButton.scale.set(1.8, 1.8);
-      exitButton.updateHitbox();
-      exitButton.onOver.callback = () ->
-      {
-        exitButton.color = 0xFFC0C0C0;
-        exitButton.scale.set(1.9, 1.9);
-      };
-      exitButton.onOut.callback = () ->
-      {
-        exitButton.color = 0xFF8B8B8B;
-        exitButton.scale.set(1.8, 1.8);
-      };
-      add(exitButton);
-    }
-
-    playerListText = new FlxText(FlxG.width - 360, 150, 340, '', 16);
-    playerListText.setFormat(Paths.font('vcr.ttf'), 16, 0xFFD6E0FF, LEFT);
-    add(playerListText);
-
-    currentAccount = MultiplayerAccountManager.getOrCreateAccount(DiscordAuth.instance.getCachedUsername() ?? 'Player');
-
-    registerOnlineHandlers();
-    refreshStatus();
-
-    FunkinSound.playMusic('chartEditorLoop', {
-      overrideExisting: true,
-      loop: true
-    });
+    serverHost.text = OnlineConfig.host;
+    serverPort.text = Std.string(OnlineConfig.port);
 
     if (FunkinOnline.instance.state == Disconnected) FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
 
-    promptLoginIfNeeded();
+    refreshView();
+
+    haxe.ui.Toolkit.callLater(() ->
+    {
+      var focused = FocusManager.instance.focus;
+
+      if (focused != null) focused.focus = false;
+    });
   }
 
-  function promptLoginIfNeeded():Void
+  function toast(message:String, type:NotificationType = NotificationType.Info):Void
   {
-    var auth:DiscordAuth = DiscordAuth.instance;
-
-    if (loginPrompted || auth.isLoggedIn() || !auth.discordEnabled || !FunkinOnline.instance.isConnected()) return;
-
-    loginPrompted = true;
-
-    openLogin();
+    NotificationManager.instance.addNotification({
+      title: switch (type)
+      {
+        case NotificationType.Success: 'Done';
+        case NotificationType.Warning: 'Careful';
+        case NotificationType.Error: 'Error';
+        default: 'Online';
+      },
+      body: message,
+      type: type,
+      expiryMs: Constants.NOTIFICATION_DISMISS_TIME
+    });
   }
 
-  function openLogin():Void
+  function onSocketError(message:String):Void
   {
-    if (subState != null || currentAccount == null) return;
-
-    openSubState(new LoginSubState(currentAccount, onDiscordLoggedIn));
+    serverStatus.text = 'Error: ' + message;
+    tint(serverStatus, 0xFFFF6B6B);
   }
 
-  function onDiscordLoggedIn(profile:DiscordUserProfile):Void
+  function colorFor(kind:String):Int
   {
-    MultiplayerInviteService.instance.updateIdentity(currentAccount);
-
-    refreshStatus();
+    return switch (kind)
+    {
+      case OnlineText.KIND_OK: 0xFF7CF6CF;
+      case OnlineText.KIND_ERROR: 0xFFFF6B6B;
+      default: 0xFFB7C8FF;
+    };
   }
 
-  function refreshStatus():Void
+  function tint(label:haxe.ui.components.Label, color:Int):Void
   {
+    label.customStyle.color = color;
+    label.invalidateComponentStyle();
+  }
+
+  function refreshView():Void
+  {
+    if (root == null) return;
+
     var online:FunkinOnline = FunkinOnline.instance;
     var auth:DiscordAuth = DiscordAuth.instance;
-    var users:Array<funkin.online.FunkinUser.FunkinUserInfo> = FunkinUser.instance.getActiveUsers();
+    var user = FunkinUser.instance;
+    var loggedIn:Bool = auth.isLoggedIn();
+    var username:String = loggedIn ? auth.profile.username : (user.localUser?.username ?? 'Guest');
+    var users = user.getActiveUsers();
 
     users.sort((a, b) -> a.username.toLowerCase() < b.username.toLowerCase() ? -1 : (a.username.toLowerCase() > b.username.toLowerCase() ? 1 : 0));
 
-    if (subtitle != null)
+    var serverNameText:String = auth.serverName;
+
+    headline.text = serverNameText != '' ? 'Playing on ' + serverNameText : 'Play with friends on a Moon Engine server.';
+
+    profileName.text = username;
+    profileKind.text = loggedIn ? 'Discord account' : 'Guest';
+
+    panel = OnlineText.discordPanel(Std.string(auth.state), online.isConnected(), auth.discordEnabled, username, auth.failureReason, auth.loginUrl != '');
+
+    discordStatus.text = panel.status;
+    tint(discordStatus, colorFor(panel.kind));
+    discordHint.text = panel.hint;
+    discordAction.text = panel.actionLabel;
+    discordAction.hidden = panel.action == OnlineText.ACTION_NONE;
+    discordCopy.hidden = !panel.canCopyLink;
+    discordReopen.hidden = !panel.canCopyLink;
+
+    serverName.text = serverNameText != '' ? serverNameText : 'Moon Engine server';
+    serverMotd.text = online.isConnected() ? auth.serverMotd : '';
+    serverStatus.text = OnlineText.connection(Std.string(online.state), OnlineConfig.describe(), users.length);
+    tint(serverStatus, online.isConnected() ? 0xFF7CF6CF : 0xFFFF9F6B);
+    serverConnect.text = online.isConnected() ? 'Reconnect' : 'Connect';
+
+    actionHint.text = online.isConnected() ? '' : 'Connect to a server to play online. Start one with server/build/moon-server.exe.';
+
+    var signature:String = [for (entry in users) entry.id + entry.username + entry.activity + (entry.authenticated == true ? '1' : '0')].join('|');
+
+    if (signature != lastPlayers)
     {
-      subtitle.text = switch (online.state)
+      lastPlayers = signature;
+
+      playerList.dataSource.clear();
+
+      for (entry in users)
       {
-        case Connected: 'Connected to ' + OnlineConfig.describe();
-        case Connecting: 'Connecting to ' + OnlineConfig.describe() + '...';
-        case Reconnecting: 'Server unreachable, retrying...';
-        case Disconnected: 'Not connected';
-      };
-    }
-
-    if (statusText != null)
-    {
-      statusText.text = online.isConnected() ? '${users.length} player${users.length == 1 ? '' : 's'} online' : 'Offline';
-      statusText.color = online.isConnected() ? 0xFF7CF6CF : 0xFFFF7C7C;
-    }
-
-    if (watermarkText != null)
-    {
-      watermarkText.text = auth.isLoggedIn() ? 'Discord: ' + auth.profile.username : (auth.discordEnabled ? 'Discord: not logged in (press L)' : 'Discord login is unavailable on this server');
-    }
-
-    if (playerListText != null)
-    {
-      var localId:String = FunkinUser.instance.getLocalUserId();
-      var lines:Array<String> = [];
-
-      for (user in users)
-      {
-        if (lines.length >= 10) break;
-
-        lines.push((user.authenticated == true ? '* ' : '  ') + user.username + (user.id == localId ? ' (you)' : '') + '  ' + user.activity);
+        playerList.dataSource.add({
+          title: OnlineText.playerLine(entry.username, entry.authenticated == true, entry.id == user.getLocalUserId()),
+          subtitle: entry.activity
+        });
       }
-
-      if (users.length > 10) lines.push('  +' + (users.length - 10) + ' more');
-
-      playerListText.text = lines.join('\n');
     }
+
+    playersTitle.text = 'PLAYERS ONLINE (' + users.length + ')';
+
+    showAvatar(loggedIn ? auth.profile.avatarUrl : '');
   }
 
-  /**
-   * Liga os sinais do FunkinMultiplayer (camada de sala/partida) aos
-   * elementos visuais dessa tela. Substitui os antigos callbacks
-   * onConnect/onMessage/onDisconnect do MultiplayerClient binário.
-   */
-  function registerOnlineHandlers():Void
+  function showAvatar(url:String):Void
   {
-    FunkinMultiplayer.instance.init();
+    if (url == loadedAvatarUrl) return;
 
-    FunkinOnline.instance.onConnected.add(onOnlineConnected);
-    FunkinOnline.instance.onDisconnected.add(onOnlineDisconnected);
-    FunkinOnline.instance.onError.add(onOnlineError);
-    FunkinUser.instance.onActiveUsersChanged.add(refreshStatus);
-    DiscordAuth.instance.onChanged.add(refreshStatus);
+    loadedAvatarUrl = url;
 
-    FunkinMultiplayer.instance.onRoomJoined.add(onRoomReady);
-    FunkinMultiplayer.instance.onRoomCreated.add(onRoomReady);
+    if (url == '')
+    {
+      avatarSprite.makeGraphic(AVATAR_SIZE, AVATAR_SIZE, 0xFF2C3A52);
+      return;
+    }
+
+    RemoteImageLoader.loadInto(avatarSprite, url, () ->
+    {
+      if (avatarSprite == null) return;
+
+      avatarSprite.setGraphicSize(AVATAR_SIZE, AVATAR_SIZE);
+      avatarSprite.updateHitbox();
+    });
   }
 
-  function unregisterOnlineHandlers():Void
+  function overlayOpen():Bool
   {
-    FunkinOnline.instance.onConnected.remove(onOnlineConnected);
-    FunkinOnline.instance.onDisconnected.remove(onOnlineDisconnected);
-    FunkinOnline.instance.onError.remove(onOnlineError);
-    FunkinUser.instance.onActiveUsersChanged.remove(refreshStatus);
-    DiscordAuth.instance.onChanged.remove(refreshStatus);
+    for (component in Screen.instance.rootComponents)
+    {
+      if (component == root) continue;
 
-    FunkinMultiplayer.instance.onRoomJoined.remove(onRoomReady);
-    FunkinMultiplayer.instance.onRoomCreated.remove(onRoomReady);
+      var name:String = Type.getClassName(Type.getClass(component));
+
+      if (name.indexOf('Notification') >= 0 || name.indexOf('ToolTip') >= 0) continue;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  function isTyping():Bool
+  {
+    var focused = FocusManager.instance.focus;
+
+    return focused != null && Std.isOfType(focused, haxe.ui.components.TextField);
   }
 
   override function update(elapsed:Float):Void
   {
     super.update(elapsed);
 
-    if (!hostLocked)
+    if (avatarSlot.width > 0)
     {
-      // ---- Navegação: setas/WASD movem a seleção ----
-      final pressedNext:Bool = FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.D;
-      final pressedPrev:Bool = FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.A;
-
-      if (pressedNext)
-      {
-        selectedIndex = (selectedIndex + 1) % OPTION_COUNT;
-        FunkinSound.playOnce(Paths.sound('scrollMenu'));
-      }
-      else if (pressedPrev)
-      {
-        selectedIndex = (selectedIndex - 1 + OPTION_COUNT) % OPTION_COUNT;
-        FunkinSound.playOnce(Paths.sound('scrollMenu'));
-      }
-
-      // ---- Confirmar com ENTER/SPACE ----
-      if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE)
-      {
-        confirmSelection();
-      }
-
-      // ---- ESC volta pro menu principal ----
-      if (FlxG.keys.justPressed.ESCAPE)
-      {
-        trace('[MP] ESC pressionado - voltando pro MainMenuState');
-        FlxG.switchState(() -> new MainMenuState());
-      }
+      avatarSprite.setPosition(avatarSlot.screenLeft + 1, avatarSlot.screenTop + 1);
+      avatarSprite.visible = !overlayOpen();
     }
-
-    if (FlxG.keys.justPressed.L && !DiscordAuth.instance.isLoggedIn()) openLogin();
 
     refreshTimer += elapsed;
 
-    if (refreshTimer >= 0.5)
+    if (refreshTimer >= 1.0)
     {
       refreshTimer = 0;
-      refreshStatus();
-      promptLoginIfNeeded();
+      refreshView();
     }
 
-    updateSelectionVisuals();
-
-    final mouseWorld:FlxPoint = FlxG.mouse.getWorldPosition();
-
-    if (hostButton != null && !hostLocked)
+    if (FlxG.keys.justPressed.ESCAPE)
     {
-      final overHost:Bool = hostButton.overlapsPoint(mouseWorld, false);
-      if (overHost && FlxG.mouse.justPressed)
-      {
-        selectedIndex = 0;
-        confirmSelection();
-      }
-    }
-  }
-
-  function updateSelectionVisuals():Void
-  {
-    if (hostButton != null && !hostLocked)
-    {
-      final scale:Float = (selectedIndex == 0) ? 1.05 : 1.0;
-      if (hostButton.scale.x != scale)
-      {
-        hostButton.scale.set(scale, scale);
-        hostButton.updateHitbox();
-      }
+      if (isTyping()) FocusManager.instance.focus.focus = false;
+      else
+        goBack();
     }
 
-    if (connectButton != null)
+    if (FlxG.keys.justPressed.ENTER && FocusManager.instance.focus != null)
     {
-      final selected:Bool = selectedIndex == 1;
-      connectButton.color = selected ? 0xFF3FE9D6 : 0xFF27C7A4;
-      connectButton.scale.set(selected ? 2.1 : 2.0, selected ? 2.1 : 2.0);
-    }
+      var focused = FocusManager.instance.focus;
 
-    if (exitButton != null)
-    {
-      final selected:Bool = selectedIndex == 2;
-      exitButton.color = selected ? 0xFFC0C0C0 : 0xFF8B8B8B;
-      exitButton.scale.set(selected ? 1.9 : 1.8, selected ? 1.9 : 1.8);
+      if (focused == serverHost || focused == serverPort) applyServerAddress();
     }
   }
 
-  function confirmSelection():Void
+  function goBack():Void
   {
-    switch (selectedIndex)
+    FlxG.switchState(() -> new MainMenuState());
+  }
+
+  function applyServerAddress():Void
+  {
+    var port:Null<Int> = Std.parseInt(StringTools.trim(serverPort.text));
+
+    if (port == null || !OnlineConfig.set(serverHost.text, port))
     {
-      case 0:
-        if (hostButton != null && !hostLocked)
-        {
-          hostLocked = true;
-          hostButton.animation.play('confirm', true);
-          hostButton.animation.finishCallback = (_) -> startHost();
-        }
-      case 1:
-        connectOnline();
-      case 2:
-        trace('[MP] Back selecionado');
-        FlxG.switchState(() -> new MainMenuState());
-    }
-  }
-
-  /**
-   * Conecta no relay via FunkinOnline (texto JSON + '\n'), no lugar do
-   * antigo MultiplayerClient binário. O resultado da conexão chega
-   * pelos sinais registrados em registerOnlineHandlers(), não mais
-   * por callbacks onConnect/onMessage passados na hora.
-   */
-  function connectOnline():Void
-  {
-    #if FEATURE_HAXEUI
-    FlxG.switchState(() -> new OnlineLobbyState(false));
-    #else
-    if (FunkinOnline.instance.state == Disconnected)
-    {
-      FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
-    }
-
-    refreshStatus();
-    #end
-  }
-
-  function onOnlineConnected():Void
-  {
-    refreshStatus();
-    promptLoginIfNeeded();
-  }
-
-  function onOnlineDisconnected():Void
-  {
-    refreshStatus();
-  }
-
-  function onOnlineError(msg:String):Void
-  {
-    if (statusText != null) statusText.text = 'Error: ' + msg;
-  }
-
-  function onRoomReady(room:Dynamic):Void
-  {
-    if (statusText != null) statusText.text = 'Room ready. Waiting for an opponent...';
-  }
-
-  // Chamado quando FunkinMultiplayer recebe 'mp_startSong' do host.
-  // NOTA: essa mensagem não carrega mais songId/difficulty/variation
-  // diretamente no payload que o FunkinMultiplayer expõe pro
-  // onSongStart (ele só dispara Void->Void). Se o relay novo ainda não
-  // manda esses dados nesse evento, isso vai quebrar até a gente
-  // reescrever o RelayServer/MultiplayerServer (próximo passo da fila).
-
-  function onSongStart():Void
-  {
-    if (FunkinMultiplayer.instance.currentRoom == null) return;
-
-    var room = FunkinMultiplayer.instance.currentRoom;
-    var songId:String = room.songId;
-    if (songId == null) return;
-
-    var song:Null<Song> = SongRegistry.instance.fetchEntry(songId);
-    if (song == null)
-    {
-      trace('[MP] música recebida do host não encontrada: ' + songId);
+      toast('Type a server address and a port between 1 and 65535.', NotificationType.Error);
       return;
     }
 
-    // PlayState.multiplayerClient esperava o MultiplayerClient antigo.
-    // Isso vai quebrar a compilação até PlayState.hx ser atualizado pra
-    // apontar pro FunkinOnline/FunkinMultiplayer — não mexi nele agora
-    // porque não foi o que você pediu nessa rodada.
-    #if FEATURE_ONLINE
-    PlayState.multiplayerMatchActive = true;
-    #end
+    FunkinOnline.instance.disconnect();
+    FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
 
-    LoadingState.loadPlayState({
-      targetSong: song,
-      targetDifficulty: room.difficultyId ?? 'normal',
-      targetVariation: room.variation ?? 'default',
-      isMultiplayerMode: true
-    });
+    refreshView();
+    toast('Connecting to ' + OnlineConfig.describe() + '...');
   }
 
-  function onInviteReceived(invite:InviteInfo):Void
+  function connectNow():Void
   {
-    trace('[MP] convite recebido de ' + invite.username);
-    openSubState(new InviteNotificationSubState(invite, currentAccount));
+    if (FunkinOnline.instance.state == Disconnected) FunkinOnline.instance.connect(OnlineConfig.host, OnlineConfig.port);
+
+    refreshView();
   }
 
-  function startHost():Void
+  @:bind(menuBack, MouseEvent.CLICK)
+  function onMenuBackClick(_):Void
   {
-    #if FEATURE_HAXEUI
+    goBack();
+  }
+
+  @:bind(serverConnect, MouseEvent.CLICK)
+  function onServerConnectClick(_):Void
+  {
+    applyServerAddress();
+  }
+
+  @:bind(discordAction, MouseEvent.CLICK)
+  function onDiscordActionClick(_):Void
+  {
+    var auth:DiscordAuth = DiscordAuth.instance;
+
+    switch (panel.action)
+    {
+      case OnlineText.ACTION_LOGIN:
+        auth.beginLogin();
+      case OnlineText.ACTION_CANCEL:
+        auth.cancelLogin();
+      case OnlineText.ACTION_LOGOUT:
+        auth.logout();
+        toast('You logged out of Discord.', NotificationType.Success);
+      case OnlineText.ACTION_CONNECT:
+        connectNow();
+      default:
+    }
+  }
+
+  @:bind(discordCopy, MouseEvent.CLICK)
+  function onDiscordCopyClick(_):Void
+  {
+    if (DiscordAuth.instance.loginUrl == '') return;
+
+    Clipboard.text = DiscordAuth.instance.loginUrl;
+
+    toast('The login link is on the clipboard. Paste it in your browser.', NotificationType.Success);
+  }
+
+  @:bind(discordReopen, MouseEvent.CLICK)
+  function onDiscordReopenClick(_):Void
+  {
+    DiscordAuth.instance.reopenLoginPage();
+  }
+
+  @:bind(actionHost, MouseEvent.CLICK)
+  function onActionHostClick(_):Void
+  {
     FlxG.switchState(() -> new OnlineLobbyState(true));
-    #else
-    hostLocked = false;
-    if (hostButton != null) hostButton.animation.play('idle', true);
-    #end
+  }
+
+  @:bind(actionBrowse, MouseEvent.CLICK)
+  function onActionBrowseClick(_):Void
+  {
+    FlxG.switchState(() -> new OnlineLobbyState(false));
+  }
+
+  @:bind(actionBoard, MouseEvent.CLICK)
+  function onActionBoardClick(_):Void
+  {
+    FlxG.switchState(() -> new OnlineLobbyState(false, true));
   }
 
   override function destroy():Void
   {
-    unregisterOnlineHandlers();
+    FunkinOnline.instance.onConnected.remove(refreshView);
+    FunkinOnline.instance.onDisconnected.remove(refreshView);
+    FunkinOnline.instance.onError.remove(onSocketError);
+    FunkinUser.instance.onActiveUsersChanged.remove(refreshView);
+    DiscordAuth.instance.onChanged.remove(refreshView);
 
-    if (MultiplayerInviteService.instance.onInviteReceived == onInviteReceived)
-    {
-      MultiplayerInviteService.instance.onInviteReceived = null;
-    }
+    NotificationManager.instance.clearNotifications();
+
+    if (camTop != null) FlxG.cameras.remove(camTop);
+
     super.destroy();
   }
-  #end
 }
+#end

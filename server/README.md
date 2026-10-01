@@ -78,6 +78,8 @@ HTTP endpoints:
 
 The flow: the game asks the server for a login link, opens it in the browser, Discord sends the browser back to the server's callback, the server exchanges the code for the profile (scope `identify` only), revokes the Discord token right away, and tells the game it is logged in. The game receives a session token that it stores in `discord_session.json` and sends on later connections. The server keeps only a SHA-256 hash of the token, in `data/sessions.json`.
 
+To try the whole flow without a Discord application, `node tools/mock-discord.js` runs a fake Discord that approves every login and prints the environment variables to start the server with. The game then shows a real login, avatar included.
+
 ## Pointing the game at the server
 
 The online lobby has a server address field. It saves `online_server.json` next to the game executable:

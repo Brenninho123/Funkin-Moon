@@ -35,6 +35,9 @@ class DiscordAuth
   public var failureReason(default, null):String = '';
   public var serverUserId(default, null):String = '';
   public var discordEnabled(default, null):Bool = true;
+  public var loginUrl(default, null):String = '';
+  public var serverName(default, null):String = '';
+  public var serverMotd(default, null):String = '';
 
   public var onChanged:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
 
@@ -101,10 +104,16 @@ class DiscordAuth
     FunkinOnline.instance.send('auth_begin');
   }
 
+  public function reopenLoginPage():Void
+  {
+    if (state == WaitingForBrowser && loginUrl != '') FlxG.openURL(loginUrl);
+  }
+
   public function cancelLogin():Void
   {
     if (!isBusy()) return;
 
+    loginUrl = '';
     failureReason = '';
     setState(LoggedOut);
   }
@@ -129,6 +138,7 @@ class DiscordAuth
 
   function fail(reason:String):Void
   {
+    loginUrl = '';
     failureReason = reason;
     setState(Failed);
   }
@@ -137,6 +147,8 @@ class DiscordAuth
   {
     serverUserId = data.id != null ? Std.string(data.id) : '';
     discordEnabled = data.discordEnabled == true;
+    serverName = data.serverName != null ? Std.string(data.serverName) : '';
+    serverMotd = data.motd != null ? Std.string(data.motd) : '';
 
     if (data.authenticated == true && data.profile != null)
     {
@@ -173,6 +185,8 @@ class DiscordAuth
       return;
     }
 
+    loginUrl = url;
+
     setState(WaitingForBrowser);
 
     FlxG.openURL(url);
@@ -182,6 +196,7 @@ class DiscordAuth
   {
     if (data.profile == null || data.token == null) return;
 
+    loginUrl = '';
     token = Std.string(data.token);
     profile = parseProfile(data.profile);
     cachedProfile = profile;

@@ -38,6 +38,7 @@ class OnlineLobbyState extends UIState
   static final MAX_CHAT_LINES:Int = 80;
 
   var autoCreate:Bool;
+  var boardWanted:Bool;
   var syncing:Bool = true;
   var songIds:Array<String> = [];
   var summaries:Array<MultiplayerRoomSummary> = [];
@@ -48,11 +49,12 @@ class OnlineLobbyState extends UIState
   var starting:Bool = false;
   var multiplayer:FunkinMultiplayer;
 
-  public function new(autoCreate:Bool = false)
+  public function new(autoCreate:Bool = false, openLeaderboard:Bool = false)
   {
     super();
 
     this.autoCreate = autoCreate;
+    this.boardWanted = openLeaderboard;
     this.multiplayer = FunkinMultiplayer.instance;
   }
 
@@ -111,6 +113,12 @@ class OnlineLobbyState extends UIState
       refreshRooms();
 
       if (autoCreate) createRoomNow();
+    }
+
+    if (boardWanted && multiplayer.currentRoom == null)
+    {
+      browserTabs.pageIndex = 1;
+      refreshBoard();
     }
 
     var pending:Null<MultiplayerResults> = multiplayer.takeResults();
@@ -248,6 +256,8 @@ class OnlineLobbyState extends UIState
   function onConnectedSignal():Void
   {
     refreshServerStatus();
+
+    if (boardWanted) refreshBoard();
 
     if (multiplayer.currentRoom == null)
     {
