@@ -38,6 +38,12 @@ struct Config
   size_t maxPlayers = 1024;
   size_t maxPerIp = 16;
   int sessionDays = 30;
+  size_t maxRooms = 256;
+  size_t maxRoomPlayers = 8;
+  size_t minPlayersToStart = 2;
+  int songTimeoutSeconds = 1200;
+  int finishGraceSeconds = 45;
+  int chatCooldownMs = 700;
   DiscordConfig discord;
 };
 
@@ -152,6 +158,12 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
     config.maxPlayers = static_cast<size_t>(detail::intField(root, "maxPlayers", static_cast<int64_t>(config.maxPlayers)));
     config.maxPerIp = static_cast<size_t>(detail::intField(root, "maxPerIp", static_cast<int64_t>(config.maxPerIp)));
     config.sessionDays = static_cast<int>(detail::intField(root, "sessionDays", config.sessionDays));
+    config.maxRooms = static_cast<size_t>(detail::intField(root, "maxRooms", static_cast<int64_t>(config.maxRooms)));
+    config.maxRoomPlayers = static_cast<size_t>(detail::intField(root, "maxRoomPlayers", static_cast<int64_t>(config.maxRoomPlayers)));
+    config.minPlayersToStart = static_cast<size_t>(detail::intField(root, "minPlayersToStart", static_cast<int64_t>(config.minPlayersToStart)));
+    config.songTimeoutSeconds = static_cast<int>(detail::intField(root, "songTimeoutSeconds", config.songTimeoutSeconds));
+    config.finishGraceSeconds = static_cast<int>(detail::intField(root, "finishGraceSeconds", config.finishGraceSeconds));
+    config.chatCooldownMs = static_cast<int>(detail::intField(root, "chatCooldownMs", config.chatCooldownMs));
 
     auto discord = root.find("discord");
 
@@ -174,11 +186,25 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   int64_t port = config.port;
   int64_t httpPort = config.httpPort;
   int64_t maxPlayers = static_cast<int64_t>(config.maxPlayers);
+  int64_t maxRooms = static_cast<int64_t>(config.maxRooms);
+  int64_t maxPerIp = static_cast<int64_t>(config.maxPerIp);
+  int64_t maxRoomPlayers = static_cast<int64_t>(config.maxRoomPlayers);
+  int64_t minPlayersToStart = static_cast<int64_t>(config.minPlayersToStart);
+  int64_t songTimeout = config.songTimeoutSeconds;
+  int64_t finishGrace = config.finishGraceSeconds;
+  int64_t chatCooldown = config.chatCooldownMs;
 
   detail::overrideString(config.bindAddress, "MOON_BIND");
   detail::overrideNumber(port, "MOON_PORT");
   detail::overrideNumber(httpPort, "MOON_HTTP_PORT");
   detail::overrideNumber(maxPlayers, "MOON_MAX_PLAYERS");
+  detail::overrideNumber(maxRooms, "MOON_MAX_ROOMS");
+  detail::overrideNumber(maxPerIp, "MOON_MAX_PER_IP");
+  detail::overrideNumber(maxRoomPlayers, "MOON_MAX_ROOM_PLAYERS");
+  detail::overrideNumber(minPlayersToStart, "MOON_MIN_PLAYERS_TO_START");
+  detail::overrideNumber(songTimeout, "MOON_SONG_TIMEOUT_SECONDS");
+  detail::overrideNumber(finishGrace, "MOON_FINISH_GRACE_SECONDS");
+  detail::overrideNumber(chatCooldown, "MOON_CHAT_COOLDOWN_MS");
   detail::overrideString(config.publicUrl, "MOON_PUBLIC_URL");
   detail::overrideString(config.dataDir, "MOON_DATA_DIR");
   detail::overrideString(config.serverName, "MOON_SERVER_NAME");
@@ -202,6 +228,13 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   config.port = static_cast<uint16_t>(port);
   config.httpPort = static_cast<uint16_t>(httpPort);
   config.maxPlayers = static_cast<size_t>(maxPlayers < 1 ? 1 : maxPlayers);
+  config.maxRooms = static_cast<size_t>(maxRooms < 1 ? 1 : maxRooms);
+  config.maxPerIp = static_cast<size_t>(maxPerIp < 1 ? 1 : maxPerIp);
+  config.maxRoomPlayers = static_cast<size_t>(maxRoomPlayers < 2 ? 2 : (maxRoomPlayers > 32 ? 32 : maxRoomPlayers));
+  config.minPlayersToStart = static_cast<size_t>(minPlayersToStart < 1 ? 1 : minPlayersToStart);
+  config.songTimeoutSeconds = static_cast<int>(songTimeout < 30 ? 30 : songTimeout);
+  config.finishGraceSeconds = static_cast<int>(finishGrace < 5 ? 5 : finishGrace);
+  config.chatCooldownMs = static_cast<int>(chatCooldown < 0 ? 0 : chatCooldown);
 
   if (config.publicUrl.empty()) config.publicUrl = "http://127.0.0.1:" + std::to_string(config.httpPort);
 

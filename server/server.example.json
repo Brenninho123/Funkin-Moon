@@ -7,6 +7,12 @@
   "publicUrl": "http://127.0.0.1:8080",
   "dataDir": "data",
   "maxPlayers": 1024,
+  "maxRooms": 256,
+  "maxRoomPlayers": 8,
+  "minPlayersToStart": 2,
+  "songTimeoutSeconds": 1200,
+  "finishGraceSeconds": 45,
+  "chatCooldownMs": 700,
   "sessionDays": 30,
   "discord": {
     "clientId": "",

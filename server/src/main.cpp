@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "config.hpp"
 #include "http_client.hpp"
 #include "net.hpp"
+#include "rooms.hpp"
 #include "util.hpp"
 
 using json = nlohmann::json;
@@ -24,7 +26,8 @@ namespace moon
 {
 namespace
 {
-constexpr int ProtocolVersion = 1;
+constexpr int ProtocolVersion = 2;
+constexpr size_t MaxRelayBytes = 2048;
 constexpr size_t MaxLineBytes = 65536;
 constexpr size_t MaxOutputBytes = 1024 * 1024;
 constexpr size_t MaxHttpBytes = 8192;
@@ -32,8 +35,8 @@ constexpr int64_t JoinTimeoutMs = 10000;
 constexpr int64_t IdleTimeoutMs = 45000;
 constexpr int64_t HttpTimeoutMs = 30000;
 constexpr int64_t AuthTtlMs = 5 * 60 * 1000;
-constexpr double RateBurst = 40.0;
-constexpr double RatePerSecond = 20.0;
+constexpr double RateBurst = 120.0;
+constexpr double RatePerSecond = 50.0;
 constexpr const char* UserAgent = "MoonEngineServer (https://github.com/Brenninho123/Funkin-Moon, 1.0)";
 
 std::atomic<bool> gRunning{true};
@@ -63,6 +66,37 @@ std::string jsonString(const json& object, const char* key)
 std::string dumpJson(const json& value)
 {
   return value.dump(-1, ' ', false, json::error_handler_t::replace);
+}
+
+int64_t jsonInt(const json& object, const char* key, int64_t fallback)
+{
+  if (!object.is_object()) return fallback;
+
+  auto it = object.find(key);
+
+  if (it == object.end()) return fallback;
+  if (it->is_number_integer()) return it->get<int64_t>();
+  if (it->is_number()) return static_cast<int64_t>(it->get<double>());
+
+  return fallback;
+}
+
+double jsonDouble(const json& object, const char* key, double fallback)
+{
+  if (!object.is_object()) return fallback;
+
+  auto it = object.find(key);
+
+  return it != object.end() && it->is_number() ? it->get<double>() : fallback;
+}
+
+bool jsonBool(const json& object, const char* key, bool fallback)
+{
+  if (!object.is_object()) return fallback;
+
+  auto it = object.find(key);
+
+  return it != object.end() && it->is_boolean() ? it->get<bool>() : fallback;
 }
 
 struct Profile
@@ -123,6 +157,8 @@ struct Client
   std::string discordId;
   std::string tokenHash;
   std::string pendingState;
+  std::string roomId;
+  int64_t lastChat = 0;
 };
 
 struct PendingAuth
@@ -318,6 +354,7 @@ public:
 
     std::filesystem::create_directories(config.dataDir);
     loadSessions();
+    leaderboard.load(leaderboardPath());
 
     log(config.serverName + " listening on " + config.bindAddress + ":" + std::to_string(config.port) + " (game) and :" + std::to_string(config.httpPort) + " (http)");
     log(config.discord.enabled() ? "discord login enabled, redirect uri " + config.discord.redirectUri : "discord login disabled (set MOON_DISCORD_CLIENT_ID and MOON_DISCORD_CLIENT_SECRET)");
@@ -371,6 +408,8 @@ public:
 
     log("shutting down");
 
+    if (leaderboard.isDirty()) saveLeaderboard();
+
     for (auto& entry : clients) net::closeSocket(entry.second->socket);
     for (auto& entry : httpConns) net::closeSocket(entry.second->socket);
 
@@ -397,6 +436,10 @@ private:
   std::mutex jobMutex;
   std::vector<std::function<void()>> completedJobs;
   std::atomic<int> activeJobs{0};
+  std::map<std::string, Room> rooms;
+  Leaderboard leaderboard;
+  int64_t lastScoreSave = 0;
+  std::mt19937 rng{std::random_device{}()};
 
   static void addPoll(std::vector<net::PollFd>& fds, std::vector<std::pair<int, uint64_t>>& owners, net::Socket socket, int events, int kind,
                       uint64_t serial)
@@ -536,6 +579,8 @@ private:
     if (client.detached) return;
 
     client.detached = true;
+
+    leaveRoom(client, "disconnected");
 
     if (!client.pendingState.empty()) pendingAuth.erase(client.pendingState);
 
@@ -778,7 +823,15 @@ private:
     }
     else if (type == "songResult")
     {
-      log("song result from " + client.player.username + ": " + dumpJson(data).substr(0, 200));
+      handleSongResult(client, data);
+    }
+    else if (type == "leaderboard")
+    {
+      handleLeaderboard(client, data);
+    }
+    else if (type.rfind("mp_", 0) == 0)
+    {
+      if (!handleRoomMessage(client, type, data)) sendError(client, "unknown_message");
     }
     else if (type == "auth_begin")
     {
@@ -792,6 +845,736 @@ private:
     {
       handleAuthLogout(client);
     }
+  }
+
+  Room* findRoom(const std::string& id)
+  {
+    auto it = rooms.find(id);
+
+    return it == rooms.end() ? nullptr : &it->second;
+  }
+
+  Room* roomOf(Client& client)
+  {
+    return client.roomId.empty() ? nullptr : findRoom(client.roomId);
+  }
+
+  std::string roomHostId(const Room& room) const
+  {
+    const RoomMember* host = findMember(room, room.hostSerial);
+
+    return host != nullptr ? host->id : std::string();
+  }
+
+  json memberJson(const Room& room, const RoomMember& member) const
+  {
+    return json{{"id", member.id},
+                {"username", member.username},
+                {"avatarUrl", member.avatarUrl},
+                {"ready", member.ready},
+                {"finished", member.finished},
+                {"score", member.score},
+                {"combo", member.combo},
+                {"accuracy", member.accuracy},
+                {"isHost", member.serial == room.hostSerial}};
+  }
+
+  json roomJson(const Room& room) const
+  {
+    json players = json::array();
+    json members = json::array();
+
+    for (const auto& member : room.members)
+    {
+      players.push_back(member.id);
+      members.push_back(memberJson(room, member));
+    }
+
+    json result = {{"roomId", room.id},
+                   {"name", room.name},
+                   {"hostId", roomHostId(room)},
+                   {"isPublic", room.isPublic},
+                   {"maxPlayers", room.maxPlayers},
+                   {"state", room.state},
+                   {"players", players},
+                   {"members", members},
+                   {"round", room.round}};
+
+    result["songId"] = room.songId.empty() ? json(nullptr) : json(room.songId);
+    result["difficultyId"] = room.songId.empty() ? json(nullptr) : json(room.difficultyId);
+    result["variation"] = room.songId.empty() ? json(nullptr) : json(room.variation);
+
+    return result;
+  }
+
+  json roomSummary(const Room& room) const
+  {
+    const RoomMember* host = findMember(room, room.hostSerial);
+
+    return json{{"roomId", room.id},
+                {"name", room.name},
+                {"hostName", host != nullptr ? host->username : std::string()},
+                {"players", room.members.size()},
+                {"maxPlayers", room.maxPlayers},
+                {"state", room.state},
+                {"songId", room.songId},
+                {"difficultyId", room.difficultyId}};
+  }
+
+  json publicRoomsJson()
+  {
+    json list = json::array();
+
+    for (const auto& entry : rooms)
+    {
+      if (entry.second.isPublic) list.push_back(roomSummary(entry.second));
+    }
+
+    return list;
+  }
+
+  void sendToRoom(const Room& room, const std::string& type, const json& data, uint64_t exceptSerial = 0)
+  {
+    std::string line = dumpJson(json{{"type", type}, {"data", data}}) + "\n";
+    std::vector<uint64_t> serials;
+
+    for (const auto& member : room.members)
+    {
+      if (member.serial != exceptSerial) serials.push_back(member.serial);
+    }
+
+    for (uint64_t serial : serials)
+    {
+      Client* target = findClient(serial);
+
+      if (target != nullptr && !target->closing) sendRaw(*target, line);
+    }
+  }
+
+  RoomMember makeMember(Client& client) const
+  {
+    RoomMember member;
+    member.serial = client.serial;
+    member.id = client.player.id;
+    member.username = client.player.username;
+    member.avatarUrl = client.player.avatarUrl;
+    member.joinedAt = nowMs();
+
+    return member;
+  }
+
+  std::string uniqueRoomCode()
+  {
+    for (int attempt = 0; attempt < 64; attempt++)
+    {
+      std::string code = makeRoomCode([this]() { return static_cast<uint32_t>(rng()); });
+
+      if (rooms.find(code) == rooms.end()) return code;
+    }
+
+    return std::string();
+  }
+
+  void roomFailure(Client& client, const std::string& reason)
+  {
+    send(client, "mp_roomJoinFailed", json{{"reason", reason}});
+  }
+
+  void handleCreateRoom(Client& client, const json& data)
+  {
+    if (!client.roomId.empty())
+    {
+      roomFailure(client, "already_in_room");
+      return;
+    }
+
+    if (rooms.size() >= config.maxRooms)
+    {
+      sendError(client, "room_limit");
+      return;
+    }
+
+    std::string code = uniqueRoomCode();
+
+    if (code.empty())
+    {
+      sendError(client, "room_limit");
+      return;
+    }
+
+    Room room;
+    room.id = code;
+    room.name = sanitizeText(jsonString(data, "name"), 32);
+
+    if (room.name.empty()) room.name = client.player.username + "'s room";
+
+    room.isPublic = jsonBool(data, "isPublic", true);
+    room.maxPlayers = static_cast<size_t>(clampInt(jsonInt(data, "maxPlayers", 4), 2, static_cast<int64_t>(config.maxRoomPlayers)));
+    room.createdAt = nowMs();
+    room.hostSerial = client.serial;
+    room.members.push_back(makeMember(client));
+
+    rooms[code] = room;
+    client.roomId = code;
+
+    log("room " + code + " created by " + client.player.username + " (" + std::to_string(rooms.size()) + " rooms)");
+
+    send(client, "mp_roomCreated", roomJson(rooms[code]));
+  }
+
+  void handleJoinRoom(Client& client, const json& data)
+  {
+    if (!client.roomId.empty())
+    {
+      roomFailure(client, "already_in_room");
+      return;
+    }
+
+    Room* room = findRoom(normalizeRoomCode(jsonString(data, "roomId")));
+
+    if (room == nullptr)
+    {
+      roomFailure(client, "not_found");
+      return;
+    }
+
+    if (room->members.size() >= room->maxPlayers)
+    {
+      roomFailure(client, "full");
+      return;
+    }
+
+    if (room->state != "lobby")
+    {
+      roomFailure(client, "in_progress");
+      return;
+    }
+
+    RoomMember member = makeMember(client);
+
+    room->members.push_back(member);
+    client.roomId = room->id;
+
+    log(client.player.username + " joined room " + room->id + " (" + std::to_string(room->members.size()) + "/" + std::to_string(room->maxPlayers) + ")");
+
+    std::string roomId = room->id;
+
+    send(client, "mp_roomJoined", roomJson(*room));
+
+    room = findRoom(roomId);
+
+    if (room != nullptr) sendToRoom(*room, "mp_playerJoined", json{{"userId", member.id}, {"member", memberJson(*room, member)}}, client.serial);
+  }
+
+  void leaveRoom(Client& client, const std::string& reason)
+  {
+    if (client.roomId.empty()) return;
+
+    std::string roomId = client.roomId;
+    client.roomId.clear();
+
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr) return;
+
+    const RoomMember* leaving = findMember(*room, client.serial);
+    std::string leavingId = leaving != nullptr ? leaving->id : client.player.id;
+    bool wasHost = room->hostSerial == client.serial;
+
+    removeMember(*room, client.serial);
+
+    if (room->members.empty())
+    {
+      rooms.erase(roomId);
+      log("room " + roomId + " closed (" + std::to_string(rooms.size()) + " rooms)");
+      return;
+    }
+
+    if (wasHost) room->hostSerial = room->members.front().serial;
+
+    json left = {{"userId", leavingId}, {"reason", reason}, {"hostId", roomHostId(*room)}};
+
+    sendToRoom(*room, "mp_playerLeft", left);
+
+    room = findRoom(roomId);
+
+    if (room == nullptr) return;
+
+    if (wasHost) sendToRoom(*room, "mp_hostChanged", json{{"hostId", roomHostId(*room)}});
+
+    room = findRoom(roomId);
+
+    if (room != nullptr && room->state == "playing") evaluateRound(roomId, false);
+  }
+
+  void handleSelectSong(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr)
+    {
+      sendError(client, "not_in_room");
+      return;
+    }
+
+    if (room->hostSerial != client.serial)
+    {
+      sendError(client, "not_host");
+      return;
+    }
+
+    if (room->state != "lobby")
+    {
+      sendError(client, "in_progress");
+      return;
+    }
+
+    std::string songId = jsonString(data, "songId");
+    std::string difficulty = jsonString(data, "difficultyId");
+    std::string variation = jsonString(data, "variation");
+
+    if (difficulty.empty()) difficulty = "normal";
+    if (variation.empty()) variation = "default";
+
+    if (!validIdentifier(songId) || !validIdentifier(difficulty) || !validIdentifier(variation))
+    {
+      sendError(client, "invalid_song");
+      return;
+    }
+
+    room->songId = songId;
+    room->difficultyId = difficulty;
+    room->variation = variation;
+
+    for (auto& member : room->members) member.ready = false;
+
+    sendToRoom(*room, "mp_songSelected", json{{"songId", songId}, {"difficultyId", difficulty}, {"variation", variation}});
+  }
+
+  void handleSetReady(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr)
+    {
+      sendError(client, "not_in_room");
+      return;
+    }
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr || room->state != "lobby") return;
+
+    member->ready = jsonBool(data, "ready", true);
+
+    sendToRoom(*room, "mp_playerReady", json{{"userId", member->id}, {"ready", member->ready}});
+  }
+
+  void handleStartSong(Client& client)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr)
+    {
+      sendError(client, "not_in_room");
+      return;
+    }
+
+    if (room->hostSerial != client.serial)
+    {
+      sendError(client, "not_host");
+      return;
+    }
+
+    if (room->state != "lobby")
+    {
+      sendError(client, "in_progress");
+      return;
+    }
+
+    if (room->songId.empty())
+    {
+      sendError(client, "no_song");
+      return;
+    }
+
+    if (room->members.size() < config.minPlayersToStart)
+    {
+      sendError(client, "not_enough_players");
+      return;
+    }
+
+    if (!everyoneReady(*room))
+    {
+      sendError(client, "not_all_ready");
+      return;
+    }
+
+    room->state = "playing";
+    room->startedAt = nowMs();
+    room->firstFinishAt = 0;
+    room->seed = static_cast<int64_t>(rng() & 0x7fffffff);
+    room->round++;
+
+    json players = json::array();
+
+    for (auto& member : room->members)
+    {
+      member.finished = false;
+      member.score = 0;
+      member.combo = 0;
+      member.health = 0.5;
+      member.accuracy = 0.0;
+      players.push_back(member.id);
+    }
+
+    log("room " + room->id + " started " + room->songId + " (" + room->difficultyId + ") with " + std::to_string(room->members.size()) + " players");
+
+    sendToRoom(*room, "mp_startSong",
+               json{{"songId", room->songId},
+                    {"difficultyId", room->difficultyId},
+                    {"variation", room->variation},
+                    {"seed", room->seed},
+                    {"round", room->round},
+                    {"players", players}});
+  }
+
+  void readScore(RoomMember& member, const json& data)
+  {
+    member.score = clampInt(jsonInt(data, "score", member.score), -2000000000, 2000000000);
+    member.combo = clampInt(jsonInt(data, "combo", member.combo), 0, 1000000);
+    member.health = clampDouble(jsonDouble(data, "health", member.health), 0.0, 2.0);
+    member.accuracy = clampDouble(jsonDouble(data, "accuracy", member.accuracy), 0.0, 100.0);
+  }
+
+  json scoreJson(const RoomMember& member) const
+  {
+    return json{{"userId", member.id},
+                {"username", member.username},
+                {"score", member.score},
+                {"combo", member.combo},
+                {"health", member.health},
+                {"accuracy", member.accuracy}};
+  }
+
+  void handleScoreUpdate(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr || room->state != "playing") return;
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr || member->finished) return;
+
+    readScore(*member, data);
+
+    sendToRoom(*room, "mp_scoreUpdate", scoreJson(*member), client.serial);
+  }
+
+  void handleRelay(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr || room->state != "playing") return;
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr || member->finished) return;
+
+    auto payload = data.find("payload");
+
+    if (payload == data.end() || !payload->is_object()) return;
+
+    std::string text = dumpJson(*payload);
+
+    if (text.size() > MaxRelayBytes) return;
+
+    sendToRoom(*room, "mp_relay", json{{"userId", member->id}, {"payload", *payload}}, client.serial);
+  }
+
+  void handlePlayerFinished(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr || room->state != "playing") return;
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr || member->finished) return;
+
+    readScore(*member, data);
+    member->finished = true;
+
+    if (room->firstFinishAt == 0) room->firstFinishAt = nowMs();
+
+    recordScore(client, room->songId, room->difficultyId, member->score);
+
+    std::string roomId = room->id;
+    json payload = scoreJson(*member);
+
+    sendToRoom(*room, "mp_playerFinished", payload, client.serial);
+
+    evaluateRound(roomId, false);
+  }
+
+  void evaluateRound(const std::string& roomId, bool force)
+  {
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr || room->state != "playing") return;
+
+    if (force || everyoneFinished(*room)) finishRound(roomId);
+  }
+
+  void finishRound(const std::string& roomId)
+  {
+    Room* room = findRoom(roomId);
+
+    if (room == nullptr || room->state != "playing") return;
+
+    json rankings = json::array();
+
+    for (const auto& ranked : rankMembers(room->members))
+    {
+      json entry = scoreJson(ranked.member);
+      entry["rank"] = ranked.rank;
+      entry["finished"] = ranked.member.finished;
+      rankings.push_back(entry);
+    }
+
+    json results = {{"songId", room->songId}, {"difficultyId", room->difficultyId}, {"variation", room->variation}, {"round", room->round}, {"rankings", rankings}};
+
+    room->state = "lobby";
+    room->startedAt = 0;
+    room->firstFinishAt = 0;
+
+    for (auto& member : room->members)
+    {
+      member.ready = false;
+      member.finished = false;
+    }
+
+    log("room " + roomId + " finished " + room->songId);
+
+    sendToRoom(*room, "mp_results", results);
+
+    room = findRoom(roomId);
+
+    if (room != nullptr) sendToRoom(*room, "mp_roomState", roomJson(*room));
+  }
+
+  void handleChat(Client& client, const json& data)
+  {
+    std::string text = sanitizeText(jsonString(data, "text"), 200);
+
+    if (text.empty()) return;
+
+    int64_t now = nowMs();
+
+    if (now - client.lastChat < config.chatCooldownMs)
+    {
+      sendError(client, "chat_cooldown");
+      return;
+    }
+
+    client.lastChat = now;
+
+    json message = {{"userId", client.player.id}, {"username", client.player.username}, {"text", text}, {"time", now}};
+
+    Room* room = roomOf(client);
+
+    if (jsonString(data, "scope") != "global" && room != nullptr)
+    {
+      message["scope"] = "room";
+      sendToRoom(*room, "mp_chat", message);
+    }
+    else
+    {
+      message["scope"] = "global";
+      broadcast("mp_chat", message, 0);
+    }
+  }
+
+  void handleKick(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr)
+    {
+      sendError(client, "not_in_room");
+      return;
+    }
+
+    if (room->hostSerial != client.serial)
+    {
+      sendError(client, "not_host");
+      return;
+    }
+
+    std::string target = jsonString(data, "userId");
+    uint64_t targetSerial = 0;
+
+    for (const auto& member : room->members)
+    {
+      if (member.id == target && member.serial != client.serial) targetSerial = member.serial;
+    }
+
+    if (targetSerial == 0)
+    {
+      sendError(client, "unknown_member");
+      return;
+    }
+
+    Client* victim = findClient(targetSerial);
+
+    if (victim == nullptr) return;
+
+    send(*victim, "mp_roomClosed", json{{"reason", "kicked"}});
+    leaveRoom(*victim, "kicked");
+  }
+
+  void handleRoomSettings(Client& client, const json& data)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr || room->hostSerial != client.serial)
+    {
+      sendError(client, room == nullptr ? "not_in_room" : "not_host");
+      return;
+    }
+
+    if (room->state != "lobby")
+    {
+      sendError(client, "in_progress");
+      return;
+    }
+
+    std::string name = sanitizeText(jsonString(data, "name"), 32);
+
+    if (!name.empty()) room->name = name;
+
+    room->isPublic = jsonBool(data, "isPublic", room->isPublic);
+
+    size_t wanted = static_cast<size_t>(clampInt(jsonInt(data, "maxPlayers", static_cast<int64_t>(room->maxPlayers)), 2, static_cast<int64_t>(config.maxRoomPlayers)));
+
+    room->maxPlayers = std::max(wanted, room->members.size());
+
+    sendToRoom(*room, "mp_roomState", roomJson(*room));
+  }
+
+  bool handleRoomMessage(Client& client, const std::string& type, const json& data)
+  {
+    if (type == "mp_createRoom") handleCreateRoom(client, data);
+    else if (type == "mp_joinRoom") handleJoinRoom(client, data);
+    else if (type == "mp_leaveRoom") leaveRoom(client, "left");
+    else if (type == "mp_listRooms") send(client, "mp_rooms", json{{"rooms", publicRoomsJson()}});
+    else if (type == "mp_selectSong") handleSelectSong(client, data);
+    else if (type == "mp_setReady") handleSetReady(client, data);
+    else if (type == "mp_startSong") handleStartSong(client);
+    else if (type == "mp_scoreUpdate") handleScoreUpdate(client, data);
+    else if (type == "mp_relay") handleRelay(client, data);
+    else if (type == "mp_playerFinished") handlePlayerFinished(client, data);
+    else if (type == "mp_chat") handleChat(client, data);
+    else if (type == "mp_kick") handleKick(client, data);
+    else if (type == "mp_roomSettings") handleRoomSettings(client, data);
+    else return false;
+
+    return true;
+  }
+
+  void syncRoomIdentity(Client& client, const std::string& oldId)
+  {
+    Room* room = roomOf(client);
+
+    if (room == nullptr) return;
+
+    RoomMember* member = findMember(*room, client.serial);
+
+    if (member == nullptr) return;
+
+    member->id = client.player.id;
+    member->username = client.player.username;
+    member->avatarUrl = client.player.avatarUrl;
+
+    sendToRoom(*room, "mp_memberUpdated", json{{"oldId", oldId}, {"member", memberJson(*room, *member)}, {"hostId", roomHostId(*room)}});
+  }
+
+  void recordScore(Client& client, const std::string& songId, const std::string& difficulty, int64_t score)
+  {
+    ScoreEntry entry;
+    entry.authenticated = client.player.authenticated;
+    entry.id = client.player.authenticated ? client.player.id : "g:" + client.player.username;
+    entry.username = client.player.username;
+    entry.score = score;
+    entry.at = nowMs();
+
+    if (leaderboard.submit(songId, difficulty, entry)) log("new best for " + client.player.username + " on " + songId + " (" + difficulty + "): " + std::to_string(score));
+  }
+
+  void handleSongResult(Client& client, const json& data)
+  {
+    std::string songId = jsonString(data, "songId");
+    std::string difficulty = jsonString(data, "difficulty");
+
+    if (difficulty.empty()) difficulty = jsonString(data, "difficultyId");
+
+    int64_t score = clampInt(jsonInt(data, "score", 0), 0, 2000000000);
+
+    log("song result from " + client.player.username + ": " + songId + " " + difficulty + " " + std::to_string(score));
+
+    recordScore(client, songId, difficulty, score);
+  }
+
+  void handleLeaderboard(Client& client, const json& data)
+  {
+    std::string songId = jsonString(data, "songId");
+    std::string difficulty = jsonString(data, "difficulty");
+
+    if (difficulty.empty()) difficulty = jsonString(data, "difficultyId");
+    if (difficulty.empty()) difficulty = "normal";
+
+    size_t limit = static_cast<size_t>(clampInt(jsonInt(data, "limit", 10), 1, static_cast<int64_t>(Leaderboard::MaxEntries)));
+
+    send(client, "leaderboard", leaderboard.toJson(songId, difficulty, limit));
+  }
+
+  void tickRooms(int64_t now)
+  {
+    std::vector<std::string> playing;
+
+    for (const auto& entry : rooms)
+    {
+      if (entry.second.state == "playing") playing.push_back(entry.first);
+    }
+
+    for (const auto& roomId : playing)
+    {
+      Room* room = findRoom(roomId);
+
+      if (room == nullptr) continue;
+
+      bool timedOut = now - room->startedAt > static_cast<int64_t>(config.songTimeoutSeconds) * 1000;
+      bool graceOver = room->firstFinishAt > 0 && now - room->firstFinishAt > static_cast<int64_t>(config.finishGraceSeconds) * 1000;
+
+      if (timedOut || graceOver) finishRound(roomId);
+    }
+
+    if (leaderboard.isDirty() && now - lastScoreSave >= 3000)
+    {
+      lastScoreSave = now;
+      saveLeaderboard();
+    }
+  }
+
+  std::string leaderboardPath() const
+  {
+    return (std::filesystem::path(config.dataDir) / "scores.json").string();
+  }
+
+  void saveLeaderboard()
+  {
+    if (!leaderboard.save(leaderboardPath())) log("could not write " + leaderboardPath());
   }
 
   void handleJoin(Client& client, const json& data)
@@ -842,7 +1625,10 @@ private:
                     {"serverName", config.serverName},
                     {"motd", config.motd},
                     {"discordEnabled", config.discord.enabled()},
-                    {"players", joinedCount()}};
+                    {"players", joinedCount()},
+                    {"features", json::array({"rooms", "chat", "leaderboard"})},
+                    {"maxRoomPlayers", config.maxRoomPlayers},
+                    {"minPlayersToStart", config.minPlayersToStart}};
 
     if (client.player.authenticated)
     {
@@ -915,6 +1701,8 @@ private:
       broadcast("userLeft", json{{"id", oldId}}, 0);
       broadcast("userJoined", client.player.toJson(), 0);
     }
+
+    if (oldId != client.player.id) syncRoomIdentity(client, oldId);
   }
 
   void handleAuthBegin(Client& client)
@@ -981,6 +1769,8 @@ private:
     client.player.avatarUrl.clear();
     client.player.id = "p" + std::to_string(nextPlayer++);
     client.player.username = "Guest" + client.player.id.substr(1);
+
+    syncRoomIdentity(client, oldId);
 
     broadcast("userLeft", json{{"id", oldId}}, 0);
     broadcast("userJoined", client.player.toJson(), 0);
@@ -1097,11 +1887,25 @@ private:
                      {"protocol", ProtocolVersion},
                      {"online", joinedCount()},
                      {"authenticated", authenticated},
+                     {"rooms", rooms.size()},
+                     {"playing", playingRooms()},
                      {"maxPlayers", config.maxPlayers},
                      {"discordEnabled", config.discord.enabled()},
                      {"uptimeSeconds", (nowMs() - startedAt) / 1000}};
 
       respond(conn, 200, "application/json", dumpJson(status));
+    }
+    else if (path == "/rooms")
+    {
+      respond(conn, 200, "application/json", dumpJson(json{{"rooms", publicRoomsJson()}}));
+    }
+    else if (path == "/leaderboard")
+    {
+      auto params = parseQuery(query);
+      std::string songId = params.count("song") ? params["song"] : std::string();
+      std::string difficulty = params.count("difficulty") ? params["difficulty"] : std::string("normal");
+
+      respond(conn, 200, "application/json", dumpJson(leaderboard.toJson(songId, difficulty, 25)));
     }
     else if (path == "/auth/callback")
     {
@@ -1212,8 +2016,22 @@ private:
     for (auto& job : jobs) job();
   }
 
+  size_t playingRooms() const
+  {
+    size_t count = 0;
+
+    for (const auto& entry : rooms)
+    {
+      if (entry.second.state == "playing") count++;
+    }
+
+    return count;
+  }
+
   void tick(int64_t now)
   {
+    tickRooms(now);
+
     for (auto& entry : clients)
     {
       Client& client = *entry.second;
