@@ -117,6 +117,7 @@ class Project extends HXProject
   static final FEATURE_LOG_TRACE:FeatureFlag = "FEATURE_LOG_TRACE";
   static final FEATURE_DEBUG_FILE_LOGGING:FeatureFlag = "FEATURE_DEBUG_FILE_LOGGING";
   static final FEATURE_NATIVE_CRASH_HANDLER:FeatureFlag = "FEATURE_NATIVE_CRASH_HANDLER";
+  static final FEATURE_NATIVE_VIDEO_RECORDER:FeatureFlag = "FEATURE_NATIVE_VIDEO_RECORDER";
   static final FEATURE_MOBILE_ADVERTISEMENTS:FeatureFlag = "FEATURE_MOBILE_ADVERTISEMENTS";
   static final FEATURE_MOBILE_IAP:FeatureFlag = "FEATURE_MOBILE_IAP";
   static final FEATURE_MOBILE_IAR:FeatureFlag = "FEATURE_MOBILE_IAR";
@@ -472,6 +473,7 @@ class Project extends HXProject
     FEATURE_LOG_TRACE.apply(this, true);
     FEATURE_DEBUG_FILE_LOGGING.apply(this, FEATURE_DEBUG_FUNCTIONS.isEnabled(this));
     FEATURE_NATIVE_CRASH_HANDLER.apply(this, isDesktop() && isCPP());
+    FEATURE_NATIVE_VIDEO_RECORDER.apply(this, isWindows() && isCPP());
     FEATURE_NAUGHTYNESS.apply(this, true);
     FEATURE_OPEN_URL.apply(this, true);
     FEATURE_PARTIAL_SOUNDS.apply(this, true);

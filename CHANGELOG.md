@@ -17,7 +17,7 @@ The first release of Moon Engine, a fork of Friday Night Funkin' 0.8.8 with a sc
 - Music Editor for the tempo and time changes of a song, with a timeline, undo and autosave. See `docs/MUSIC_EDITOR.md`.
 - Animation Editor with playback, undo and character tools. See `docs/ANIMATION_EDITOR.md`.
 - Mod Menu to enable, disable and sort mods, with haptic feedback on mobile.
-- Video recording: F5 starts and stops recording the game window to the `videos` folder, Shift+F5 opens the folder. See `docs/VIDEO_RECORDING.md`.
+- Video recording: F5 starts and stops recording the game window to the `videos` folder, Shift+F5 opens the folder. On Windows it makes an MP4 with H.264 video at 60 frames per second and the sound of the game as AAC audio; on other systems a Motion JPEG AVI without sound. See `docs/VIDEO_RECORDING.md`.
 - Online mode and its server. See `docs/ONLINE.md` and `server/README.md`.
   - A standalone C++ server with player presence, rooms, chat, a leaderboard, player records and quick match.
   - Rooms with a host, public and private rooms, ready flags, kicking, results and ranking, and a shared seed for each round.

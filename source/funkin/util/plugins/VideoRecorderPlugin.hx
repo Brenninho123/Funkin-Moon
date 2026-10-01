@@ -5,8 +5,12 @@ import flixel.FlxBasic;
 import flixel.FlxG;
 import funkin.audio.FunkinSound;
 import funkin.util.WindowUtil;
+import funkin.util.logging.CrashGuard;
 import funkin.util.logging.CrashHandler;
 import funkin.util.video.AviWriter;
+#if FEATURE_NATIVE_VIDEO_RECORDER
+import funkin.external.windows.video.VideoEncoder;
+#end
 import haxe.atomic.AtomicInt;
 import haxe.Timer;
 import lime.graphics.Image;
@@ -33,18 +37,24 @@ private class VideoJob
 
 /**
  * A Flixel plugin that records the game window to a video file in the `videos` folder.
- * Press F5 to start and stop. Shift+F5 opens the folder. The video has no sound.
- * Frames are grabbed on the main thread and compressed and written on a worker thread,
- * so the game keeps its frame rate.
+ * Press F5 to start and stop. Shift+F5 opens the folder.
+ *
+ * On Windows the video is an MP4 with H.264 video at 60 frames per second and the sound of the game as AAC audio,
+ * encoded by Media Foundation. Everywhere else it is a Motion JPEG AVI at 30 frames per second without sound.
+ * Frames are grabbed on the main thread and compressed and written on other threads, so the game keeps its frame rate.
  */
 @:nullSafety
 class VideoRecorderPlugin extends FlxBasic
 {
   public static final VIDEO_FOLDER:String = 'videos';
-  public static final FPS:Int = 30;
+  public static final AVI_FPS:Int = 30;
+  public static final NATIVE_FPS:Int = 60;
 
   static final JPEG_QUALITY:Int = 25;
   static final MAX_PENDING:Int = 6;
+  static final MAX_NATIVE_PENDING:Int = 12;
+  static final BITS_PER_PIXEL:Float = 0.18;
+  static final SLOW_FRAME_SECONDS:Float = 0.03;
   static final MAX_REPEAT:Int = 120;
   static final TOAST_SECONDS:Float = 4.0;
 
@@ -63,6 +73,12 @@ class VideoRecorderPlugin extends FlxBasic
   }
 
   var recording:Bool = false;
+  var native:Bool = false;
+  var fps:Int = AVI_FPS;
+  var grabCount:Int = 0;
+  var grabSeconds:Float = 0;
+  var gameFrames:Int = 0;
+  var slowFrames:Int = 0;
   var stopping:Bool = false;
   var startedAt:Float = 0;
   var accountedFrames:Int = 0;
@@ -139,10 +155,14 @@ class VideoRecorderPlugin extends FlxBasic
 
     if (!recording) return;
 
-    var elapsedSeconds:Float = Timer.stamp() - startedAt;
-    var expected:Int = Std.int(elapsedSeconds * FPS) + 1;
+    gameFrames++;
 
-    if (expected > accountedFrames && pending.load() < MAX_PENDING)
+    if (elapsed > SLOW_FRAME_SECONDS) slowFrames++;
+
+    var elapsedSeconds:Float = Timer.stamp() - startedAt;
+    var expected:Int = Std.int(elapsedSeconds * fps) + 1;
+
+    if (expected > accountedFrames && canSubmit())
     {
       var repeat:Int = Std.int(Math.min(expected - accountedFrames, MAX_REPEAT));
 
@@ -181,13 +201,20 @@ class VideoRecorderPlugin extends FlxBasic
     }
 
     basePath = unique;
+
+    #if FEATURE_NATIVE_VIDEO_RECORDER
+    if (startNative(first, unique)) return;
+    #end
+
+    native = false;
+    fps = AVI_FPS;
     currentPath = unique + '.avi';
 
     var writer:AviWriter;
 
     try
     {
-      writer = new AviWriter(currentPath, first.width, first.height, FPS);
+      writer = new AviWriter(currentPath, first.width, first.height, fps);
     }
     catch (e:Dynamic)
     {
@@ -222,9 +249,102 @@ class VideoRecorderPlugin extends FlxBasic
     FunkinSound.playOnce(Paths.sound('ui/main-menu/screenshot'), 1.0);
   }
 
+  #if FEATURE_NATIVE_VIDEO_RECORDER
+  function startNative(first:Image, unique:String):Bool
+  {
+    var width:Int = first.width;
+    var height:Int = first.height;
+    var kbps:Int = Std.int(Math.max(4000, Math.min(50000, (width * height * NATIVE_FPS * BITS_PER_PIXEL) / 1000)));
+    var target:String = unique + '.mp4';
+
+    if (!VideoEncoder.start(target, width, height, NATIVE_FPS, kbps, true))
+    {
+      CrashGuard.note('The MP4 recorder could not start: ' + VideoEncoder.lastError().toString());
+
+      return false;
+    }
+
+    native = true;
+    fps = NATIVE_FPS;
+    currentPath = target;
+    done = new Deque();
+    queue = null;
+    recording = true;
+    startedAt = Timer.stamp();
+    accountedFrames = 0;
+    lastTitleSecond = -1;
+    grabCount = 0;
+    grabSeconds = 0;
+    gameFrames = 0;
+    slowFrames = 0;
+    originalTitle = FlxG.stage.window.title;
+
+    CrashGuard.note('Recording ' + target + ' at ' + width + 'x' + height + ', ' + NATIVE_FPS + ' fps, ' + kbps + ' kbps, sound: ' + VideoEncoder.audioKind().toString());
+
+    submitNative(first, 1);
+    accountedFrames = 1;
+
+    FunkinSound.playOnce(Paths.sound('ui/main-menu/screenshot'), 1.0);
+
+    return true;
+  }
+
+  function submitNative(image:Image, repeat:Int):Bool
+  {
+    var buffer:lime.graphics.ImageBuffer = image.buffer;
+
+    if (buffer.format != lime.graphics.PixelFormat.RGBA32 && buffer.format != lime.graphics.PixelFormat.BGRA32) image.format = lime.graphics.PixelFormat.RGBA32;
+
+    if (buffer.stride != image.width * 4) return false;
+
+    var data:haxe.io.BytesData = buffer.data.buffer.getData();
+    var pixels:cpp.RawConstPointer<cpp.UInt8> = cpp.NativeArray.address(data, buffer.data.byteOffset).constRaw;
+
+    return VideoEncoder.writeFrame(pixels, image.width, image.height, buffer.format == lime.graphics.PixelFormat.RGBA32, accountedFrames, repeat);
+  }
+  #end
+
+  function canSubmit():Bool
+  {
+    #if FEATURE_NATIVE_VIDEO_RECORDER
+    if (native) return VideoEncoder.queuedFrames() < MAX_NATIVE_PENDING;
+    #end
+
+    return pending.load() < MAX_PENDING;
+  }
+
   function stop():Void
   {
-    if (!recording || queue == null) return;
+    if (!recording) return;
+
+    #if FEATURE_NATIVE_VIDEO_RECORDER
+    if (native)
+    {
+      var finished:Null<Deque<String>> = done;
+
+      recording = false;
+      stopping = true;
+
+      FlxG.stage.window.title = originalTitle;
+
+      if (grabCount > 0)
+      {
+        CrashGuard.note('Video recorder: ' + grabCount + ' frames grabbed, ' + Math.round(grabSeconds / grabCount * 10000) / 10 + ' ms each, ' + slowFrames
+          + ' of ' + gameFrames + ' game frames over ' + Math.round(SLOW_FRAME_SECONDS * 1000) + ' ms');
+      }
+
+      Thread.create(() ->
+      {
+        var result:String = VideoEncoder.stop().toString();
+
+        if (finished != null) finished.add(result);
+      });
+
+      return;
+    }
+    #end
+
+    if (queue == null) return;
 
     recording = false;
     stopping = true;
@@ -253,23 +373,20 @@ class VideoRecorderPlugin extends FlxBasic
     }
 
     var parts:Array<String> = message.split('|');
-    var seconds:Int = Std.int(Std.parseFloat(parts[0]) / FPS);
+    var seconds:Int = Std.int(Std.parseFloat(parts[0]) / fps);
     var megabytes:Float = Math.round(Std.parseFloat(parts[1]) / 1048576 * 10) / 10;
     var files:Int = Std.parseInt(parts[2]) ?? 1;
     var extra:String = files > 1 ? ' and ' + (files - 1) + ' more part' + (files > 2 ? 's' : '') : '';
+    var sound:String = native ? (parts.length > 3 && parts[3] == '1' ? ', with sound' : ', no sound') : ', no sound';
+    var slow:String = native && gameFrames > 0 && slowFrames * 50 > gameFrames ? '\nThe game ran slower while recording (' + slowFrames + ' slow frames).' : '';
 
     FunkinSound.playOnce(Paths.sound('ui/main-menu/screenshot'), 1.0);
-    showToast('Video saved to ' + currentPath + extra + '  (' + formatDuration(seconds) + ', ' + megabytes + ' MB)\nShift+F5 opens the folder.');
+    showToast('Video saved to ' + currentPath + extra + '  (' + formatDuration(seconds) + ', ' + megabytes + ' MB' + sound + ')' + slow + '\nShift+F5 opens the folder.');
   }
 
   function finishNow():Void
   {
-    if (recording && queue != null)
-    {
-      recording = false;
-      stopping = true;
-      queue.add(null);
-    }
+    if (recording) stop();
 
     if (stopping && done != null)
     {
@@ -296,7 +413,22 @@ class VideoRecorderPlugin extends FlxBasic
 
   function submitFrame(repeat:Int):Bool
   {
+    var started:Float = Timer.stamp();
     var image:Null<Image> = grab();
+
+    #if FEATURE_NATIVE_VIDEO_RECORDER
+    if (native)
+    {
+      if (image == null) return false;
+
+      var accepted:Bool = submitNative(image, repeat);
+
+      grabCount++;
+      grabSeconds += Timer.stamp() - started;
+
+      return accepted;
+    }
+    #end
 
     if (image == null || queue == null) return false;
 
@@ -344,7 +476,7 @@ class VideoRecorderPlugin extends FlxBasic
               totalBytes += writer.size;
               writer.close();
               part++;
-              writer = new AviWriter(basePath + ' (part ' + part + ').avi', width, height, FPS);
+              writer = new AviWriter(basePath + ' (part ' + part + ').avi', width, height, AVI_FPS);
             }
 
             writer.addFrame(jpeg);

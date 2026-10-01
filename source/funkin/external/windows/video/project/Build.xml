@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+  <pragma once="true" />
+  <files id="haxe">
+    <compilerflag value="-I${this_dir}/include" />
+  </files>
+  <files id="__main__">
+    <compilerflag value="-I${this_dir}/include" />
+  </files>
+  <files id="external-videoenc">
+    <compilerflag value="-I${this_dir}/include" />
+    <file name="${this_dir}/src/videoenc.cpp" />
+  </files>
+  <target id="haxe">
+    <section unless="mingw">
+      <lib name="mfplat.lib" />
+      <lib name="mfreadwrite.lib" />
+      <lib name="mfuuid.lib" />
+      <lib name="ole32.lib" />
+      <lib name="Mmdevapi.lib" />
+      <lib name="propsys.lib" />
+    </section>
+    <files id="external-videoenc" />
+  </target>
+</xml>
