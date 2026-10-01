@@ -4,37 +4,29 @@ class HapticUtil
 {
   public static function tap():Void
   {
-    #if (FEATURE_HAPTICS && android)
-    extension.haptics.Haptics.vibrate(10);
-    #elseif (FEATURE_HAPTICS && ios)
-    extension.haptics.Haptics.impact(Light);
+    #if FEATURE_HAPTICS
+    extension.haptics.Haptic.vibrateOneShot(0.01, 0.4, 0.5);
     #end
   }
 
   public static function select():Void
   {
-    #if (FEATURE_HAPTICS && android)
-    extension.haptics.Haptics.vibrate(15);
-    #elseif (FEATURE_HAPTICS && ios)
-    extension.haptics.Haptics.impact(Medium);
+    #if FEATURE_HAPTICS
+    extension.haptics.Haptic.vibrateOneShot(0.015, 0.6, 0.6);
     #end
   }
 
   public static function success():Void
   {
-    #if (FEATURE_HAPTICS && android)
-    extension.haptics.Haptics.vibrate(25);
-    #elseif (FEATURE_HAPTICS && ios)
-    extension.haptics.Haptics.impact(Heavy);
+    #if FEATURE_HAPTICS
+    extension.haptics.Haptic.vibrateOneShot(0.025, 0.9, 0.8);
     #end
   }
 
   public static function warning():Void
   {
-    #if (FEATURE_HAPTICS && android)
-    extension.haptics.Haptics.vibrate([0, 20, 40, 20]);
-    #elseif (FEATURE_HAPTICS && ios)
-    extension.haptics.Haptics.notification(Warning);
+    #if FEATURE_HAPTICS
+    extension.haptics.Haptic.vibratePattern([0.02, 0.04, 0.02], [0.8, 0.0, 0.8], [0.5, 0.0, 0.5]);
     #end
   }
 }

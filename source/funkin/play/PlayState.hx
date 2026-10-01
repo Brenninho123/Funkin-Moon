@@ -2513,10 +2513,7 @@ class PlayState extends MusicBeatSubState
   function initHealthBar():Void
   {
     final isDownscroll:Bool =
-      #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-        Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-        && !ControlsHandler.hasExternalInputDevice
-      )
+      #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows && !ControlsHandler.hasExternalInputDevice)
       || #end
     Preferences.downscroll;
 
@@ -2557,10 +2554,7 @@ class PlayState extends MusicBeatSubState
     if (Preferences.subtitles)
     {
       final isDownscroll:Bool =
-        #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-          Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
-          && !ControlsHandler.hasExternalInputDevice
-        )
+        #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows && !ControlsHandler.hasExternalInputDevice)
         || #end
       Preferences.downscroll;
 

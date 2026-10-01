@@ -485,7 +485,6 @@ class ChartEditorState extends UIState
   var activeToolboxes:Map<String, CollapsibleDialog> = new Map<String, CollapsibleDialog>();
   var uiCamera:FlxCamera;
   #if FEATURE_TOUCH_CONTROLS
-  var backButton:FunkinBackButton;
   var touchScrollLastY:Float = 0;
   var touchScrollActive:Bool = false;
   #end

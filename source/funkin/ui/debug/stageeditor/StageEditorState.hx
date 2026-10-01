@@ -275,7 +275,6 @@ class StageEditorState extends UIState
   var params:Null<StageEditorParams>;
 
   #if FEATURE_TOUCH_CONTROLS
-  var backButton:FunkinBackButton;
   var pinchActive:Bool = false;
   var pinchStartDistance:Float = 0;
   var touchPanLastX:Float = 0;

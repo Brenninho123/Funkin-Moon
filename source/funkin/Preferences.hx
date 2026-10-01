@@ -823,7 +823,7 @@ class Preferences
 
   static function get_controlsScheme():String
   {
-    var value:String = Save?.instance?.mobileOptions?.controlsScheme ?? FunkinHitboxControlSchemes.Arrows;
+    var value:String = Save?.instance?.options?.controlsScheme ?? FunkinHitboxControlSchemes.Arrows;
 
     return switch (value)
     {
@@ -839,7 +839,7 @@ class Preferences
   {
     var save:Save = Save.instance;
 
-    save.mobileOptions.controlsScheme = value;
+    save.options.controlsScheme = value;
     commit('controlsScheme');
 
     return value;

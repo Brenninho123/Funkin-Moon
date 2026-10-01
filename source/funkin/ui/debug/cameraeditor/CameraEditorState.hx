@@ -419,7 +419,6 @@ class CameraEditorState extends UIState implements ConsoleClass
   var params:Null<CameraEditorParams>;
 
   #if FEATURE_TOUCH_CONTROLS
-  var backButton:FunkinBackButton;
   var touchPanning:Bool = false;
   var touchPanLastX:Float = 0;
   var touchPanLastY:Float = 0;
