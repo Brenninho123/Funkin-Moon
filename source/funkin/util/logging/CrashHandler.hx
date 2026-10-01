@@ -62,16 +62,26 @@ class CrashHandler
    */
   static function onUncaughtError(error:UncaughtErrorEvent):Void
   {
-    trace('[CRASH] Uncaught error: ' + generateErrorMessage(error));
+    var errorMessage:String = generateErrorMessage(error);
+
+    trace('[CRASH] Uncaught error: ' + errorMessage);
+
+    if (CrashGuard.tryRecover(errorMessage))
+    {
+      error.preventDefault();
+      return;
+    }
+
+    CrashGuard.markCrash(errorMessage);
 
     try
     {
-      errorSignal.dispatch(generateErrorMessage(error));
+      errorSignal.dispatch(errorMessage);
 
       try
       {
         #if sys
-        logError(error);
+        logErrorMessage(errorMessage);
         #end
       }
       catch (e:Dynamic)
@@ -79,7 +89,7 @@ class CrashHandler
         trace('Error while logging error: ' + e);
       }
 
-      displayError(error);
+      displayErrorMessage(errorMessage);
     }
     catch (e:Dynamic)
     {
@@ -92,6 +102,8 @@ class CrashHandler
   static function onCriticalError(message:String):Void
   {
     trace('[CRASH] Critical error: ' + message);
+
+    CrashGuard.markCrash(message);
 
     try
     {
@@ -157,7 +169,7 @@ class CrashHandler
   }
   #end
 
-  static function buildCrashReport(message:String):String
+  public static function buildCrashReport(message:String):String
   {
     var fullContents:String = '=====================\n';
     fullContents += ' Funkin Crash Report\n';
@@ -168,6 +180,14 @@ class CrashHandler
     fullContents += buildSystemInfo();
 
     fullContents += '\n\n';
+
+    fullContents += '=====================\n';
+
+    fullContents += '\n';
+
+    fullContents += CrashGuard.describe();
+
+    fullContents += '\n';
 
     fullContents += '=====================\n';
 

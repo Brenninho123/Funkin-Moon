@@ -91,6 +91,7 @@ class Main extends Sprite
     // We need to make the crash handler LITERALLY FIRST so nothing EVER gets past it.
     CrashHandler.initialize();
     CrashHandler.queryStatus();
+    funkin.util.logging.CrashGuard.initialize();
 
     setupWorkingDirectory();
 
@@ -139,6 +140,8 @@ class Main extends Sprite
     AnsiTrace.traceBF();
 
     openfl.utils._internal.Log.level = openfl.utils._internal.Log.LogLevel.INFO;
+
+    funkin.util.logging.CrashGuard.hookTrace();
   }
 
   private function initialize(?event:Event):Void
@@ -306,6 +309,8 @@ class Main extends Sprite
     if (shuttingDown) return;
 
     shuttingDown = true;
+
+    funkin.util.logging.CrashGuard.markCleanExit();
 
     try
     {

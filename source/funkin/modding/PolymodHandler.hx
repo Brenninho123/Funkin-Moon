@@ -92,7 +92,7 @@ class PolymodHandler
     #if sys
     createModRoot();
     #end
-    loadModsById(getAllModIds());
+    loadModsById(funkin.util.logging.CrashGuard.safeMode ? [] : getAllModIds());
   }
 
   public static function loadEnabledMods():Void
@@ -100,7 +100,8 @@ class PolymodHandler
     #if sys
     createModRoot();
     #end
-    loadModsById(Save.instance.enabledModIds.value);
+    funkin.util.logging.CrashGuard.applyStartupVerdict();
+    loadModsById(funkin.util.logging.CrashGuard.safeMode ? [] : Save.instance.enabledModIds.value);
   }
 
   public static function loadNoMods():Void

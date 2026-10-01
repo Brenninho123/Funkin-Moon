@@ -29,6 +29,7 @@ The first release of Moon Engine, a fork of Friday Night Funkin' 0.8.8 with a sc
 - JSON title screen: the title screen can be changed by a mod with a data file. See `docs/TITLE_SCREEN.md`.
 - Touch controls in the Debug Menu and the editors, and a back button for mobile.
 - Frame time metrics and stutter detection in the debug display.
+- Anti-crash: the game recovers from uncaught errors by going back to the menu, turns off the mods that crash it, starts in safe mode after three crashes in a row, and writes a report with the latest activity for every crash and for freezes. See `docs/ANTI_CRASH.md`.
 
 ### Changed
 

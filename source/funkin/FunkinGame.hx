@@ -2,6 +2,7 @@ package funkin;
 
 import flixel.FlxGame;
 import funkin.modding.ScriptGuard;
+import funkin.util.logging.CrashGuard;
 import funkin.util.logging.CrashHandler;
 import funkin.modding.PolymodHandler;
 
@@ -15,10 +16,14 @@ class FunkinGame extends FlxGame
       drawFramerate:Int = 60, skipSplash:Bool = false, startFullscreen:Bool = false)
   {
     super(gameWidth, gameHeight, initialState, updateFramerate, drawFramerate, skipSplash, startFullscreen);
+
+    CrashGuard.attachGame();
   }
 
   override function update(deltaTime:Float):Void
   {
+    CrashGuard.update(FlxG.elapsed);
+
     if (!guarding())
     {
       super.update(deltaTime);
