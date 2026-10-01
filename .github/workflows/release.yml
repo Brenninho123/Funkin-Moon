@@ -272,6 +272,8 @@ jobs:
 
       - name: Setup Android
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Install Android SDK
         shell: bash
