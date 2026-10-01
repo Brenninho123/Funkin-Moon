@@ -12,7 +12,6 @@ class Lua
   public static inline var TSTRING:Int = 4;
   public static inline var TTABLE:Int = 5;
   public static inline var TFUNCTION:Int = 6;
-
   public static inline var REGISTRYINDEX:Int = -10000;
 
   public static inline function setCallbackHandler(handler:cpp.Callable<State->String->Int>):Void
@@ -77,7 +76,7 @@ class Lua
 
   public static inline function isfunction(l:State, i:Int):Bool
   {
-    return llua.Lua.isfunction(l, i) != 0;
+    return llua.Lua.isfunction(l, i);
   }
 
   public static inline function pushnil(l:State):Void

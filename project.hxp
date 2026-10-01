@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.8";
 
-  static final BUILD_NUMBER:Int = 265;
+  static final BUILD_NUMBER:Int = 272;
 
   static final MOON_VERSION:String = '0.1.0';
 
