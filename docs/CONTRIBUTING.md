@@ -360,8 +360,9 @@ Make sure your changes are easy to understand and formatted consistently to maxi
 // The original documentation
 - `F2`: ***OVERLAY***: Enables the Flixel debug overlay, which has partial support for scripting.
 - `F3`: ***SCREENSHOT***: Takes a screenshot of the game and saves it to the local `screenshots` directory. Works outside of debug builds too!
+- `F5`: ***VIDEO***: Starts and stops recording the game window to the local `videos` directory (see docs/VIDEO_RECORDING.md). Works outside of debug builds too!
 - `F4`: ***EJECT***: Forcibly switch state to the Main Menu (with no extra transition). Useful if you're stuck in a level and you need to get out!
-- `F5`: ***HOT RELOAD***: Forcibly reload the game's scripts and data files, then restart the current state. If any files in the `assets` folder have been modified, the game should process the changes for you! NOTE: Known bug, this does not reset song charts or song scripts, but it should reset everything else (such as stage layout data and character animation data).
+- `CTRL-F5`: ***HOT RELOAD***: Forcibly reload the game's scripts and data files, then restart the current state. If any files in the `assets` folder have been modified, the game should process the changes for you! NOTE: Known bug, this does not reset song charts or song scripts, but it should reset everything else (such as stage layout data and character animation data).
 - `CTRL-SHIFT-L`: ***FORCE CRASH***: Immediately crash the game with a detailed crash log and a stack trace.
 
 // The new PR additions
@@ -374,8 +375,9 @@ Make sure your changes are easy to understand and formatted consistently to maxi
 // The original documentation
 - `F2`: ***OVERLAY***: Enables the Flixel debug overlay, which has partial support for scripting.
 - `F3`: ***SCREENSHOT***: Takes a screenshot of the game and saves it to the local `screenshots` directory. Works outside of debug builds too!
+- `F5`: ***VIDEO***: Starts and stops recording the game window to the local `videos` directory (see docs/VIDEO_RECORDING.md). Works outside of debug builds too!
 - `F4`: ***EJECT***: Forcibly switch state to the Main Menu (with no extra transition). Useful if you're stuck in a level and you need to get out!
-- `F5`: ***HOT RELOAD***: Forcibly reload the game's scripts and data files, then restart the current state. If any files in the `assets` folder have been modified, the game should process the changes for you! NOTE: Known bug, this does not reset song charts or song scripts, but it should reset everything else (such as stage layout data and character animation data).
+- `CTRL-F5`: ***HOT RELOAD***: Forcibly reload the game's scripts and data files, then restart the current state. If any files in the `assets` folder have been modified, the game should process the changes for you! NOTE: Known bug, this does not reset song charts or song scripts, but it should reset everything else (such as stage layout data and character animation data).
 - `CTRL-SHIFT-L`: ***FORCE CRASH***: Immediately crash the game with a detailed crash log and a stack trace.
 
 // The new PR additions

@@ -34,7 +34,7 @@ class ReloadAssetsDebugPlugin extends FlxBasic
       #if html5
       if (FlxG.keys.justPressed.FIVE && FlxG.keys.pressed.SHIFT)
       #else
-      if (FlxG.keys.justPressed.F5)
+      if (FlxG.keys.justPressed.F5 && FlxG.keys.pressed.CONTROL)
       #end
       {
         reload();

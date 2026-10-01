@@ -301,6 +301,9 @@ class InitState extends FlxState
       #end
       #if FEATURE_SCREENSHOTS
       funkin.util.plugins.ScreenshotPlugin.initialize();
+      #if sys
+      funkin.util.plugins.VideoRecorderPlugin.initialize();
+      #end
       #end
       #if FEATURE_NEWGROUNDS
       funkin.util.plugins.NewgroundsMedalPlugin.initialize();

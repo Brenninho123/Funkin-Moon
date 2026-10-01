@@ -137,6 +137,10 @@ class LuaScriptEditorState extends UIState
 
   override function create():Void
   {
+    #if (FEATURE_SCREENSHOTS && sys)
+    funkin.util.plugins.VideoRecorderPlugin.suspended = true;
+    #end
+
     WindowManager.instance.reset();
 
     camBackdrop = new FunkinCamera('scriptEditorBackdrop');
@@ -1955,6 +1959,10 @@ class LuaScriptEditorState extends UIState
 
   override function destroy():Void
   {
+    #if (FEATURE_SCREENSHOTS && sys)
+    funkin.util.plugins.VideoRecorderPlugin.suspended = false;
+    #end
+
     FunkinLua.logSink = null;
 
     if (runner != null)
