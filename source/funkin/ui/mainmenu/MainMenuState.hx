@@ -88,7 +88,6 @@ class MainMenuState extends MusicBeatState
   #if FEATURE_ONLINE
   var onlineBarBg:Null<FlxSprite> = null;
   var onlineStatusText:Null<FlxText> = null;
-
   #end
 
   public function new(_overrideMusic:Bool = false)
@@ -479,8 +478,8 @@ class MainMenuState extends MusicBeatState
     if (leftWatermarkText == null) return;
 
     // se vc for dev ative isso.
-    leftWatermarkText.text += 'Friday Night Funkin: v0.8.8 | Moon Engine v${Constants.MOON_VERSION} (DEV-TEST - ${Constants.GIT_BRANCH}) - [Build ${Constants.BUILD_NUMBER}]';
-    // leftWatermarkText.text += 'Friday Night Funkin: v0.8.8 | Moon Engine v${Constants.MOON_VERSION} - ${Constants.BUILD_NUMBER}';
+    // leftWatermarkText.text += 'Friday Night Funkin: v0.8.8 | Moon Engine v${Constants.MOON_VERSION} (DEV-TEST - ${Constants.GIT_BRANCH}) - [Build ${Constants.BUILD_NUMBER}]';
+    leftWatermarkText.text += 'Friday Night Funkin\': v0.8.8 | Moon Engine v${Constants.MOON_VERSION} - ${Constants.BUILD_NUMBER}';
 
     #if FEATURE_NEWGROUNDS
     if (NewgroundsClient.instance.isLoggedIn())
@@ -491,7 +490,7 @@ class MainMenuState extends MusicBeatState
 
     if (rightWatermarkText == null) return;
 
-    rightWatermarkText.text += '(Dev Build)';
+    rightWatermarkText.text += 'v0.9.0 Preview 3';
   }
 
   function playMenuMusic():Void
