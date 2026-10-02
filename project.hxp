@@ -17,7 +17,7 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.8";
 
-  static final BUILD_NUMBER:Int = 272;
+  static final BUILD_NUMBER:Int = 283;
 
   static final MOON_VERSION:String = '0.1.0';
 
@@ -25,9 +25,9 @@ class Project extends HXProject
 
   static final TITLE_MOBILE:String = "FNF: Moon Engine";
 
-  static final ICON_DESKTOP:String = "docs/icons/iconMoonDesktop.png";
+  static final ICON_DESKTOP:String = "";
 
-  static final ICON_MOBILE:String = "docs/icons/iconMoon.png";
+  static final ICON_MOBILE:String = "";
 
   static final PACKAGE_NAME:String = "me.funkin.moon";
 
@@ -560,7 +560,7 @@ class Project extends HXProject
 
     // Nem adianta ativar isso, o servidor ta offline.
     // Don't enable this, the server is offline.
-    FEATURE_ONLINE.apply(this, !isWeb());
+    FEATURE_ONLINE.apply(this, false);
 
     // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
     // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
@@ -1248,7 +1248,7 @@ class Project extends HXProject
 
     if (isAndroid())
     {
-      adaptiveIcon = new AdaptiveIcon('art/icons/android/', true);
+     addIcon("art/icons/iconMoonOG.png");
     }
     else if (isIOS())
     {
@@ -1265,10 +1265,10 @@ class Project extends HXProject
     }
     else
     {
-      addIcon("art/icons/icon16.png", 16);
-      addIcon("art/icons/icon32.png", 32);
-      addIcon("art/icons/icon64.png", 64);
-      addIcon("art/icons/iconOG.png");
+      addIcon("art/icons/iconMoonx16.png", 16);
+      addIcon("art/icons/iconMoonx32.png", 32);
+      addIcon("art/icons/iconMoonx64.png", 64);
+      addIcon("art/icons/iconMoonOG.png");
     }
 
     info('Done configuring icons.');
