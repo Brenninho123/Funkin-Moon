@@ -1,5 +1,6 @@
 package funkin.online;
 
+#if FEATURE_ONLINE
 import flixel.util.FlxSignal.FlxTypedSignal;
 import flixel.util.FlxTimer;
 import funkin.online.FunkinOnline;
@@ -14,24 +15,23 @@ typedef FunkinUserInfo =
   var ?authenticated:Bool;
   var ?avatarUrl:String;
 }
+#end
 
 class FunkinUser
 {
+  #if FEATURE_ONLINE
   public static var instance(default, null):FunkinUser = new FunkinUser();
 
   public var localUser(default, null):Null<FunkinUserInfo> = null;
-
   public var onUserJoined:FlxTypedSignal<FunkinUserInfo->Void> = new FlxTypedSignal<FunkinUserInfo->Void>();
   public var onUserLeft:FlxTypedSignal<FunkinUserInfo->Void> = new FlxTypedSignal<FunkinUserInfo->Void>();
   public var onUserUpdated:FlxTypedSignal<FunkinUserInfo->Void> = new FlxTypedSignal<FunkinUserInfo->Void>();
   public var onActiveUsersChanged:FlxTypedSignal<Void->Void> = new FlxTypedSignal<Void->Void>();
 
   var activeUsers:Map<String, FunkinUserInfo> = new Map();
-
   var initialized:Bool = false;
   var currentActivity:String = 'Idle';
   var resumeKey:String = '';
-
   var presenceTimer:Null<FlxTimer> = null;
 
   static final PRESENCE_INTERVAL:Float = 10.0;
@@ -142,7 +142,9 @@ class FunkinUser
 
     if (FunkinOnline.instance.isConnected())
     {
-      FunkinOnline.instance.send('activity', {activity: activity});
+      FunkinOnline.instance.send('activity', {
+        activity: activity
+      });
     }
   }
 
@@ -266,4 +268,5 @@ class FunkinUser
   {
     return activeUsers.get(id);
   }
+  #end
 }
