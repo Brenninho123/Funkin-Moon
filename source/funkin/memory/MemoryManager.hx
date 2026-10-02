@@ -17,10 +17,14 @@ enum abstract MemoryPressure(Int) to Int
   {
     return switch (this)
     {
-      case 0: 'normal';
-      case 1: 'elevated';
-      case 2: 'high';
-      default: 'critical';
+      case 0:
+        'normal';
+      case 1:
+        'elevated';
+      case 2:
+        'high';
+      default:
+        'critical';
     };
   }
 }
@@ -48,7 +52,6 @@ typedef MemorySnapshot =
 class MemoryManager
 {
   public static var instance(get, never):MemoryManager;
-
   static var _instance:Null<MemoryManager> = null;
 
   static function get_instance():MemoryManager
@@ -67,7 +70,6 @@ class MemoryManager
   static inline var CONFIG_FILE:String = 'memory.json';
 
   public var onPressureChanged:FlxTypedSignal<MemoryPressure->Void> = new FlxTypedSignal<MemoryPressure->Void>();
-
   public var pressure(default, null):MemoryPressure = Normal;
   public var gcBytes(default, null):Float = 0.0;
   public var taskBytes(default, null):Float = 0.0;
@@ -241,10 +243,14 @@ class MemoryManager
   {
     return switch (level)
     {
-      case Normal: 0.0;
-      case Elevated: softLimitBytes;
-      case High: (softLimitBytes + hardLimitBytes) / 2.0;
-      case Critical: hardLimitBytes;
+      case Normal:
+        0.0;
+      case Elevated:
+        softLimitBytes;
+      case High:
+        (softLimitBytes + hardLimitBytes) / 2.0;
+      case Critical:
+        hardLimitBytes;
     };
   }
 
@@ -307,6 +313,8 @@ class MemoryManager
 
   function collectNow(major:Bool):Void
   {
+    trace('[COLLECT-CALLER] major=$major playStateNull=${PlayState.instance == null}\n' + haxe.CallStack.toString(haxe.CallStack.callStack()));
+
     var before:Float = MemoryUtil.getGCMemory();
 
     #if cpp

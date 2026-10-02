@@ -1,7 +1,6 @@
 package funkin.lowend;
 
 import flixel.util.FlxSignal.FlxTypedSignal;
-import funkin.util.MemoryUtil;
 
 class FunkinLow
 {
@@ -13,77 +12,47 @@ class FunkinLow
   }
 
   public static var tier(default, null):FunkinQualityTier = Ultra;
-
   public static var autoDetectEnabled:Bool = true;
-
   public static var onLowEndChanged:FlxTypedSignal<Bool->Void> = new FlxTypedSignal<Bool->Void>();
-
   public static var onQualityChanged:FlxTypedSignal<FunkinQualityTier->Void> = new FlxTypedSignal<FunkinQualityTier->Void>();
-
   public static var onStutterDetected:FlxTypedSignal<Int->Void> = new FlxTypedSignal<Int->Void>();
-
   public static var batteryLevelProvider:Null<Void->Null<Float>> = null;
-
-  public static var persistenceHandler:Null<{save:String->String->Void, load:String->Null<String>}> = null;
-
+  public static var persistenceHandler:Null<
+    {save:String->String->Void, load:String->Null<String>}> = null;
   static final FPS_HISTORY_SIZE:Int = 90;
-
   static final MIN_SAMPLE_INTERVAL:Float = 0.15;
-
   static final MAX_SAMPLE_INTERVAL:Float = 0.6;
-
   static final STABILITY_SAMPLES:Int = 4;
-
-  static final MEMORY_PRESSURE_THRESHOLD_BYTES:Float = 900 * 1024 * 1024;
-
   static final STUTTER_FRAME_THRESHOLD_MS:Float = 50.0;
 
+  /**
+   * Frames mais longos que isso (pausa, janela arrastada/minimizada, alt-tab)
+   * não são lag real do jogo e são ignorados na detecção.
+   */
+  static final MAX_VALID_FRAME_SECONDS:Float = 0.25;
+
   static final STUTTER_WINDOW_SIZE:Int = 120;
-
   static final EMA_SMOOTHING:Float = 0.15;
-
   static final LOW_BATTERY_THRESHOLD:Float = 0.2;
-
   static final HISTORY_LOG_SIZE:Int = 32;
-
   static final PERSISTENCE_KEY:String = "funkin_low_state";
-
   static var fpsSamples:Array<Float> = [];
-
   static var frameTimesMs:Array<Float> = [];
-
   static var sampleTimer:Float = 0.0;
-
   static var currentSampleInterval:Float = MIN_SAMPLE_INTERVAL;
-
   static var initialized:Bool = false;
-
   static var lastEnabledState:Bool = false;
-
   static var pendingTier:Null<FunkinQualityTier> = null;
-
   static var pendingCount:Int = 0;
-
   static var lastAverageFps:Float = 0.0;
-
   static var lastLowFps:Float = 0.0;
-
   static var smoothedFps:Float = 60.0;
-
-  static var lastMemoryPressure:Bool = false;
-
   static var stutterCount:Int = 0;
-
   static var pinnedUntil:Float = 0.0;
-
   static var pinnedTier:Null<FunkinQualityTier> = null;
-
   static var elapsedTime:Float = 0.0;
-
   static var history:Array<QualityHistoryEntry> = [];
-
   static var trendSamples:Array<Float> = [];
-
   static final TREND_WINDOW:Int = 8;
 
   public static function init(startEnabled:Bool = false, autoDetect:Bool = true):Void
@@ -115,6 +84,13 @@ class FunkinLow
   {
     if (!initialized) return;
 
+    // Frame gigante = pausa/janela congelada, não é lag real. Ignora tudo.
+    if (elapsed > MAX_VALID_FRAME_SECONDS)
+    {
+      sampleTimer = 0.0;
+      return;
+    }
+
     elapsedTime += elapsed;
 
     trackFrameTime(elapsed);
@@ -141,11 +117,10 @@ class FunkinLow
 
     lastAverageFps = averageFps();
     lastLowFps = lowFps();
-    lastMemoryPressure = checkMemoryPressure();
 
     pushTrendSample(lastAverageFps);
 
-    var targetTier:FunkinQualityTier = computeTargetTier(lastAverageFps, lastLowFps, lastMemoryPressure, isLowBattery(), getTrendSlope());
+    var targetTier:FunkinQualityTier = computeTargetTier(lastAverageFps, lastLowFps, isLowBattery(), getTrendSlope());
 
     applyHysteresis(targetTier);
 
@@ -192,7 +167,7 @@ class FunkinLow
     return level <= LOW_BATTERY_THRESHOLD;
   }
 
-  static function computeTargetTier(average:Float, low:Float, memoryPressure:Bool, lowBattery:Bool, trendSlope:Float):FunkinQualityTier
+  static function computeTargetTier(average:Float, low:Float, lowBattery:Bool, trendSlope:Float):FunkinQualityTier
   {
     var blended:Float = (average * 0.55) + (low * 0.35) + (smoothedFps * 0.1);
 
@@ -201,10 +176,7 @@ class FunkinLow
       blended -= 6;
     }
 
-    var result:FunkinQualityTier = if (blended >= 58) Ultra else if (blended >= 48) High else if (blended >= 36) Medium else if (blended >= 24) Low else
-      Potato;
-
-    if (memoryPressure && (result : Int) < (Medium : Int)) result = Medium;
+    var result:FunkinQualityTier = if (blended >= 58) Ultra else if (blended >= 48) High else if (blended >= 36) Medium else if (blended >= 24) Low else Potato;
 
     if (lowBattery && (result : Int) < (Low : Int)) result = Low;
 
@@ -283,7 +255,13 @@ class FunkinLow
 
   static function pushHistory(from:FunkinQualityTier, to:FunkinQualityTier):Void
   {
-    history.push({from: from, to: to, timestamp: elapsedTime, avgFps: lastAverageFps, lowFps: lastLowFps});
+    history.push({
+      from: from,
+      to: to,
+      timestamp: elapsedTime,
+      avgFps: lastAverageFps,
+      lowFps: lastLowFps
+    });
     if (history.length > HISTORY_LOG_SIZE) history.shift();
   }
 
@@ -308,21 +286,6 @@ class FunkinLow
     for (i in 0...count) total += sorted[i];
 
     return total / count;
-  }
-
-  static function checkMemoryPressure():Bool
-  {
-    if (MemoryUtil.supportsTaskMem())
-    {
-      if (MemoryUtil.getTaskMemory() > MEMORY_PRESSURE_THRESHOLD_BYTES) return true;
-    }
-
-    if (MemoryUtil.supportsGCMem())
-    {
-      if (MemoryUtil.getGCMemory() > MEMORY_PRESSURE_THRESHOLD_BYTES) return true;
-    }
-
-    return false;
   }
 
   public static function forceState(value:Bool):Void
@@ -377,9 +340,12 @@ class FunkinLow
 
     return switch (cost)
     {
-      case LOW: currentTier >= (Potato : Int);
-      case NORMAL: currentTier >= (Low : Int);
-      case HIGH: currentTier >= (Medium : Int);
+      case LOW:
+        currentTier >= (Potato : Int);
+      case NORMAL:
+        currentTier >= (Low : Int);
+      case HIGH:
+        currentTier >= (Medium : Int);
     }
   }
 
@@ -387,11 +353,51 @@ class FunkinLow
   {
     return switch (tier)
     {
-      case Ultra: {resolutionScale: 1.0, particleMultiplier: 1.0, shadowsEnabled: true, blurEnabled: true, antialiasing: true, maxDynamicLights: 8};
-      case High: {resolutionScale: 1.0, particleMultiplier: 0.85, shadowsEnabled: true, blurEnabled: true, antialiasing: true, maxDynamicLights: 5};
-      case Medium: {resolutionScale: 0.9, particleMultiplier: 0.6, shadowsEnabled: true, blurEnabled: false, antialiasing: false, maxDynamicLights: 3};
-      case Low: {resolutionScale: 0.75, particleMultiplier: 0.35, shadowsEnabled: false, blurEnabled: false, antialiasing: false, maxDynamicLights: 1};
-      case Potato: {resolutionScale: 0.6, particleMultiplier: 0.1, shadowsEnabled: false, blurEnabled: false, antialiasing: false, maxDynamicLights: 0};
+      case Ultra:
+        {
+          resolutionScale: 1.0,
+          particleMultiplier: 1.0,
+          shadowsEnabled: true,
+          blurEnabled: true,
+          antialiasing: true,
+          maxDynamicLights: 8
+        };
+      case High:
+        {
+          resolutionScale: 1.0,
+          particleMultiplier: 0.85,
+          shadowsEnabled: true,
+          blurEnabled: true,
+          antialiasing: true,
+          maxDynamicLights: 5
+        };
+      case Medium:
+        {
+          resolutionScale: 0.9,
+          particleMultiplier: 0.6,
+          shadowsEnabled: true,
+          blurEnabled: false,
+          antialiasing: false,
+          maxDynamicLights: 3
+        };
+      case Low:
+        {
+          resolutionScale: 0.75,
+          particleMultiplier: 0.35,
+          shadowsEnabled: false,
+          blurEnabled: false,
+          antialiasing: false,
+          maxDynamicLights: 1
+        };
+      case Potato:
+        {
+          resolutionScale: 0.6,
+          particleMultiplier: 0.1,
+          shadowsEnabled: false,
+          blurEnabled: false,
+          antialiasing: false,
+          maxDynamicLights: 0
+        };
     }
   }
 
@@ -399,11 +405,16 @@ class FunkinLow
   {
     return switch (tier)
     {
-      case Ultra: 'Ultra';
-      case High: 'High';
-      case Medium: 'Medium';
-      case Low: 'Low';
-      case Potato: 'Potato';
+      case Ultra:
+        'Ultra';
+      case High:
+        'High';
+      case Medium:
+        'Medium';
+      case Low:
+        'Low';
+      case Potato:
+        'Potato';
     }
   }
 
@@ -419,14 +430,17 @@ class FunkinLow
 
   public static function getDebugInfo():String
   {
-    return 'Tier: ${getTierName()} | AVG: ${Math.round(lastAverageFps)} | LOW10%: ${Math.round(lastLowFps)} | EMA: ${Math.round(smoothedFps)} | STUTTERS: $stutterCount | MEM PRESSURE: $lastMemoryPressure | PINNED: ${isPinned()}';
+    return 'Tier: ${getTierName()} | AVG: ${Math.round(lastAverageFps)} | LOW10%: ${Math.round(lastLowFps)} | EMA: ${Math.round(smoothedFps)} | STUTTERS: $stutterCount | PINNED: ${isPinned()}';
   }
 
   static function persistState():Void
   {
     if (persistenceHandler == null) return;
 
-    var payload:String = haxe.Json.stringify({tier: (tier : Int), autoDetect: autoDetectEnabled});
+    var payload:String = haxe.Json.stringify({
+      tier: (tier : Int),
+      autoDetect: autoDetectEnabled
+    });
     persistenceHandler.save(PERSISTENCE_KEY, payload);
   }
 

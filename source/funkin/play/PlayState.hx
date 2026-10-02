@@ -1156,7 +1156,9 @@ class PlayState extends MusicBeatSubState
 
   function onServerPlayerAway(userId:String):Void
   {
-    multiplayerScoreboard?.say(funkin.online.play.MultiplayerData.nameOf(funkin.online.play.FunkinMultiplayer.instance.currentRoom, userId) + ' lost the connection.');
+    multiplayerScoreboard?.say(
+      funkin.online.play.MultiplayerData.nameOf(funkin.online.play.FunkinMultiplayer.instance.currentRoom, userId) + ' lost the connection.'
+    );
   }
 
   function onServerPlayerBack(userId:String):Void
@@ -1166,7 +1168,9 @@ class PlayState extends MusicBeatSubState
 
   function onServerRoomClosed():Void
   {
-    multiplayerScoreboard?.say('You are no longer in the match: ' + funkin.online.play.MultiplayerData.describeError(funkin.online.play.FunkinMultiplayer.instance.lastCloseReason));
+    multiplayerScoreboard?.say(
+      'You are no longer in the match: ' + funkin.online.play.MultiplayerData.describeError(funkin.online.play.FunkinMultiplayer.instance.lastCloseReason)
+    );
   }
 
   function onServerPlayerLeft(userId:String):Void
@@ -1386,6 +1390,13 @@ class PlayState extends MusicBeatSubState
     return true;
   }
 
+  override public function draw():Void
+  {
+    if (criticalFailure) return;
+
+    super.draw();
+  }
+
   override public function update(elapsed:Float):Void
   {
     if (criticalFailure) return;
@@ -1410,7 +1421,11 @@ class PlayState extends MusicBeatSubState
 
     var songId:String = currentSong?.id ?? 'unknown';
     var step:Int = Std.int(Conductor.instance?.currentStep ?? -1);
-    FlxG.log.error('PlayState encountered a critical error during update and had to stop: $e (song=$songId, difficulty=$currentDifficulty, step=$step)');
+    var stack:String = haxe.CallStack.toString(haxe.CallStack.exceptionStack());
+    var report:String = '$e\n(song=$songId, difficulty=$currentDifficulty, step=$step)\n$stack';
+
+    trace('[PlayState] CRITICAL FAILURE: $report');
+    FlxG.log.error('PlayState encountered a critical error during update and had to stop: $report');
 
     try
     {
@@ -1419,6 +1434,8 @@ class PlayState extends MusicBeatSubState
     catch (e2:Dynamic)
     {
     }
+
+    funkin.util.WindowUtil.showError('PlayState crash', report);
 
     FlxG.switchState(() -> new funkin.ui.mainmenu.MainMenuState());
   }
@@ -2512,10 +2529,10 @@ class PlayState extends MusicBeatSubState
      */
   function initHealthBar():Void
   {
-    final isDownscroll:Bool =
-      #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows && !ControlsHandler.hasExternalInputDevice)
-      || #end
-    Preferences.downscroll;
+    final isDownscroll:Bool = #if mobile (
+      Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
+      && !ControlsHandler.hasExternalInputDevice
+    ) || #end Preferences.downscroll;
 
     var healthBarYPos:Float = isDownscroll ? FlxG.height * 0.1 : FlxG.height * 0.9;
 
@@ -2553,10 +2570,10 @@ class PlayState extends MusicBeatSubState
     // Create subtitles if they are enabled.
     if (Preferences.subtitles)
     {
-      final isDownscroll:Bool =
-        #if mobile (Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows && !ControlsHandler.hasExternalInputDevice)
-        || #end
-      Preferences.downscroll;
+      final isDownscroll:Bool = #if mobile (
+        Preferences.controlsScheme == FunkinHitboxControlSchemes.Arrows
+        && !ControlsHandler.hasExternalInputDevice
+      ) || #end Preferences.downscroll;
 
       final subtitlesAlignment:SubtitlesAlignment = isDownscroll ? SubtitlesAlignment.SUBTITLES_TOP : SubtitlesAlignment.SUBTITLES_BOTTOM;
       subtitles = new Subtitles(0, 139, subtitlesAlignment);
@@ -3007,12 +3024,12 @@ class PlayState extends MusicBeatSubState
   }
 
   /**
-   * Turn showcase mode on or off.
-   * While it is on the bot plays the song and the HUD is hidden, which is meant for recording gameplay.
-   * A run that used showcase mode never counts for scores or medals, even after it is turned off.
-   *
-   * @param enabled Whether showcase mode should be on.
-   */
+     * Turn showcase mode on or off.
+     * While it is on the bot plays the song and the HUD is hidden, which is meant for recording gameplay.
+     * A run that used showcase mode never counts for scores or medals, even after it is turned off.
+     *
+     * @param enabled Whether showcase mode should be on.
+     */
   public function setShowcaseMode(enabled:Bool):Void
   {
     if (enabled == isShowcaseMode) return;
@@ -4611,6 +4628,7 @@ class PlayState extends MusicBeatSubState
      */
   function performCleanup():Void
   {
+    trace('[PERFORMCLEANUP] cleanedUp=$cleanedUp\n' + haxe.CallStack.toString(haxe.CallStack.callStack()));
     if (cleanedUp) return;
     cleanedUp = true;
 
