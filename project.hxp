@@ -19,7 +19,7 @@ class Project extends HXProject
 
   static final BUILD_NUMBER:Int = 293;
 
-  static final MOON_VERSION:String = '0.1.1';
+  static final MOON_VERSION:String = '0.2.0';
 
   static final TITLE:String = "Friday Night Funkin': Moon Engine";
 
@@ -562,10 +562,9 @@ class Project extends HXProject
     // Don't enable this, the server is offline.
     FEATURE_ONLINE.apply(this, false);
 
-    // Disabled by default: Foxlite v0.1.1's FoxExtendableSprite/FoxScene chain conflicts with this
-    // engine's own ScriptedFlxSprite (Polymod's HScript macro double-applies to the inheritance
-    // chain, causing "Redefinition of variable _asc" build errors). Re-enable once fixed upstream.
-    FEATURE_3D_RENDERING.apply(this, false);
+    // Foxlite 0.2.9 (tag v0.2.9-beta) ships its own HScript compatibility macro, which replaces the
+    // 0.1.1 chain that conflicted with ScriptedFlxSprite. Desktop only until the mobile shaders are tested.
+    FEATURE_3D_RENDERING.apply(this, isDesktop() && isCPP());
 
     // Disabled by default: Away3D 5.0.9 (published years ago) still assumes Lib.getTimer()
     // returns Int/UInt, but current OpenFL returns Float there - a known, unresolved

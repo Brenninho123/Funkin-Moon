@@ -68,6 +68,7 @@ class MainMenuState extends MusicBeatState
   var mainMenuCam:Null<FunkinCamera> = null;
   #if FEATURE_3D_RENDERING
   var scene3D:Null<funkin.graphics.render3d.Funkin3D> = null;
+  var menuBackdrop3D:Null<funkin.graphics.render3d.MenuBackdrop3D> = null;
   #end
   #if mobile
   var gyroPan:Null<FlxPoint>;
@@ -115,9 +116,7 @@ class MainMenuState extends MusicBeatState
 
     FlxG.cameras.reset(new FunkinCamera('mainMenu'));
 
-    #if FEATURE_3D_RENDERING
-    init3DBackground();
-    #end
+    mainMenuCam = Std.downcast(FlxG.camera, FunkinCamera);
 
     transIn = FlxTransitionableState.defaultTransIn;
     transOut = FlxTransitionableState.defaultTransOut;
@@ -152,6 +151,10 @@ class MainMenuState extends MusicBeatState
     magenta.visible = false;
 
     if (Preferences.flashingLights) add(magenta);
+
+    #if FEATURE_3D_RENDERING
+    init3DBackground();
+    #end
 
     menuItems = new MenuTypedList<AtlasMenuItem>();
     add(menuItems);
@@ -410,23 +413,32 @@ class MainMenuState extends MusicBeatState
   #end
 
   #if FEATURE_3D_RENDERING
-  static final MENU_3D_MODEL_PATH:String = 'assets/models/menuBackground.gltf';
-
   function init3DBackground():Void
   {
     if (!Preferences.mode3D) return;
 
-    if (!Paths.exists(MENU_3D_MODEL_PATH, BINARY))
+    if (mainMenuCam == null) return;
+
+    try
     {
-      FlxG.log.warn('[MainMenuState] 3D background model not found at $MENU_3D_MODEL_PATH, skipping.');
-      return;
+      scene3D = mainMenuCam.attach3DScene(FlxG.width, FlxG.height);
+
+      menuBackdrop3D = new funkin.graphics.render3d.MenuBackdrop3D(scene3D);
+
+      add(scene3D.scene);
     }
+    catch (e:Dynamic)
+    {
+      FlxG.log.error('[MainMenuState] The 3D background could not start and was turned off: $e');
 
-    scene3D = mainMenuCam?.attach3DScene(FlxG.width, FlxG.height);
-    scene3D.loadGLTFModel(MENU_3D_MODEL_PATH);
-    scene3D.setCameraPosition(0, 1.4, -6);
+      Preferences.mode3D = false;
 
-    add(scene3D.scene);
+      if (scene3D != null && members.contains(scene3D.scene)) remove(scene3D.scene);
+
+      menuBackdrop3D = null;
+      mainMenuCam.detach3DScene();
+      scene3D = null;
+    }
   }
 
   function destroy3DBackground():Void
@@ -434,6 +446,7 @@ class MainMenuState extends MusicBeatState
     if (scene3D == null) return;
 
     remove(scene3D.scene);
+    menuBackdrop3D = null;
     mainMenuCam?.detach3DScene();
     scene3D = null;
   }
@@ -630,6 +643,10 @@ class MainMenuState extends MusicBeatState
     super.update(elapsed);
 
     Conductor.instance.update();
+
+    #if FEATURE_3D_RENDERING
+    menuBackdrop3D?.update(elapsed);
+    #end
 
     #if mobile
     if (gyroPan != null && bg != null && !ControlsHandler.usingExternalInputDevice)

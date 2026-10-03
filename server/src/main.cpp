@@ -28,7 +28,7 @@ namespace moon
 {
 namespace
 {
-constexpr int ProtocolVersion = 2;
+constexpr int ProtocolVersion = 3;
 constexpr size_t MaxRelayBytes = 2048;
 constexpr size_t MaxLineBytes = 65536;
 constexpr size_t MaxOutputBytes = 1024 * 1024;
@@ -38,6 +38,8 @@ constexpr int64_t IdleTimeoutMs = 45000;
 constexpr int64_t HttpTimeoutMs = 30000;
 constexpr int64_t AuthTtlMs = 5 * 60 * 1000;
 constexpr int MaxScoreViolations = 5;
+constexpr int MinRatedRoundsForBoard = 3;
+constexpr int64_t ReportCooldownMs = 30000;
 constexpr size_t MaxAdminAttempts = 10;
 constexpr double RateBurst = 120.0;
 constexpr double RatePerSecond = 50.0;
@@ -138,6 +140,7 @@ struct Player
   int64_t lastSeen = 0;
   bool authenticated = false;
   std::string avatarUrl;
+  int rating = StartingRating;
 
   json toJson() const
   {
@@ -147,7 +150,8 @@ struct Player
                 {"activity", activity},
                 {"lastSeen", lastSeen},
                 {"authenticated", authenticated},
-                {"avatarUrl", avatarUrl}};
+                {"avatarUrl", avatarUrl},
+                {"rating", rating}};
   }
 };
 
@@ -172,7 +176,9 @@ struct Client
   std::string roomId;
   std::string resumeKey;
   bool forceLeave = false;
+  bool spectator = false;
   int64_t lastChat = 0;
+  int64_t lastReport = 0;
 };
 
 struct PendingAuth
@@ -194,6 +200,10 @@ struct Metrics
   uint64_t rateLimited = 0;
   uint64_t bannedRefusals = 0;
   uint64_t httpRequests = 0;
+  uint64_t spectatorJoins = 0;
+  uint64_t reportsFiled = 0;
+  uint64_t chatMuted = 0;
+  uint64_t ratedRounds = 0;
 };
 
 struct HttpConn
@@ -426,6 +436,9 @@ public:
     stats.load(statsPath());
     bans.load(bansPath());
     bans.purgeExpired(nowMs());
+    mutes.load(mutesPath());
+    mutes.purgeExpired(nowMs());
+    reports.load(reportsPath());
 
     log(config.serverName + " listening on " + config.bindAddress + ":" + std::to_string(config.port) + " (game) and :" + std::to_string(config.httpPort) + " (http)");
     log(config.discord.enabled() ? "discord login enabled, redirect uri " + config.discord.redirectUri : "discord login disabled (set MOON_DISCORD_CLIENT_ID and MOON_DISCORD_CLIENT_SECRET)");
@@ -514,6 +527,8 @@ private:
   Leaderboard leaderboard;
   StatsBook stats;
   BanList bans;
+  BanList mutes;
+  ReportBook reports;
   Metrics metrics;
   std::map<std::string, size_t> adminFailures;
   int64_t lastScoreSave = 0;
@@ -661,7 +676,7 @@ private:
 
     client.detached = true;
 
-    if (!client.roomId.empty() && client.joined && !client.forceLeave && config.reconnectGraceSeconds > 0) markAway(client);
+    if (!client.roomId.empty() && client.joined && !client.forceLeave && !client.spectator && config.reconnectGraceSeconds > 0) markAway(client);
     else leaveRoom(client, "disconnected");
 
     if (!client.pendingState.empty()) pendingAuth.erase(client.pendingState);
@@ -919,6 +934,10 @@ private:
     {
       handleStats(client, data);
     }
+    else if (type == "ratings")
+    {
+      handleRatings(client, data);
+    }
     else if (type.rfind("mp_", 0) == 0)
     {
       if (!handleRoomMessage(client, type, data)) sendError(client, "unknown_message");
@@ -967,7 +986,8 @@ private:
                 {"combo", member.combo},
                 {"accuracy", member.accuracy},
                 {"isHost", member.serial != 0 && member.serial == room.hostSerial},
-                {"away", member.away}};
+                {"away", member.away},
+                {"rating", member.rating}};
   }
 
   json roomJson(const Room& room) const
@@ -989,7 +1009,9 @@ private:
                    {"state", room.state},
                    {"players", players},
                    {"members", members},
-                   {"round", room.round}};
+                   {"round", room.round},
+                   {"locked", !room.password.empty()},
+                   {"spectators", room.spectators.size()}};
 
     result["songId"] = room.songId.empty() ? json(nullptr) : json(room.songId);
     result["difficultyId"] = room.songId.empty() ? json(nullptr) : json(room.difficultyId);
@@ -1009,7 +1031,22 @@ private:
                 {"maxPlayers", room.maxPlayers},
                 {"state", room.state},
                 {"songId", room.songId},
-                {"difficultyId", room.difficultyId}};
+                {"difficultyId", room.difficultyId},
+                {"locked", !room.password.empty()},
+                {"spectators", room.spectators.size()},
+                {"rating", averageRoomRating(room)}};
+  }
+
+  int averageRoomRating(const Room& room) const
+  {
+    std::vector<int> ratings;
+
+    for (const auto& member : room.members)
+    {
+      if (!member.away) ratings.push_back(member.rating);
+    }
+
+    return averageRating(ratings);
   }
 
   json publicRoomsJson()
@@ -1034,6 +1071,11 @@ private:
       if (member.serial != exceptSerial) serials.push_back(member.serial);
     }
 
+    for (uint64_t serial : room.spectators)
+    {
+      if (serial != exceptSerial) serials.push_back(serial);
+    }
+
     for (uint64_t serial : serials)
     {
       Client* target = findClient(serial);
@@ -1051,6 +1093,7 @@ private:
     member.avatarUrl = client.player.avatarUrl;
     member.joinedAt = nowMs();
     member.authenticated = client.player.authenticated;
+    member.rating = client.player.rating;
 
     return member;
   }
@@ -1101,6 +1144,7 @@ private:
     if (room.name.empty()) room.name = client.player.username + "'s room";
 
     room.isPublic = jsonBool(data, "isPublic", true);
+    room.password = sanitizeText(jsonString(data, "password"), 24);
     room.maxPlayers = static_cast<size_t>(clampInt(jsonInt(data, "maxPlayers", 4), 2, static_cast<int64_t>(config.maxRoomPlayers)));
     room.createdAt = nowMs();
     room.hostSerial = client.serial;
@@ -1128,6 +1172,12 @@ private:
     if (room == nullptr)
     {
       roomFailure(client, "not_found");
+      return;
+    }
+
+    if (!room->password.empty() && !samePassword(room->password, sanitizeText(jsonString(data, "password"), 24)))
+    {
+      roomFailure(client, "wrong_password");
       return;
     }
 
@@ -1164,11 +1214,21 @@ private:
     if (client.roomId.empty()) return;
 
     std::string roomId = client.roomId;
+    bool wasSpectator = client.spectator;
+
     client.roomId.clear();
+    client.spectator = false;
 
     Room* room = findRoom(roomId);
 
     if (room == nullptr) return;
+
+    if (wasSpectator)
+    {
+      removeSpectator(*room, client.serial);
+      sendToRoom(*room, "mp_spectatorCount", json{{"count", room->spectators.size()}});
+      return;
+    }
 
     const RoomMember* leaving = findMember(*room, client.serial);
     std::string leavingId = leaving != nullptr ? leaving->id : client.player.id;
@@ -1187,6 +1247,7 @@ private:
 
     if (room->members.empty())
     {
+      closeSpectators(*room, "room_closed");
       rooms.erase(roomId);
       log("room " + roomId + " closed (" + std::to_string(rooms.size()) + " rooms)");
       return;
@@ -1212,6 +1273,80 @@ private:
     room = findRoom(roomId);
 
     if (room != nullptr && room->state == "playing") evaluateRound(roomId, false);
+  }
+
+  void closeSpectators(Room& room, const std::string& reason)
+  {
+    std::vector<uint64_t> serials = room.spectators;
+
+    room.spectators.clear();
+
+    for (uint64_t serial : serials)
+    {
+      Client* watcher = findClient(serial);
+
+      if (watcher == nullptr) continue;
+
+      watcher->roomId.clear();
+      watcher->spectator = false;
+
+      if (!watcher->closing) send(*watcher, "mp_roomClosed", json{{"reason", reason}});
+    }
+  }
+
+  void handleSpectate(Client& client, const json& data)
+  {
+    if (!client.roomId.empty())
+    {
+      roomFailure(client, "already_in_room");
+      return;
+    }
+
+    Room* room = findRoom(normalizeRoomCode(jsonString(data, "roomId")));
+
+    if (room == nullptr)
+    {
+      roomFailure(client, "not_found");
+      return;
+    }
+
+    if (!room->password.empty() && !samePassword(room->password, sanitizeText(jsonString(data, "password"), 24)))
+    {
+      roomFailure(client, "wrong_password");
+      return;
+    }
+
+    if (room->spectators.size() >= config.maxSpectators)
+    {
+      roomFailure(client, "spectators_full");
+      return;
+    }
+
+    room->spectators.push_back(client.serial);
+    client.roomId = room->id;
+    client.spectator = true;
+    metrics.spectatorJoins++;
+
+    log(client.player.username + " is watching room " + room->id + " (" + std::to_string(room->spectators.size()) + " watching)");
+
+    std::string roomId = room->id;
+
+    json view = roomJson(*room);
+
+    if (room->state == "playing")
+    {
+      json live = json::array();
+
+      for (const auto& member : room->members) live.push_back(scoreJson(member));
+
+      view["live"] = live;
+    }
+
+    send(client, "mp_roomSpectating", view);
+
+    room = findRoom(roomId);
+
+    if (room != nullptr) sendToRoom(*room, "mp_spectatorCount", json{{"count", room->spectators.size()}}, client.serial);
   }
 
   void markAway(Client& client)
@@ -1575,27 +1710,76 @@ private:
 
     if (room == nullptr || room->state != "playing") return;
 
+    std::vector<RankedMember> order = rankMembers(room->members);
+    std::vector<RatingEntry> entries;
+    std::vector<std::string> keys;
+    bool anyFinished = false;
+
+    for (const auto& ranked : order)
+    {
+      std::string key = StatsBook::keyFor(ranked.member.authenticated, ranked.member.id, ranked.member.username);
+      RatingEntry entry;
+
+      entry.rating = stats.ratingOf(key);
+      entry.ratedRounds = stats.ratedRoundsOf(key);
+      entry.rank = ranked.rank;
+      entries.push_back(entry);
+      keys.push_back(key);
+
+      if (ranked.member.finished) anyFinished = true;
+    }
+
+    int64_t now = nowMs();
+    bool contested = room->members.size() >= 2;
+    bool rated = contested && anyFinished && (now - room->startedAt) >= static_cast<int64_t>(config.minRatedRoundSeconds) * 1000;
+    std::vector<int> deltas = rated ? ratingDeltas(entries) : std::vector<int>(entries.size(), 0);
+
     json rankings = json::array();
 
-    for (const auto& ranked : rankMembers(room->members))
+    for (size_t i = 0; i < order.size(); i++)
     {
-      json entry = scoreJson(ranked.member);
-      entry["rank"] = ranked.rank;
-      entry["finished"] = ranked.member.finished;
+      json entry = scoreJson(order[i].member);
+      entry["rank"] = order[i].rank;
+      entry["finished"] = order[i].member.finished;
+      entry["rating"] = entries[i].rating + deltas[i];
+      entry["ratingChange"] = deltas[i];
+      entry["rated"] = rated;
       rankings.push_back(entry);
     }
 
-    json results = {{"songId", room->songId}, {"difficultyId", room->difficultyId}, {"variation", room->variation}, {"round", room->round}, {"rankings", rankings}};
+    json results = {{"songId", room->songId},
+                    {"difficultyId", room->difficultyId},
+                    {"variation", room->variation},
+                    {"round", room->round},
+                    {"rated", rated},
+                    {"rankings", rankings}};
 
-    bool contested = room->members.size() >= 2;
-    int64_t now = nowMs();
+    std::vector<Client*> rerated;
 
-    for (const auto& ranked : rankMembers(room->members))
+    for (size_t i = 0; i < order.size(); i++)
     {
-      const RoomMember& member = ranked.member;
+      const RoomMember& member = order[i].member;
 
-      stats.recordRound(StatsBook::keyFor(member.authenticated, member.id, member.username), member.username, contested && member.finished && ranked.rank == 1, now);
+      stats.recordRound(keys[i], member.username, contested && member.finished && order[i].rank == 1, now);
+
+      if (!rated) continue;
+
+      stats.applyRating(keys[i], member.username, deltas[i], now);
+
+      RoomMember* live = findMember(*room, member.serial);
+
+      if (live != nullptr) live->rating = stats.ratingOf(keys[i]);
+
+      Client* owner = member.serial != 0 ? findClient(member.serial) : nullptr;
+
+      if (owner != nullptr)
+      {
+        owner->player.rating = stats.ratingOf(keys[i]);
+        rerated.push_back(owner);
+      }
     }
+
+    if (rated) metrics.ratedRounds++;
 
     room->state = "lobby";
     room->startedAt = 0;
@@ -1610,13 +1794,65 @@ private:
       member.missedResults = member.away;
     }
 
-    log("room " + roomId + " finished " + room->songId);
+    log("room " + roomId + " finished " + room->songId + (rated ? " (rated)" : ""));
 
     sendToRoom(*room, "mp_results", results);
 
     room = findRoom(roomId);
 
     if (room != nullptr) sendToRoom(*room, "mp_roomState", roomJson(*room));
+
+    for (Client* owner : rerated)
+    {
+      if (!owner->closing) broadcast("userUpdated", owner->player.toJson(), owner->serial);
+    }
+  }
+
+  std::string muteKeyFor(const Client& client) const
+  {
+    return client.player.authenticated && !client.discordId.empty() ? "d" + client.discordId : BanList::ipKey(client.remote);
+  }
+
+  void handleReport(Client& client, const json& data)
+  {
+    int64_t now = nowMs();
+
+    if (now - client.lastReport < ReportCooldownMs)
+    {
+      sendError(client, "report_cooldown");
+      return;
+    }
+
+    std::string targetId = sanitizeText(jsonString(data, "userId"), 80);
+    Client* target = findClientByPlayerId(targetId);
+
+    if (target == nullptr || target->serial == client.serial)
+    {
+      sendError(client, "unknown_member");
+      return;
+    }
+
+    std::string reason = sanitizeText(jsonString(data, "reason"), 200);
+
+    if (reason.empty()) reason = "no reason given";
+
+    Report report;
+    report.reporterId = client.player.id;
+    report.reporterName = client.player.username;
+    report.targetId = target->player.id;
+    report.targetName = target->player.username;
+    report.targetKey = muteKeyFor(*target);
+    report.reason = reason;
+    report.roomId = target->roomId;
+    report.at = now;
+
+    reports.add(report);
+    client.lastReport = now;
+    metrics.reportsFiled++;
+
+    log("report from " + client.player.username + " about " + target->player.username + ": " + reason);
+
+    send(client, "mp_reported", json{{"userId", target->player.id}});
   }
 
   void handleChat(Client& client, const json& data)
@@ -1626,6 +1862,15 @@ private:
     if (text.empty()) return;
 
     int64_t now = nowMs();
+
+    const Ban* mute = mutes.find(muteKeyFor(client), now);
+
+    if (mute != nullptr)
+    {
+      metrics.chatMuted++;
+      send(client, "error", json{{"reason", "muted"}, {"detail", mute->reason}, {"until", mute->expires}});
+      return;
+    }
 
     if (now - client.lastChat < config.chatCooldownMs)
     {
@@ -1677,6 +1922,16 @@ private:
 
     if (targetSerial == 0)
     {
+      for (uint64_t serial : room->spectators)
+      {
+        Client* watcher = findClient(serial);
+
+        if (watcher != nullptr && watcher->player.id == target) targetSerial = serial;
+      }
+    }
+
+    if (targetSerial == 0)
+    {
       sendError(client, "unknown_member");
       return;
     }
@@ -1711,6 +1966,8 @@ private:
 
     room->isPublic = jsonBool(data, "isPublic", room->isPublic);
 
+    if (data.contains("password") && data["password"].is_string()) room->password = sanitizeText(jsonString(data, "password"), 24);
+
     size_t wanted = static_cast<size_t>(clampInt(jsonInt(data, "maxPlayers", static_cast<int64_t>(room->maxPlayers)), 2, static_cast<int64_t>(config.maxRoomPlayers)));
 
     room->maxPlayers = std::max(wanted, room->members.size());
@@ -1727,15 +1984,24 @@ private:
     }
 
     Room* best = nullptr;
+    int bestQuality = 0;
 
     for (auto& entry : rooms)
     {
       Room& candidate = entry.second;
 
-      if (!candidate.isPublic || candidate.state != "lobby" || candidate.members.size() >= candidate.maxPlayers) continue;
+      if (!candidate.isPublic || !candidate.password.empty() || candidate.state != "lobby" || candidate.members.size() >= candidate.maxPlayers) continue;
       if (firstConnectedSerial(candidate) == 0) continue;
 
-      if (best == nullptr || candidate.members.size() > best->members.size()) best = &candidate;
+      int quality = matchQuality(client.player.rating, averageRoomRating(candidate));
+
+      bool better = best == nullptr || quality < bestQuality || (quality == bestQuality && candidate.members.size() > best->members.size());
+
+      if (better)
+      {
+        best = &candidate;
+        bestQuality = quality;
+      }
     }
 
     if (best != nullptr)
@@ -1772,6 +2038,13 @@ private:
     return result;
   }
 
+  void handleRatings(Client& client, const json& data)
+  {
+    size_t limit = static_cast<size_t>(clampInt(jsonInt(data, "limit", 10), 1, 50));
+
+    send(client, "ratings", json{{"entries", stats.topRated(limit, MinRatedRoundsForBoard)}, {"minimumRounds", MinRatedRoundsForBoard}});
+  }
+
   void handleStats(Client& client, const json& data)
   {
     std::string wanted = sanitizeText(jsonString(data, "userId"), 80);
@@ -1799,9 +2072,16 @@ private:
     else if (type == "mp_kick") handleKick(client, data);
     else if (type == "mp_roomSettings") handleRoomSettings(client, data);
     else if (type == "mp_quickMatch") handleQuickMatch(client);
+    else if (type == "mp_spectate") handleSpectate(client, data);
+    else if (type == "mp_report") handleReport(client, data);
     else return false;
 
     return true;
+  }
+
+  void refreshRating(Client& client)
+  {
+    client.player.rating = stats.ratingOf(StatsBook::keyFor(client.player.authenticated, client.player.id, client.player.username));
   }
 
   void syncRoomIdentity(Client& client, const std::string& oldId)
@@ -1818,6 +2098,7 @@ private:
     member->username = client.player.username;
     member->avatarUrl = client.player.avatarUrl;
     member->authenticated = client.player.authenticated;
+    member->rating = client.player.rating;
 
     sendToRoom(*room, "mp_memberUpdated", json{{"oldId", oldId}, {"member", memberJson(*room, *member)}, {"hostId", roomHostId(*room)}});
   }
@@ -1906,6 +2187,7 @@ private:
 
       if (leaderboard.isDirty()) saveLeaderboard();
       if (stats.isDirty()) saveStats();
+      if (reports.isDirty()) saveReports();
     }
 
     if (now - lastAdminReset >= 60000)
@@ -1913,14 +2195,36 @@ private:
       lastAdminReset = now;
       adminFailures.clear();
       bans.purgeExpired(now);
+      mutes.purgeExpired(now);
 
       if (bans.isDirty()) saveBans();
+      if (mutes.isDirty()) saveMutes();
     }
   }
 
   std::string statsPath() const
   {
     return (std::filesystem::path(config.dataDir) / "stats.json").string();
+  }
+
+  std::string mutesPath() const
+  {
+    return (std::filesystem::path(config.dataDir) / "mutes.json").string();
+  }
+
+  std::string reportsPath() const
+  {
+    return (std::filesystem::path(config.dataDir) / "reports.json").string();
+  }
+
+  void saveMutes()
+  {
+    if (!mutes.save(mutesPath(), nowMs())) log("could not write " + mutesPath());
+  }
+
+  void saveReports()
+  {
+    if (!reports.save(reportsPath())) log("could not write " + reportsPath());
   }
 
   std::string bansPath() const
@@ -1943,6 +2247,8 @@ private:
     if (leaderboard.isDirty()) saveLeaderboard();
     if (stats.isDirty()) saveStats();
     if (bans.isDirty()) saveBans();
+    if (mutes.isDirty()) saveMutes();
+    if (reports.isDirty()) saveReports();
   }
 
   void announceShutdown()
@@ -2062,6 +2368,7 @@ private:
     client.resumeKey = randomHex(16);
     metrics.joins++;
 
+    refreshRating(client);
     stats.touch(StatsBook::keyFor(client.player.authenticated, client.player.id, client.player.username), client.player.username, nowMs());
 
     log("player joined: " + client.player.username + " (" + client.player.id + ")" + (resumed ? " [discord]" : "") + (!resumeRoomId.empty() ? " [resumed]" : "") + ", " +
@@ -2074,7 +2381,9 @@ private:
                     {"motd", config.motd},
                     {"discordEnabled", config.discord.enabled()},
                     {"players", joinedCount()},
-                    {"features", json::array({"rooms", "chat", "leaderboard", "resume", "quickmatch", "stats"})},
+                    {"features", json::array({"rooms", "chat", "leaderboard", "resume", "quickmatch", "stats", "rating", "spectate", "passwords", "reports"})},
+                    {"rating", client.player.rating},
+                    {"maxSpectators", config.maxSpectators},
                     {"maxRoomPlayers", config.maxRoomPlayers},
                     {"minPlayersToStart", config.minPlayersToStart},
                     {"resumeKey", client.resumeKey},
@@ -2207,6 +2516,7 @@ private:
     client.player.avatarUrl = profile.avatarUrl;
     client.player.authenticated = true;
     discordClients[profile.id] = client.serial;
+    refreshRating(client);
 
     if (announce && oldId != client.player.id)
     {
@@ -2289,6 +2599,7 @@ private:
     client.player.avatarUrl.clear();
     client.player.id = "p" + std::to_string(nextPlayer++);
     client.player.username = "Guest" + client.player.id.substr(1);
+    refreshRating(client);
 
     syncRoomIdentity(client, oldId);
 
@@ -2412,6 +2723,10 @@ private:
     {
       respond(conn, 200, "text/plain", metricsText());
     }
+    else if (path == "/ratings")
+    {
+      respond(conn, 200, "application/json", dumpJson(json{{"entries", stats.topRated(25, MinRatedRoundsForBoard)}, {"minimumRounds", MinRatedRoundsForBoard}}));
+    }
     else if (path == "/player")
     {
       auto params = parseQuery(query);
@@ -2435,6 +2750,7 @@ private:
                      {"authenticated", authenticated},
                      {"rooms", rooms.size()},
                      {"playing", playingRooms()},
+                     {"spectators", spectatorCount()},
                      {"maxPlayers", config.maxPlayers},
                      {"discordEnabled", config.discord.enabled()},
                      {"uptimeSeconds", (nowMs() - startedAt) / 1000}};
@@ -2463,6 +2779,15 @@ private:
     }
   }
 
+  size_t spectatorCount() const
+  {
+    size_t count = 0;
+
+    for (const auto& entry : rooms) count += entry.second.spectators.size();
+
+    return count;
+  }
+
   std::string metricsText()
   {
     std::string text;
@@ -2477,6 +2802,9 @@ private:
     line("moon_uptime_seconds", "gauge", static_cast<uint64_t>((nowMs() - startedAt) / 1000));
     line("moon_known_players", "gauge", stats.size());
     line("moon_active_bans", "gauge", bans.size());
+    line("moon_active_mutes", "gauge", mutes.size());
+    line("moon_open_reports", "gauge", reports.size());
+    line("moon_spectators", "gauge", spectatorCount());
     line("moon_connections_total", "counter", metrics.connections);
     line("moon_messages_total", "counter", metrics.messages);
     line("moon_joins_total", "counter", metrics.joins);
@@ -2488,6 +2816,10 @@ private:
     line("moon_rate_limited_total", "counter", metrics.rateLimited);
     line("moon_banned_refusals_total", "counter", metrics.bannedRefusals);
     line("moon_http_requests_total", "counter", metrics.httpRequests);
+    line("moon_spectator_joins_total", "counter", metrics.spectatorJoins);
+    line("moon_reports_total", "counter", metrics.reportsFiled);
+    line("moon_chat_muted_total", "counter", metrics.chatMuted);
+    line("moon_rated_rounds_total", "counter", metrics.ratedRounds);
 
     return text;
   }
@@ -2666,6 +2998,66 @@ private:
 
       respond(conn, removed ? 200 : 404, "application/json", dumpJson(json{{"ok", removed}}));
     }
+    else if (action == "mute")
+    {
+      std::string key = get("key");
+
+      if (key.empty())
+      {
+        Client* target = findClientByPlayerId(get("id"));
+
+        if (target == nullptr)
+        {
+          respond(conn, 404, "application/json", dumpJson(json{{"error", "unknown_player"}}));
+          return;
+        }
+
+        key = muteKeyFor(*target);
+      }
+
+      int64_t minutes = 0;
+
+      try
+      {
+        minutes = get("minutes").empty() ? 0 : std::stoll(get("minutes"));
+      }
+      catch (...)
+      {
+        minutes = 0;
+      }
+
+      if (!mutes.add(key, sanitizeText(get("reason"), 120), nowMs(), minutes * 60 * 1000))
+      {
+        respond(conn, 400, "application/json", dumpJson(json{{"error", "invalid_key"}}));
+        return;
+      }
+
+      log("admin muted " + key + (minutes > 0 ? " for " + std::to_string(minutes) + " minutes" : " permanently"));
+      saveMutes();
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}, {"key", key}}));
+    }
+    else if (action == "unmute")
+    {
+      bool removed = mutes.remove(get("key"));
+
+      if (removed) saveMutes();
+
+      respond(conn, removed ? 200 : 404, "application/json", dumpJson(json{{"ok", removed}}));
+    }
+    else if (action == "mutes")
+    {
+      respond(conn, 200, "application/json", dumpJson(json{{"mutes", mutes.toJson(nowMs())}}));
+    }
+    else if (action == "reports")
+    {
+      respond(conn, 200, "application/json", dumpJson(json{{"reports", reports.toJson()}}));
+    }
+    else if (action == "clearReports")
+    {
+      reports.clear();
+      saveReports();
+      respond(conn, 200, "application/json", dumpJson(json{{"ok", true}}));
+    }
     else if (action == "announce")
     {
       std::string text = sanitizeText(get("text"), 200);
@@ -2698,6 +3090,7 @@ private:
         if (member.serial != 0) serials.push_back(member.serial);
       }
 
+      closeSpectators(*room, "closed_by_admin");
       rooms.erase(code);
 
       for (uint64_t serial : serials)

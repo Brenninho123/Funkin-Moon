@@ -76,7 +76,7 @@ class Lua
 
   public static inline function isfunction(l:State, i:Int):Bool
   {
-    return llua.Lua.isfunction(l, i);
+    return llua.Lua.isfunction(l, i) != 0;
   }
 
   public static inline function pushnil(l:State):Void

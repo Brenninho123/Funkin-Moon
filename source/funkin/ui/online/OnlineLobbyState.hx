@@ -148,6 +148,10 @@ class OnlineLobbyState extends UIState
 
     multiplayer.onRoomCreated.add(onRoomEntered);
     multiplayer.onRoomJoined.add(onRoomEntered);
+    multiplayer.onSpectating.add(onRoomEntered);
+    multiplayer.onOpponentScoreUpdate.add(onLiveScore);
+    multiplayer.onPlayerFinished.add(onLiveScore);
+    multiplayer.onReported.add(onReportedSignal);
     multiplayer.onRoomJoinFailed.add(onJoinFailed);
     multiplayer.onRoomClosed.add(onRoomClosedSignal);
     multiplayer.onRoomUpdated.add(refreshLobby);
@@ -177,6 +181,10 @@ class OnlineLobbyState extends UIState
 
     multiplayer.onRoomCreated.remove(onRoomEntered);
     multiplayer.onRoomJoined.remove(onRoomEntered);
+    multiplayer.onSpectating.remove(onRoomEntered);
+    multiplayer.onOpponentScoreUpdate.remove(onLiveScore);
+    multiplayer.onPlayerFinished.remove(onLiveScore);
+    multiplayer.onReported.remove(onReportedSignal);
     multiplayer.onRoomJoinFailed.remove(onJoinFailed);
     multiplayer.onRoomClosed.remove(onRoomClosedSignal);
     multiplayer.onRoomUpdated.remove(refreshLobby);
@@ -377,8 +385,18 @@ class OnlineLobbyState extends UIState
       var song:String = room.songId != '' ? room.songId + ' (' + room.difficultyId + ')' : 'no song yet';
 
       roomList.dataSource.add({
-        title: room.name,
-        subtitle: 'by ' + room.hostName + '   ' + room.players + '/' + room.maxPlayers + '   ' + song,
+        title: (room.locked ? '[lock] ' : '') + room.name,
+        subtitle: 'by '
+          + room.hostName
+          + '   '
+          + room.players
+          + '/'
+          + room.maxPlayers
+          + '   '
+          + song
+          + '   ~'
+          + room.rating
+          + (room.spectators > 0 ? '   ' + room.spectators + ' watching' : ''),
         tag: room.state == MultiplayerData.STATE_PLAYING ? 'playing' : 'open',
         id: room.roomId
       });
@@ -408,7 +426,7 @@ class OnlineLobbyState extends UIState
       return;
     }
 
-    multiplayer.createRoom(createName.text, createPublic.selected, Std.int(createMax.pos));
+    multiplayer.createRoom(createName.text, createPublic.selected, Std.int(createMax.pos), createPassword.text);
   }
 
   function quickMatchNow():Void
@@ -435,7 +453,31 @@ class OnlineLobbyState extends UIState
     }
 
     browserHint.text = '';
-    multiplayer.joinRoom(code);
+    multiplayer.joinRoom(code, joinPassword.text);
+  }
+
+  function watchByCode():Void
+  {
+    var code:String = MultiplayerData.normalizeCode(joinCode.text);
+
+    if (code == '')
+    {
+      browserHint.text = 'Type the room code first.';
+      return;
+    }
+
+    browserHint.text = '';
+    multiplayer.spectate(code, joinPassword.text);
+  }
+
+  function onLiveScore(_):Void
+  {
+    if (multiplayer.spectating && !lobbyPanel.hidden) refreshLobby();
+  }
+
+  function onReportedSignal(userId:String):Void
+  {
+    toast('Thank you. The server owner will look at your report.', NotificationType.Success);
   }
 
   // ===============
@@ -545,8 +587,9 @@ class OnlineLobbyState extends UIState
     var localId:String = FunkinUser.instance.getLocalUserId();
     var host:Bool = multiplayer.isHost;
     var me:Null<MultiplayerMember> = MultiplayerData.memberById(room, localId);
+    var watching:Bool = multiplayer.spectating;
 
-    roomTitle.text = room.name + (room.isPublic ? '' : '  (private)');
+    roomTitle.text = room.name + (room.isPublic ? '' : '  (private)') + (room.locked ? '  [password]' : '') + (watching ? '  (watching)' : '');
     roomCode.text = MultiplayerData.formatCode(room.roomId);
 
     memberList.dataSource.clear();
@@ -559,7 +602,7 @@ class OnlineLobbyState extends UIState
 
       memberList.dataSource.add({
         title: (member.id == room.hostId ? '* ' : '') + member.username + (member.id == localId ? ' (you)' : ''),
-        subtitle: memberStatus(room, member),
+        subtitle: memberStatus(room, member) + '   ' + member.rating,
         id: member.id
       });
 
@@ -571,13 +614,17 @@ class OnlineLobbyState extends UIState
       selectedMemberId = '';
 
     memberKick.disabled = !host || selectedMemberId == '' || selectedMemberId == localId || room.state != MultiplayerData.STATE_LOBBY;
+    memberReport.disabled = selectedMemberId == '' || selectedMemberId == localId;
+
+    passwordRow.hidden = !host;
+    leaveRoom.text = watching ? 'Stop watching' : 'Leave';
 
     var songIndex:Int = room.songId != null ? songIds.indexOf(room.songId) : -1;
 
     songPicker.selectedIndex = songIndex + 1;
     fillDifficulties(room.songId, room.difficultyId);
 
-    songPicker.disabled = !host || room.state != MultiplayerData.STATE_LOBBY;
+    songPicker.disabled = watching || !host || room.state != MultiplayerData.STATE_LOBBY;
     difficultyPicker.disabled = songPicker.disabled;
 
     if (room.songId == null) songInfo.text = host ? 'Pick a song for the room.' : 'Waiting for the host to pick a song.';
@@ -594,15 +641,24 @@ class OnlineLobbyState extends UIState
 
     readyToggle.text = ready ? 'Not ready' : 'Ready';
     readyToggle.disabled = room.state != MultiplayerData.STATE_LOBBY || room.songId == null || !songKnown(room.songId) || host;
-    readyToggle.hidden = host;
+    readyToggle.hidden = host || watching;
 
-    startMatch.hidden = !host;
+    startMatch.hidden = !host || watching;
     startMatch.disabled = multiplayer.connectionLost || room.state != MultiplayerData.STATE_LOBBY || room.songId == null || !songKnown(room.songId) || room.members.length < 2
       || !MultiplayerData.everyoneReady(room);
 
-    lobbyStatus.text = describeLobby(room, host);
+    lobbyStatus.text = watching ? describeWatching(room) : describeLobby(room, host);
 
     syncing = previous;
+  }
+
+  function describeWatching(room:MultiplayerRoom):String
+  {
+    if (multiplayer.connectionLost) return 'The connection was lost. Trying to bring you back to the room...';
+
+    if (room.state == MultiplayerData.STATE_PLAYING) return 'Live: ' + MultiplayerData.describeLive(multiplayer.getAllOpponentScores());
+
+    return room.songId == null ? 'You are watching. The host is choosing a song.' : 'You are watching. The round starts when the players are ready.';
   }
 
   function describeLobby(room:MultiplayerRoom, host:Bool):String
@@ -845,7 +901,39 @@ class OnlineLobbyState extends UIState
   @:bind(joinSelected, MouseEvent.CLICK)
   function onJoinSelectedClick(_):Void
   {
-    if (selectedRoomId != '') multiplayer.joinRoom(selectedRoomId);
+    if (selectedRoomId != '') multiplayer.joinRoom(selectedRoomId, joinPassword.text);
+  }
+
+  @:bind(watchRoom, MouseEvent.CLICK)
+  function onWatchRoomClick(_):Void
+  {
+    watchByCode();
+  }
+
+  @:bind(watchSelected, MouseEvent.CLICK)
+  function onWatchSelectedClick(_):Void
+  {
+    if (selectedRoomId != '') multiplayer.spectate(selectedRoomId, joinPassword.text);
+  }
+
+  @:bind(memberReport, MouseEvent.CLICK)
+  function onMemberReportClick(_):Void
+  {
+    if (selectedMemberId == '') return;
+
+    var reason:String = StringTools.trim(reportReason.text);
+
+    multiplayer.report(selectedMemberId, reason != '' ? reason : 'Reported from the lobby');
+    reportReason.text = '';
+  }
+
+  @:bind(settingPasswordApply, MouseEvent.CLICK)
+  function onSettingPasswordApplyClick(_):Void
+  {
+    if (!multiplayer.isHost) return;
+
+    multiplayer.setRoomSettings(null, null, null, settingPassword.text);
+    toast(StringTools.trim(settingPassword.text) == '' ? 'The room is open now.' : 'The room has a password now.', NotificationType.Success);
   }
 
   @:bind(roomList, UIEvent.CHANGE)
@@ -855,6 +943,7 @@ class OnlineLobbyState extends UIState
 
     selectedRoomId = Std.string(roomList.selectedItem.id);
     joinSelected.disabled = false;
+    watchSelected.disabled = false;
   }
 
   @:bind(memberList, UIEvent.CHANGE)
@@ -864,6 +953,7 @@ class OnlineLobbyState extends UIState
 
     selectedMemberId = Std.string(memberList.selectedItem.id);
     memberKick.disabled = !multiplayer.isHost || selectedMemberId == FunkinUser.instance.getLocalUserId();
+    memberReport.disabled = selectedMemberId == FunkinUser.instance.getLocalUserId();
   }
 
   @:bind(memberKick, MouseEvent.CLICK)

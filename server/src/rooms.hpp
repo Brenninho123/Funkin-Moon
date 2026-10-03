@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "../third_party/nlohmann/json.hpp"
+#include "rating.hpp"
 #include "util.hpp"
 
 namespace moon
@@ -33,6 +34,7 @@ struct RoomMember
   double health = 0.0;
   double accuracy = 0.0;
   int64_t joinedAt = 0;
+  int rating = StartingRating;
   std::string resumeKey;
   bool away = false;
   int64_t awayUntil = 0;
@@ -58,6 +60,8 @@ struct Room
   int64_t seed = 0;
   int round = 0;
   nlohmann::json lastResults;
+  std::string password;
+  std::vector<uint64_t> spectators;
 };
 
 struct RankedMember
@@ -167,6 +171,32 @@ inline uint64_t firstConnectedSerial(const Room& room)
   }
 
   return 0;
+}
+
+inline bool hasSpectator(const Room& room, uint64_t serial)
+{
+  return std::find(room.spectators.begin(), room.spectators.end(), serial) != room.spectators.end();
+}
+
+inline bool removeSpectator(Room& room, uint64_t serial)
+{
+  auto it = std::find(room.spectators.begin(), room.spectators.end(), serial);
+
+  if (it == room.spectators.end()) return false;
+
+  room.spectators.erase(it);
+
+  return true;
+}
+
+inline bool samePassword(const std::string& expected, const std::string& given)
+{
+  unsigned char diff = static_cast<unsigned char>(expected.size() != given.size());
+  size_t length = std::min(expected.size(), given.size());
+
+  for (size_t i = 0; i < length; i++) diff |= static_cast<unsigned char>(expected[i] ^ given[i]);
+
+  return diff == 0;
 }
 
 inline bool removeMember(Room& room, uint64_t serial)

@@ -44,6 +44,8 @@ struct Config
   int songTimeoutSeconds = 1200;
   int finishGraceSeconds = 45;
   int chatCooldownMs = 700;
+  size_t maxSpectators = 8;
+  int minRatedRoundSeconds = 15;
   int reconnectGraceSeconds = 30;
   int64_t maxScorePerSecond = 8000;
   int64_t scoreBurst = 20000;
@@ -170,6 +172,8 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
     config.songTimeoutSeconds = static_cast<int>(detail::intField(root, "songTimeoutSeconds", config.songTimeoutSeconds));
     config.finishGraceSeconds = static_cast<int>(detail::intField(root, "finishGraceSeconds", config.finishGraceSeconds));
     config.chatCooldownMs = static_cast<int>(detail::intField(root, "chatCooldownMs", config.chatCooldownMs));
+    config.maxSpectators = static_cast<size_t>(detail::intField(root, "maxSpectators", static_cast<int64_t>(config.maxSpectators)));
+    config.minRatedRoundSeconds = static_cast<int>(detail::intField(root, "minRatedRoundSeconds", config.minRatedRoundSeconds));
     config.reconnectGraceSeconds = static_cast<int>(detail::intField(root, "reconnectGraceSeconds", config.reconnectGraceSeconds));
     config.maxScorePerSecond = detail::intField(root, "maxScorePerSecond", config.maxScorePerSecond);
     config.scoreBurst = detail::intField(root, "scoreBurst", config.scoreBurst);
@@ -205,6 +209,8 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   int64_t songTimeout = config.songTimeoutSeconds;
   int64_t finishGrace = config.finishGraceSeconds;
   int64_t chatCooldown = config.chatCooldownMs;
+  int64_t maxSpectators = static_cast<int64_t>(config.maxSpectators);
+  int64_t minRatedRound = config.minRatedRoundSeconds;
   int64_t reconnectGrace = config.reconnectGraceSeconds;
   int64_t maxScorePerSecond = config.maxScorePerSecond;
   int64_t scoreBurst = config.scoreBurst;
@@ -221,6 +227,8 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   detail::overrideNumber(songTimeout, "MOON_SONG_TIMEOUT_SECONDS");
   detail::overrideNumber(finishGrace, "MOON_FINISH_GRACE_SECONDS");
   detail::overrideNumber(chatCooldown, "MOON_CHAT_COOLDOWN_MS");
+  detail::overrideNumber(maxSpectators, "MOON_MAX_SPECTATORS");
+  detail::overrideNumber(minRatedRound, "MOON_MIN_RATED_ROUND_SECONDS");
   detail::overrideNumber(reconnectGrace, "MOON_RECONNECT_GRACE_SECONDS");
   detail::overrideNumber(maxScorePerSecond, "MOON_MAX_SCORE_PER_SECOND");
   detail::overrideNumber(scoreBurst, "MOON_SCORE_BURST");
@@ -257,6 +265,8 @@ inline bool loadConfig(int argc, char** argv, Config& config, std::string& error
   config.songTimeoutSeconds = static_cast<int>(songTimeout < 30 ? 30 : songTimeout);
   config.finishGraceSeconds = static_cast<int>(finishGrace < 5 ? 5 : finishGrace);
   config.chatCooldownMs = static_cast<int>(chatCooldown < 0 ? 0 : chatCooldown);
+  config.maxSpectators = static_cast<size_t>(maxSpectators < 0 ? 0 : (maxSpectators > 64 ? 64 : maxSpectators));
+  config.minRatedRoundSeconds = static_cast<int>(minRatedRound < 0 ? 0 : (minRatedRound > 600 ? 600 : minRatedRound));
   config.reconnectGraceSeconds = static_cast<int>(reconnectGrace < 0 ? 0 : (reconnectGrace > 600 ? 600 : reconnectGrace));
   config.maxScorePerSecond = maxScorePerSecond < 100 ? 100 : maxScorePerSecond;
   config.scoreBurst = scoreBurst < 0 ? 0 : scoreBurst;

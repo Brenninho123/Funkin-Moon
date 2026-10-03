@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../third_party/nlohmann/json.hpp"
+#include "rating.hpp"
 
 namespace moon
 {
@@ -21,6 +22,9 @@ struct PlayerStats
   int64_t songsFinished = 0;
   int64_t totalScore = 0;
   int64_t bestScore = 0;
+  int rating = StartingRating;
+  int ratedRounds = 0;
+  int peakRating = StartingRating;
   int64_t firstSeen = 0;
   int64_t lastSeen = 0;
 
@@ -33,6 +37,9 @@ struct PlayerStats
                           {"songsFinished", songsFinished},
                           {"totalScore", totalScore},
                           {"bestScore", bestScore},
+                          {"rating", rating},
+                          {"ratedRounds", ratedRounds},
+                          {"peakRating", peakRating},
                           {"firstSeen", firstSeen},
                           {"lastSeen", lastSeen}};
   }
@@ -82,6 +89,67 @@ public:
     dirty = true;
   }
 
+  int ratingOf(const std::string& key) const
+  {
+    const PlayerStats* stats = find(key);
+
+    return stats != nullptr ? stats->rating : StartingRating;
+  }
+
+  int ratedRoundsOf(const std::string& key) const
+  {
+    const PlayerStats* stats = find(key);
+
+    return stats != nullptr ? stats->ratedRounds : 0;
+  }
+
+  void applyRating(const std::string& key, const std::string& username, int delta, int64_t now)
+  {
+    PlayerStats* stats = entry(key, username, now);
+
+    if (stats == nullptr) return;
+
+    stats->rating = std::max(MinimumRating, std::min(MaximumRating, stats->rating + delta));
+    stats->peakRating = std::max(stats->peakRating, stats->rating);
+    stats->ratedRounds++;
+    stats->lastSeen = now;
+    dirty = true;
+  }
+
+  nlohmann::json topRated(size_t limit, int minimumRounds) const
+  {
+    std::vector<std::pair<const std::string*, const PlayerStats*>> ranked;
+
+    for (const auto& item : players)
+    {
+      if (item.second.ratedRounds >= minimumRounds) ranked.emplace_back(&item.first, &item.second);
+    }
+
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) {
+      if (a.second->rating != b.second->rating) return a.second->rating > b.second->rating;
+
+      return a.second->ratedRounds > b.second->ratedRounds;
+    });
+
+    nlohmann::json list = nlohmann::json::array();
+
+    for (size_t i = 0; i < ranked.size() && i < limit; i++)
+    {
+      const PlayerStats& stats = *ranked[i].second;
+      bool guest = ranked[i].first->rfind("g:", 0) == 0;
+
+      list.push_back(nlohmann::json{{"rank", i + 1},
+                                    {"id", *ranked[i].first},
+                                    {"username", stats.username},
+                                    {"rating", stats.rating},
+                                    {"ratedRounds", stats.ratedRounds},
+                                    {"roundsWon", stats.roundsWon},
+                                    {"authenticated", !guest}});
+    }
+
+    return list;
+  }
+
   const PlayerStats* find(const std::string& key) const
   {
     auto it = players.find(key);
@@ -123,6 +191,9 @@ public:
       stats.songsFinished = it.value().value("songsFinished", static_cast<int64_t>(0));
       stats.totalScore = it.value().value("totalScore", static_cast<int64_t>(0));
       stats.bestScore = it.value().value("bestScore", static_cast<int64_t>(0));
+      stats.rating = static_cast<int>(it.value().value("rating", static_cast<int64_t>(StartingRating)));
+      stats.ratedRounds = static_cast<int>(it.value().value("ratedRounds", static_cast<int64_t>(0)));
+      stats.peakRating = static_cast<int>(it.value().value("peakRating", static_cast<int64_t>(stats.rating)));
       stats.firstSeen = it.value().value("firstSeen", static_cast<int64_t>(0));
       stats.lastSeen = it.value().value("lastSeen", static_cast<int64_t>(0));
       players[it.key()] = stats;

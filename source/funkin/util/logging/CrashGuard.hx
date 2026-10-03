@@ -388,7 +388,7 @@ class CrashGuard
     text += '- Errors recovered from in this session: ' + recoveries + '\n';
     text += '- State: ' + stateName + '\n';
     text += '- ' + playContext() + '\n';
-    text += '\nRecent activity:\n';
+    text += '\n' + funkin.assets.AssetReport.describe() + '\nRecent activity:\n';
 
     lock.acquire();
 

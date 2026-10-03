@@ -6,6 +6,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "../third_party/nlohmann/json.hpp"
 
@@ -178,6 +179,159 @@ public:
 
 private:
   std::map<std::string, Ban> bans;
+  bool dirty = false;
+};
+
+struct Report
+{
+  std::string reporterId;
+  std::string reporterName;
+  std::string targetId;
+  std::string targetName;
+  std::string targetKey;
+  std::string reason;
+  std::string roomId;
+  int64_t at = 0;
+};
+
+class ReportBook
+{
+public:
+  static constexpr size_t MaxReports = 500;
+
+  void add(const Report& report)
+  {
+    reports.push_back(report);
+
+    while (reports.size() > MaxReports) reports.erase(reports.begin());
+
+    dirty = true;
+  }
+
+  size_t size() const
+  {
+    return reports.size();
+  }
+
+  size_t countAgainst(const std::string& targetKey) const
+  {
+    size_t count = 0;
+
+    for (const auto& report : reports)
+    {
+      if (report.targetKey == targetKey) count++;
+    }
+
+    return count;
+  }
+
+  void clear()
+  {
+    if (reports.empty()) return;
+
+    reports.clear();
+    dirty = true;
+  }
+
+  bool isDirty() const
+  {
+    return dirty;
+  }
+
+  nlohmann::json toJson() const
+  {
+    nlohmann::json list = nlohmann::json::array();
+
+    for (size_t i = reports.size(); i > 0; i--)
+    {
+      const Report& report = reports[i - 1];
+
+      list.push_back(nlohmann::json{{"reporterId", report.reporterId},
+                                    {"reporterName", report.reporterName},
+                                    {"targetId", report.targetId},
+                                    {"targetName", report.targetName},
+                                    {"targetKey", report.targetKey},
+                                    {"reason", report.reason},
+                                    {"roomId", report.roomId},
+                                    {"at", report.at},
+                                    {"againstTarget", countAgainst(report.targetKey)}});
+    }
+
+    return list;
+  }
+
+  void load(const std::string& path)
+  {
+    std::ifstream file(path);
+
+    if (!file.good()) return;
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    nlohmann::json root = nlohmann::json::parse(buffer.str(), nullptr, false);
+
+    if (root.is_discarded() || !root.is_object() || !root.contains("reports") || !root["reports"].is_array()) return;
+
+    for (const auto& item : root["reports"])
+    {
+      if (!item.is_object()) continue;
+
+      Report report;
+      report.reporterId = item.value("reporterId", std::string());
+      report.reporterName = item.value("reporterName", std::string());
+      report.targetId = item.value("targetId", std::string());
+      report.targetName = item.value("targetName", std::string());
+      report.targetKey = item.value("targetKey", std::string());
+      report.reason = item.value("reason", std::string());
+      report.roomId = item.value("roomId", std::string());
+      report.at = item.value("at", static_cast<int64_t>(0));
+      reports.push_back(report);
+    }
+
+    while (reports.size() > MaxReports) reports.erase(reports.begin());
+
+    dirty = false;
+  }
+
+  bool save(const std::string& path)
+  {
+    nlohmann::json list = nlohmann::json::array();
+
+    for (const auto& report : reports)
+    {
+      list.push_back(nlohmann::json{{"reporterId", report.reporterId},
+                                    {"reporterName", report.reporterName},
+                                    {"targetId", report.targetId},
+                                    {"targetName", report.targetName},
+                                    {"targetKey", report.targetKey},
+                                    {"reason", report.reason},
+                                    {"roomId", report.roomId},
+                                    {"at", report.at}});
+    }
+
+    std::string temp = path + ".tmp";
+
+    {
+      std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+
+      if (!file.good()) return false;
+
+      file << nlohmann::json{{"reports", list}}.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+
+    std::error_code error;
+    std::filesystem::rename(temp, path, error);
+
+    if (error) return false;
+
+    dirty = false;
+
+    return true;
+  }
+
+private:
+  std::vector<Report> reports;
   bool dirty = false;
 };
 }

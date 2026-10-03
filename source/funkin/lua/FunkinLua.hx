@@ -69,6 +69,17 @@ class FunkinLua
   var reportedFunctions:Map<String, Bool> = new Map();
   var timerCounter:Int = 0;
 
+  #if FEATURE_3D_RENDERING
+  var scene3D:Null<LuaScene3D> = null;
+
+  function threeD():LuaScene3D
+  {
+    if (scene3D == null) scene3D = new LuaScene3D();
+
+    return scene3D;
+  }
+  #end
+
   public function new(scriptPath:String, ?source:String, showDialogs:Bool = true)
   {
     scriptName = scriptPath;
@@ -384,6 +395,11 @@ class FunkinLua
     destroyTweens();
     destroyTimers();
 
+    #if FEATURE_3D_RENDERING
+    scene3D?.clear();
+    scene3D = null;
+    #end
+
     Lua.close(lua);
 
     lua = null;
@@ -442,6 +458,10 @@ class FunkinLua
 
   function resolveObject(name:String):Null<Dynamic>
   {
+    #if FEATURE_3D_RENDERING
+    if (StringTools.startsWith(name, LuaScene3D.PREFIX)) return scene3D?.get(name.substr(LuaScene3D.PREFIX.length));
+    #end
+
     var sprite:Null<FlxSprite> = luaSprites.get(name);
 
     if (sprite != null) return sprite;
@@ -766,6 +786,7 @@ class FunkinLua
     registerDebugDisplay();
     registerCodex();
     registerOnline();
+    register3D();
   }
 
   static function dispatch(l:LuaState, name:String):Int
@@ -1925,6 +1946,65 @@ class FunkinLua
     query('codexGetPages', (s, a) -> Codex.current?.getPageNames() ?? []);
     query('codexHasPage', (s, a) -> Codex.current?.hasPage(argStr(a, 0)) ?? false);
     query('codexSetPage', (s, a) -> Codex.current?.requestPage(argStr(a, 0)) ?? false);
+  }
+
+  static function register3D():Void
+  {
+    #if FEATURE_3D_RENDERING
+    query('is3DAvailable', (s, a) -> true);
+    query('is3DEnabled', (s, a) -> s.threeD().scene() != null);
+    query('enable3D', (s, a) -> s.threeD().enable(argInt(a, 0, 1)));
+    command('disable3D', (s, a) -> s.threeD().disable());
+
+    query('make3DBox', (s, a) -> s.threeD().box(argStr(a, 0), argNum(a, 1, 1), argNum(a, 2, 1), argNum(a, 3, 1), argColor(a, 4), argNum(a, 5), argNum(a, 6), argNum(a, 7)));
+    query('make3DSphere', (s, a) -> s.threeD().sphere(argStr(a, 0), argNum(a, 1, 1), argColor(a, 2), argNum(a, 3), argNum(a, 4), argNum(a, 5), argInt(a, 6, 24)));
+    query('make3DPlane', (s, a) -> s.threeD().plane(argStr(a, 0), argNum(a, 1, 10), argNum(a, 2, 10), argColor(a, 3), argNum(a, 4), argNum(a, 5), argNum(a, 6)));
+    query('make3DCylinder', (s, a) -> s.threeD().cylinder(argStr(a, 0), argNum(a, 1, 0.5), argNum(a, 2, 1), argColor(a, 3), argNum(a, 4), argNum(a, 5), argNum(a, 6)));
+    query('make3DTorus', (s, a) -> s.threeD().torus(argStr(a, 0), argNum(a, 1, 1), argNum(a, 2, 0.25), argColor(a, 3), argNum(a, 4), argNum(a, 5), argNum(a, 6)));
+    query('make3DGrid', (s, a) -> s.threeD().grid(argStr(a, 0), argNum(a, 1, 20), argInt(a, 2, 20), argColor(a, 3, 0xFF8888FF), argNum(a, 4)));
+    query('load3DModel', (s, a) ->
+    {
+      var ok:Bool = s.threeD().model(argStr(a, 0), argStr(a, 1), argNum(a, 2), argNum(a, 3), argNum(a, 4), argNum(a, 5, 1));
+
+      if (!ok) s.log('warn', 'load3DModel: could not load model: ' + argStr(a, 1));
+
+      return ok;
+    });
+    query('add3DLight', (s, a) -> s.threeD().light(argStr(a, 0), argStr(a, 1, 'point'), argColor(a, 2), argNum(a, 3, 1), argNum(a, 4), argNum(a, 5), argNum(a, 6), argNum(a, 7, 8)));
+    command('remove3D', (s, a) -> s.threeD().remove(argStr(a, 0)));
+
+    command('set3DPosition', (s, a) -> s.threeD().setPosition(argStr(a, 0), argNum(a, 1), argNum(a, 2), argNum(a, 3)));
+    command('set3DRotation', (s, a) -> s.threeD().setRotation(argStr(a, 0), argNum(a, 1), argNum(a, 2), argNum(a, 3)));
+    command('set3DScale', (s, a) -> s.threeD().setScale(argStr(a, 0), argNum(a, 1, 1), argNum(a, 2, argNum(a, 1, 1)), argNum(a, 3, argNum(a, 1, 1))));
+    command('set3DColor', (s, a) -> s.threeD().setColor(argStr(a, 0), argColor(a, 1)));
+    command('set3DVisible', (s, a) -> s.threeD().setVisible(argStr(a, 0), argBool(a, 1, true)));
+    command('set3DEnergy', (s, a) -> s.threeD().setEnergy(argStr(a, 0), argNum(a, 1, 1)));
+    command('set3DRange', (s, a) -> s.threeD().setRange(argStr(a, 0), argNum(a, 1, 8)));
+    query('get3DPosition', (s, a) -> s.threeD().position(argStr(a, 0)));
+    query('get3DRotation', (s, a) -> s.threeD().rotation(argStr(a, 0)));
+    query('has3DObject', (s, a) -> s.threeD().get(argStr(a, 0)) != null);
+    query('list3DObjects', (s, a) -> s.threeD().ids());
+
+    command('set3DCamera', (s, a) ->
+    {
+      var gfx = s.threeD().scene();
+
+      if (gfx == null) return;
+
+      gfx.setCameraPosition(argNum(a, 0), argNum(a, 1), argNum(a, 2));
+      gfx.setCameraAngle(argNum(a, 3), argNum(a, 4), argNum(a, 5));
+    });
+    command('set3DCameraFov', (s, a) -> s.threeD().scene()?.setCameraFov(argNum(a, 0, 70)));
+    command('set3DLookAt', (s, a) -> s.threeD().scene()?.lookAt(argNum(a, 0), argNum(a, 1), argNum(a, 2)));
+    command('set3DAmbient', (s, a) -> s.threeD().scene()?.setAmbient(argColor(a, 0)));
+    command('set3DFog', (s, a) -> s.threeD().scene()?.setFog(argColor(a, 0, FlxColor.BLACK), argNum(a, 1, 10), argNum(a, 2, 40)));
+    command('set3DBackground', (s, a) -> s.threeD().scene()?.setBackground(argColor(a, 0, FlxColor.TRANSPARENT)));
+
+    query('list3DModels', (s, a) -> funkin.assets.Paths3D.listModels());
+    query('has3DModel', (s, a) -> funkin.assets.Paths3D.modelExists(argStr(a, 0)));
+    #else
+    query('is3DAvailable', (s, a) -> false);
+    #end
   }
 
   static function registerOnline():Void

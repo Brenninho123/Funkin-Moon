@@ -28,7 +28,7 @@ class Constants
 
   static function get_MOON_VERSION():String
   {
-    return #if (MOON_VERSION) MOON_VERSION #else '0.1.1' #end;
+    return #if (MOON_VERSION) MOON_VERSION #else '0.2.0' #end;
   }
 
   /**

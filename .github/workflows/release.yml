@@ -6,7 +6,7 @@ on:
       version:
         description: 'Moon Engine version to release, without the v (the section of CHANGELOG.md with this version becomes the release notes)'
         required: true
-        default: '0.1.0'
+        default: '0.2.0'
         type: string
       prerelease:
         description: 'Mark the release as a pre-release'
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "The version '$VERSION' is not valid. Use something like 0.1.0 or 0.2.0-beta.1."
+            echo "The version '$VERSION' is not valid. Use something like 0.2.0 or 0.3.0-beta.1."
             exit 1
           fi
 

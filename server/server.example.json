@@ -13,6 +13,8 @@
   "songTimeoutSeconds": 1200,
   "finishGraceSeconds": 45,
   "chatCooldownMs": 700,
+  "maxSpectators": 8,
+  "minRatedRoundSeconds": 15,
   "reconnectGraceSeconds": 30,
   "maxScorePerSecond": 8000,
   "scoreBurst": 20000,

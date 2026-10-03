@@ -1,6 +1,6 @@
 # Moon Engine online server
 
-A standalone C++17 server for Moon Engine. It tracks the players that are online, runs multiplayer rooms, keeps a score leaderboard and player records, protects the rooms from impossible scores, lets you moderate the players, and handles the Discord login (OAuth2) so the game never sees your application's client secret.
+A standalone C++17 server for Moon Engine. It tracks the players that are online, runs multiplayer rooms, keeps a score leaderboard and player records, rates the players, protects the rooms from impossible scores, lets you moderate the players, and handles the Discord login (OAuth2) so the game never sees your application's client secret.
 
 It speaks the protocol the game uses in `funkin.online.FunkinOnline`: newline-delimited JSON of the form `{"type": "...", "data": {...}}` over TCP.
 
@@ -9,10 +9,13 @@ It speaks the protocol the game uses in `funkin.online.FunkinOnline`: newline-de
 - **Presence.** Everyone connected is listed with what they are doing, and joins and leaves are broadcast.
 - **Rooms.** A player creates a room (a 5 letter code), others join with the code or from the public list. The host picks the song, players get ready, the host starts the round, and the server relays scores and game events between the players, ranks them at the end and sends the results. The room goes back to the lobby afterwards.
 - **Reconnecting.** A player whose connection drops keeps the place in the room for 30 seconds (setting `reconnectGraceSeconds`). The game reconnects by itself, gets the room back and, if the round ended in the meantime, the results it missed. The others see the player as reconnecting. A round waits for a player who is away until the time is over.
-- **Quick match.** One message puts a player in the fullest public room that has space, or opens a new public room.
+- **Rating.** Every round with at least two players that lasts long enough (`minRatedRoundSeconds`, 15 by default) is rated with an Elo system: everybody starts at 1000, new players move fast (K 40 for the first 10 rounds, 24 after), a win against a stronger player pays more, and a tie costs the stronger player. The results carry each player's new rating and change, the rating is shown with the player everywhere, and the best players are listed in a rating board.
+- **Quick match.** One message puts a player in the public room whose average rating is the closest to theirs, using the fullest one when it is a tie, or opens a new public room. Rooms with a password are never picked.
+- **Passwords.** A room can have a password (24 characters at most). It is needed to join and to watch, it is compared in constant time, and it is never sent to any player.
+- **Spectators.** A player can watch a room without playing: they get the room, every song change, the scores of the round as they happen (a player who arrives in the middle gets the current ones), the chat and the results. They cannot ready up, start a round or change anything, they do not hold a round or a place, and the host can remove them. Each room accepts `maxSpectators` of them.
 - **Score checks.** A room score cannot grow faster than `maxScorePerSecond` from the start of the round (plus `scoreBurst`). A score above that is not passed on, and a player who keeps sending them is removed from the room. Solo scores above `maxSongScore` are rejected.
 - **Player records.** Songs finished, rounds played and won, best score and total score of every player, saved to disk, served to the game and over HTTP.
-- **Moderation.** Bans by Discord account or by address (permanent or for a number of minutes), kicks, announcements and closing rooms, through an admin HTTP API protected by a token.
+- **Moderation.** Bans by Discord account or by address (permanent or for a number of minutes), mutes with the same keys, kicks, announcements and closing rooms, through an admin HTTP API protected by a token. Players can report each other (one report every 30 seconds), and the admin reads the reports.
 - **Metrics.** A `/metrics` page in the Prometheus text format, and an optional log file.
 - **Chat** in the room, and global chat.
 - **Leaderboard.** Every finished song (solo or in a room) is recorded per song and difficulty. The best 25 scores are kept and saved to disk.
@@ -62,6 +65,8 @@ Copy `server.example.json` to `server.json` to configure it. Every value can als
 | Seconds before a round is ended anyway | `MOON_SONG_TIMEOUT_SECONDS` | `1200` |
 | Seconds the others wait after the first player finishes | `MOON_FINISH_GRACE_SECONDS` | `45` |
 | Chat cooldown in milliseconds | `MOON_CHAT_COOLDOWN_MS` | `700` |
+| Spectators in one room | `MOON_MAX_SPECTATORS` | `8` |
+| Seconds a round has to last to change the ratings | `MOON_MIN_RATED_ROUND_SECONDS` | `15` |
 | Seconds a room keeps the place of a player who lost the connection (0 turns it off) | `MOON_RECONNECT_GRACE_SECONDS` | `30` |
 | Highest score a room player can gain per second of the round | `MOON_MAX_SCORE_PER_SECOND` | `8000` |
 | Extra score allowed on top of that | `MOON_SCORE_BURST` | `20000` |
@@ -81,6 +86,7 @@ HTTP endpoints:
 | `GET /rooms` | the public rooms |
 | `GET /leaderboard?song=bopeebo&difficulty=hard` | the best scores of a song |
 | `GET /player?id=d123456789` | the record of a player (a Discord account is `d<discord id>`, a guest is `g:<name>`, a connected player can also be asked by the id the server gave) |
+| `GET /ratings` | the rating board: the best rated players, with at least 3 rated rounds |
 | `GET /metrics` | counters and gauges in the Prometheus text format |
 | `GET /auth/callback` | the Discord login callback |
 
@@ -97,6 +103,11 @@ Set `MOON_ADMIN_TOKEN` to a long secret (16 characters or more) and the admin AP
 | `/admin/ban?key=d123456789` or `key=ip:203.0.113.5` | Bans an account or address directly |
 | `/admin/unban?key=...` | Lifts a ban |
 | `/admin/bans` | Lists the active bans |
+| `/admin/mute?id=p12&minutes=30&reason=text` | Mutes a player in the chat. Like a ban it is by Discord account or by address, and `key=` mutes a key directly |
+| `/admin/unmute?key=...` | Lets a player talk again |
+| `/admin/mutes` | Lists the active mutes |
+| `/admin/reports` | Lists the reports, newest first, with how many reports the same player has |
+| `/admin/clearReports` | Forgets the reports |
 | `/admin/announce?text=...` | Shows a message to everybody online |
 | `/admin/closeRoom?room=AB3DE` | Closes a room and tells its players |
 
@@ -124,7 +135,7 @@ Without this file the game connects to `127.0.0.1:7777`, which is a server runni
 
 ## Protocol
 
-Protocol version 2. The `welcome` message lists the server features (`rooms`, `chat`, `leaderboard`, `resume`, `quickmatch`, `stats`), a `resumeKey` for reconnecting, and `resumed` (true when the player got a room back).
+Protocol version 3. The `welcome` message lists the server features (`rooms`, `chat`, `leaderboard`, `resume`, `quickmatch`, `stats`, `rating`, `spectate`, `passwords`, `reports`), the player's `rating`, `maxSpectators`, a `resumeKey` for reconnecting, and `resumed` (true when the player got a room back). Player objects carry the `rating` too.
 
 Client to server:
 
@@ -135,13 +146,16 @@ Client to server:
 | `auth_begin`, `auth_resume`, `auth_logout` | | Discord login |
 | `songResult` | `songId`, `difficulty`, `score` | Record a score on the leaderboard |
 | `leaderboard` | `songId`, `difficulty`, `limit` | Ask for the best scores |
-| `stats` | `userId` (optional) | Ask for the record of yourself or of a player |
-| `mp_quickMatch` | | Join the fullest public lobby with space, or open one |
-| `mp_createRoom` | `name`, `isPublic`, `maxPlayers` | Create a room and become its host |
-| `mp_joinRoom` | `roomId` | Join a room by code |
+| `stats` | `userId` (optional) | Ask for the record of yourself or of a player: songs, rounds, `rating`, `ratedRounds` and `peakRating` |
+| `ratings` | `limit` | Ask for the rating board |
+| `mp_quickMatch` | | Join the public lobby with space whose average rating is the closest, or open one |
+| `mp_spectate` | `roomId`, `password` | Watch a room (in the lobby or in the middle of a round) |
+| `mp_report` | `userId`, `reason` | Report a connected player to the admin |
+| `mp_createRoom` | `name`, `isPublic`, `maxPlayers`, `password` | Create a room and become its host |
+| `mp_joinRoom` | `roomId`, `password` | Join a room by code |
 | `mp_leaveRoom` | | Leave the room |
 | `mp_listRooms` | | List the public rooms |
-| `mp_roomSettings` | `name`, `isPublic`, `maxPlayers` | Host only, in the lobby |
+| `mp_roomSettings` | `name`, `isPublic`, `maxPlayers`, `password` | Host only, in the lobby. An empty `password` opens the room |
 | `mp_selectSong` | `songId`, `difficultyId`, `variation` | Host only, in the lobby. Clears every ready flag |
 | `mp_setReady` | `ready` | Mark yourself ready |
 | `mp_startSong` | | Host only. Needs a song, enough players and everyone ready |
@@ -158,7 +172,10 @@ Server to client:
 | `welcome`, `activeUsers`, `userJoined`, `userLeft`, `userUpdated`, `pong` | Presence |
 | `auth_url`, `auth_ok`, `auth_error`, `auth_logged_out` | Discord login |
 | `mp_roomCreated`, `mp_roomJoined` | The full room: `roomId`, `name`, `hostId`, `isPublic`, `maxPlayers`, `state`, `songId`, `difficultyId`, `variation`, `players`, `members` |
-| `mp_roomJoinFailed` | `not_found`, `full`, `in_progress` or `already_in_room` |
+| `mp_roomJoinFailed` | `not_found`, `full`, `in_progress`, `already_in_room`, `wrong_password` or `spectators_full` |
+| `mp_roomSpectating` | The full room for a spectator, and `live` (the current scores) when a round is on |
+| `mp_spectatorCount` | `count` of spectators, sent to the whole room when it changes |
+| `mp_reported` | A report was received |
 | `mp_roomClosed` | You were removed (`kicked`, `cheating`, `closed_by_admin`) |
 | `mp_roomState` | The room changed (settings, or back to the lobby after a round) |
 | `mp_playerAway`, `mp_playerBack` | A member lost the connection (with the seconds they have) or came back |
@@ -167,10 +184,10 @@ Server to client:
 | `mp_songSelected`, `mp_playerReady` | Lobby changes |
 | `mp_startSong` | The round starts: song, difficulty, variation, a shared `seed`, the `round` number and the players |
 | `mp_scoreUpdate`, `mp_relay`, `mp_playerFinished` | During a round, never sent back to the sender |
-| `mp_results` | Everyone finished (or the grace period ended): the ranking |
-| `mp_chat`, `mp_rooms`, `leaderboard`, `stats` | Replies |
+| `mp_results` | Everyone finished (or the grace period ended): the ranking. Each entry has `rating` and `ratingChange` and `rated` says if the round changed the ratings |
+| `mp_chat`, `mp_rooms`, `leaderboard`, `stats`, `ratings` | Replies |
 | `server_notice` | A message from the server: `text` and `kind` (`announcement` or `shutdown`) |
-| `error` | `reason` such as `not_host`, `not_in_room`, `not_all_ready`, `not_enough_players`, `no_song`, `invalid_song`, `in_progress`, `chat_cooldown`, `room_limit`, `rate_limited`, `score_rejected`, `banned` (with `detail` and `until`), `kicked` |
+| `error` | `reason` such as `not_host`, `not_in_room`, `not_all_ready`, `not_enough_players`, `no_song`, `invalid_song`, `in_progress`, `chat_cooldown`, `room_limit`, `rate_limited`, `score_rejected`, `banned` (with `detail` and `until`), `muted` (with `detail` and `until`), `report_cooldown`, `unknown_member`, `kicked` |
 
 Player ids are assigned by the server: `p<number>` for guests and `d<discord id>` for logged in players, so a client cannot claim another player's id. Whatever user id a client puts in a message is ignored. Only one connection per Discord account is kept; a newer login replaces the older one.
 
@@ -188,8 +205,8 @@ Messages are capped at 64 KB, each connection is rate limited, connections that 
 
 ## Tests
 
-`node tests/e2e.js` starts the built server together with a fake Discord API and runs about 150 checks: presence, login, token reuse, duplicate logins, rooms (create, join, full, private, settings, kick, host change), the lobby rules, score and event relay with clamping, results and ranking, the grace period, accounts logging in inside a room, chat, the leaderboard, reconnecting (in the lobby, during a round, after the time is over, replacing a half open connection, results missed while away), score checks, player records, quick match, the admin API (bans, kicks, announcements, closing rooms), metrics and restart persistence. It needs Node.js and no other packages.
+`node tests/e2e.js` starts the built server together with a fake Discord API and runs about 230 checks: presence, login, token reuse, duplicate logins, rooms (create, join, full, private, settings, kick, host change), the lobby rules, score and event relay with clamping, results and ranking, the grace period, accounts logging in inside a room, chat, the leaderboard, reconnecting (in the lobby, during a round, after the time is over, replacing a half open connection, results missed while away), score checks, player records, quick match, ratings and matchmaking by rating, room passwords, spectators, reports and mutes, the admin API (bans, kicks, announcements, closing rooms), metrics and restart persistence. It needs Node.js and no other packages.
 
-`node tools/load.js 40 4` starts the server and runs 40 rooms of 4 players through a full round at once (160 connections), then checks the results and the cleanup. `node tools/bot.js --help` is a fake player for trying the game against a server.
+`cl /std:c++17 /EHsc /Fe:build\rating_test.exe tests\rating_test.cpp` (or any C++17 compiler) builds the unit test of the rating system, which has 20 checks. `node tools/load.js 40 4` starts the server and runs 40 rooms of 4 players through a full round at once (160 connections), then checks the results and the cleanup. `node tools/bot.js --help` is a fake player for trying the game against a server.
 
 `server/third_party/nlohmann/json.hpp` is [nlohmann/json](https://github.com/nlohmann/json) 3.11.3 (MIT).

@@ -154,6 +154,11 @@ class Paths implements ConsoleClass
     return getPath('$key-metadata$suffix.json', TEXT, library);
   }
 
+  public static function model(key:String):String
+  {
+    return funkin.assets.Paths3D.resolveModel(key) ?? getPath('models/' + key + '.glb', BINARY, null);
+  }
+
   public static function image(key:String, ?library:String):String
   {
     return getPath('$key.png', IMAGE, library);

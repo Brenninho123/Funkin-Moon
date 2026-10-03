@@ -11,6 +11,7 @@ import funkin.online.play.MultiplayerData.MultiplayerLeaderboardEntry;
 import funkin.online.play.MultiplayerData.MultiplayerMember;
 import funkin.online.play.MultiplayerData.MultiplayerResults;
 import funkin.online.play.MultiplayerData.MultiplayerRoom;
+import funkin.online.play.MultiplayerData.MultiplayerRatingEntry;
 import funkin.online.play.MultiplayerData.MultiplayerRoomSummary;
 import funkin.online.play.MultiplayerData.MultiplayerScore;
 import funkin.online.play.MultiplayerData.MultiplayerStats;
@@ -26,6 +27,7 @@ class FunkinMultiplayer
 
   public var currentRoom(default, null):Null<MultiplayerRoom> = null;
   public var inMatch(default, null):Bool = false;
+  public var spectating(default, null):Bool = false;
   public var connectionLost(default, null):Bool = false;
   public var localFinished(default, null):Bool = false;
   public var lastResults(default, null):Null<MultiplayerResults> = null;
@@ -64,6 +66,9 @@ class FunkinMultiplayer
   public var onPlayerAway:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
   public var onPlayerBack:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
   public var onStats:FlxTypedSignal<MultiplayerStats->Void> = new FlxTypedSignal<MultiplayerStats->Void>();
+  public var onRatings:FlxTypedSignal<Array<MultiplayerRatingEntry>->Void> = new FlxTypedSignal<Array<MultiplayerRatingEntry>->Void>();
+  public var onSpectating:FlxTypedSignal<MultiplayerRoom->Void> = new FlxTypedSignal<MultiplayerRoom->Void>();
+  public var onReported:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
   public var onError:FlxTypedSignal<String->Void> = new FlxTypedSignal<String->Void>();
 
   var opponentScores:Map<String, MultiplayerScore> = new Map();
@@ -96,6 +101,10 @@ class FunkinMultiplayer
     online.registerHandler('mp_playerBack', onPlayerBackMessage);
     online.registerHandler('welcome', onWelcomeMessage);
     online.registerHandler('stats', onStatsMessage);
+    online.registerHandler('ratings', onRatingsMessage);
+    online.registerHandler('mp_roomSpectating', onRoomSpectatingMessage);
+    online.registerHandler('mp_spectatorCount', onSpectatorCountMessage);
+    online.registerHandler('mp_reported', onReportedMessage);
     online.registerHandler('mp_playerJoined', onPlayerJoinedMessage);
     online.registerHandler('mp_playerLeft', onPlayerLeftMessage);
     online.registerHandler('mp_hostChanged', onHostChangedMessage);
@@ -181,6 +190,7 @@ class FunkinMultiplayer
     cancelResumeTimer();
 
     connectionLost = false;
+    spectating = false;
     currentRoom = null;
     inMatch = false;
     localFinished = false;
@@ -201,7 +211,7 @@ class FunkinMultiplayer
     return true;
   }
 
-  public function createRoom(?name:String, isPublic:Bool = true, maxPlayers:Int = 4):Void
+  public function createRoom(?name:String, isPublic:Bool = true, maxPlayers:Int = 4, ?password:String):Void
   {
     if (!canSend('create a room')) return;
 
@@ -211,16 +221,53 @@ class FunkinMultiplayer
     };
 
     if (name != null && StringTools.trim(name) != '') data.name = StringTools.trim(name);
+    if (password != null && StringTools.trim(password) != '') data.password = StringTools.trim(password);
 
     FunkinOnline.instance.send('mp_createRoom', data);
   }
 
-  public function joinRoom(roomId:String):Void
+  public function joinRoom(roomId:String, ?password:String):Void
   {
     if (!canSend('join a room')) return;
 
-    FunkinOnline.instance.send('mp_joinRoom', {
+    var data:Dynamic = {
       roomId: MultiplayerData.normalizeCode(roomId)
+    };
+
+    if (password != null && StringTools.trim(password) != '') data.password = StringTools.trim(password);
+
+    FunkinOnline.instance.send('mp_joinRoom', data);
+  }
+
+  public function spectate(roomId:String, ?password:String):Void
+  {
+    if (!canSend('watch a room')) return;
+
+    var data:Dynamic = {
+      roomId: MultiplayerData.normalizeCode(roomId)
+    };
+
+    if (password != null && StringTools.trim(password) != '') data.password = StringTools.trim(password);
+
+    FunkinOnline.instance.send('mp_spectate', data);
+  }
+
+  public function report(userId:String, reason:String):Void
+  {
+    if (!FunkinOnline.instance.isConnected() || userId == '') return;
+
+    FunkinOnline.instance.send('mp_report', {
+      userId: userId,
+      reason: reason
+    });
+  }
+
+  public function requestRatings(limit:Int = 10):Void
+  {
+    if (!FunkinOnline.instance.isConnected()) return;
+
+    FunkinOnline.instance.send('ratings', {
+      limit: limit
     });
   }
 
@@ -288,12 +335,13 @@ class FunkinMultiplayer
     });
   }
 
-  public function setRoomSettings(?name:String, ?isPublic:Bool, ?maxPlayers:Int):Void
+  public function setRoomSettings(?name:String, ?isPublic:Bool, ?maxPlayers:Int, ?password:String):Void
   {
     if (currentRoom == null || !isHost) return;
 
     var data:Dynamic = {};
 
+    if (password != null) data.password = StringTools.trim(password);
     if (name != null) data.name = name;
     if (isPublic != null) data.isPublic = isPublic;
     if (maxPlayers != null) data.maxPlayers = maxPlayers;
@@ -424,6 +472,7 @@ class FunkinMultiplayer
     currentRoom = room;
     inMatch = false;
     localFinished = false;
+    spectating = false;
     lastResults = null;
     chatLog = [];
     opponentScores = new Map();
@@ -441,6 +490,7 @@ class FunkinMultiplayer
     currentRoom = room;
     inMatch = false;
     localFinished = false;
+    spectating = false;
     lastResults = null;
     chatLog = [];
     opponentScores = new Map();
@@ -539,6 +589,53 @@ class FunkinMultiplayer
 
     onPlayerBack.dispatch(userId);
     updated();
+  }
+
+  function onRoomSpectatingMessage(data:Dynamic):Void
+  {
+    var room:Null<MultiplayerRoom> = MultiplayerData.parseRoom(data);
+
+    if (room == null) return;
+
+    currentRoom = room;
+    inMatch = false;
+    localFinished = false;
+    spectating = true;
+    lastResults = null;
+    chatLog = [];
+    opponentScores = new Map();
+
+    if (data.live != null)
+    {
+      for (raw in (data.live : Array<Dynamic>))
+      {
+        var score:Null<MultiplayerScore> = MultiplayerData.parseScore(raw);
+
+        if (score != null) opponentScores.set(score.userId, score);
+      }
+    }
+
+    onSpectating.dispatch(room);
+    updated();
+  }
+
+  function onSpectatorCountMessage(data:Dynamic):Void
+  {
+    if (currentRoom == null || data == null || data.count == null) return;
+
+    currentRoom.spectators = Std.int(data.count);
+
+    updated();
+  }
+
+  function onReportedMessage(data:Dynamic):Void
+  {
+    onReported.dispatch(data != null && data.userId != null ? Std.string(data.userId) : '');
+  }
+
+  function onRatingsMessage(data:Dynamic):Void
+  {
+    onRatings.dispatch(MultiplayerData.parseRatings(data));
   }
 
   function onStatsMessage(data:Dynamic):Void
@@ -654,6 +751,24 @@ class FunkinMultiplayer
   function onStartSongMessage(data:Dynamic):Void
   {
     if (currentRoom == null) return;
+
+    if (spectating)
+    {
+      currentRoom.state = MultiplayerData.STATE_PLAYING;
+
+      for (member in currentRoom.members)
+      {
+        member.finished = false;
+        member.score = 0;
+        member.combo = 0;
+      }
+
+      opponentScores = new Map();
+
+      updated();
+
+      return;
+    }
 
     if (data != null)
     {

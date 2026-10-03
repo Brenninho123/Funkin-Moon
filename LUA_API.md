@@ -357,6 +357,66 @@ function onTweenCompleted(id)
 end
 ```
 
+## 3D scenes (requires `FEATURE_3D_RENDERING`)
+
+Moon Engine renders real 3D with [Foxlite](https://github.com/dwdvIl/foxlite) 0.2.9. A script turns a 3D scene on for the song, builds it from shapes, lights and models, and moves the objects in `update`, with tweens, or on a beat. The scene is drawn in the game camera, behind the characters by default (`enable3D(layer)` changes where). The 3D camera looks toward **negative Z** (the convention of OpenGL and Blender), with Y up, so put the camera at a positive Z and the things it looks at at negative Z. See `docs/3D_RENDERING.md` for the whole picture.
+
+Ids are strings you choose. A new object with an id that already exists replaces the old one. Colors accept `0xFFRRGGBB` numbers or `'#RRGGBB'` strings. Angles are degrees. The functions that make something return `true` when it worked.
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `is3DAvailable` | `is3DAvailable()` | `false` on builds without 3D, so a script can fall back to sprites |
+| `enable3D` | `enable3D(layer)` | Starts the 3D scene of the song. `layer` is the z-index among the song objects (default 1, behind the stage) |
+| `disable3D` | `disable3D()` | Removes the scene and every object this script made |
+| `is3DEnabled` | `is3DEnabled()` | Whether the song has a 3D scene |
+| `make3DBox` | `make3DBox(id, w, h, d, color, x, y, z)` | A lit box |
+| `make3DSphere` | `make3DSphere(id, radius, color, x, y, z, segments)` | A lit sphere. `segments` defaults to 24 |
+| `make3DPlane` | `make3DPlane(id, width, depth, color, x, y, z)` | A flat floor, seen from both sides |
+| `make3DCylinder` | `make3DCylinder(id, radius, height, color, x, y, z)` | A lit cylinder with caps |
+| `make3DTorus` | `make3DTorus(id, radius, tube, color, x, y, z)` | A lit ring |
+| `make3DGrid` | `make3DGrid(id, size, divisions, color, y)` | A grid of lines |
+| `load3DModel` | `load3DModel(id, key, x, y, z, size)` | Loads a `.glb`, `.gltf` or `.obj` model by key (see below). `size` scales it |
+| `add3DLight` | `add3DLight(id, kind, color, energy, x, y, z, range)` | `kind` is `'point'` or `'directional'`. For a directional light `x` and `y` are the pitch and the yaw |
+| `remove3D` | `remove3D(id)` | Removes an object or a light |
+| `set3DPosition` | `set3DPosition(id, x, y, z)` | Moves an object |
+| `set3DRotation` | `set3DRotation(id, x, y, z)` | Rotates an object (degrees) |
+| `set3DScale` | `set3DScale(id, x, y, z)` | Scales an object. One number scales all axes |
+| `set3DColor` | `set3DColor(id, color)` | Tints a shape or changes the color of a light |
+| `set3DVisible` | `set3DVisible(id, visible)` | Shows or hides an object |
+| `set3DEnergy` | `set3DEnergy(id, energy)` | The strength of a light |
+| `set3DRange` | `set3DRange(id, range)` | How far a point light reaches |
+| `get3DPosition` | `get3DPosition(id)` | `{x, y, z}` as an array, empty when the id is unknown |
+| `get3DRotation` | `get3DRotation(id)` | Same, in degrees |
+| `has3DObject` | `has3DObject(id)` | Whether the script made an object with that id |
+| `list3DObjects` | `list3DObjects()` | The ids of this script |
+| `set3DCamera` | `set3DCamera(x, y, z, pitch, yaw, roll)` | Places the 3D camera |
+| `set3DCameraFov` | `set3DCameraFov(fov)` | Field of view in degrees |
+| `set3DLookAt` | `set3DLookAt(x, y, z)` | Points the camera at a spot |
+| `set3DAmbient` | `set3DAmbient(color)` | The light that reaches everything |
+| `set3DFog` | `set3DFog(color, start, end)` | Fog that hides the far objects |
+| `set3DBackground` | `set3DBackground(color)` | The background of the 3D scene (transparent by default) |
+| `list3DModels` | `list3DModels()` | The model keys the game and the mods have |
+| `has3DModel` | `has3DModel(key)` | Whether a model key exists |
+
+3D objects work with the tween and property functions by putting `3d:` before the id:
+
+```lua
+function onCreate()
+  if not is3DAvailable() then return end
+
+  enable3D()
+  set3DAmbient('#40445A')
+  add3DLight('sun', 'directional', 0xFFFFFFFF, 1.0, -45, 30)
+  add3DLight('glow', 'point', '#FF4D9E', 2.0, -3, 2, 0, 12)
+  make3DTorus('ring', 3, 0.3, '#FFD166', 4, 0.5, -6)
+  set3DCamera(0, 1.6, 9, -5, 0, 0)
+end
+
+function onBeatHit(beat)
+  doTween('spin' .. beat, '3d:ring', {angleY = beat * 90}, 0.4, 'quadOut')
+end
+```
+
 ## Cross-script calls
 
 | Function | Signature | Description |

@@ -81,7 +81,7 @@ class MultiplayerDataTests
 
     var everyReason:Bool = true;
 
-    for (reason in ['not_found', 'full', 'in_progress', 'already_in_room', 'not_in_room', 'not_host', 'no_song', 'not_enough_players', 'not_all_ready', 'invalid_song', 'room_limit', 'chat_cooldown', 'unknown_member', 'rate_limited', 'server_full', 'kicked', 'disconnected', 'not_joined', 'banned', 'cheating', 'closed_by_admin', 'timeout', 'score_rejected', 'logged_in_elsewhere'])
+    for (reason in ['not_found', 'full', 'in_progress', 'already_in_room', 'not_in_room', 'not_host', 'no_song', 'not_enough_players', 'not_all_ready', 'invalid_song', 'room_limit', 'chat_cooldown', 'unknown_member', 'rate_limited', 'server_full', 'kicked', 'disconnected', 'not_joined', 'wrong_password', 'spectators_full', 'muted', 'report_cooldown', 'banned', 'cheating', 'closed_by_admin', 'timeout', 'score_rejected', 'logged_in_elsewhere'])
     {
       if (MultiplayerData.describeError(reason).indexOf('The server said') == 0) everyReason = false;
     }
@@ -95,7 +95,7 @@ class MultiplayerDataTests
     check('stats are parsed', stats != null && stats.found && stats.roundsPlayed == 12 && stats.roundsWon == 5 && stats.songsFinished == 30 && stats.bestScore == 123456 && stats.username == 'Nelly');
     check('stats without data are rejected', MultiplayerData.parseStats(null) == null);
     check('missing stats fields default to zero', MultiplayerData.parseStats(Json.parse('{"id":"x"}')).roundsPlayed == 0);
-    check('stats are described', MultiplayerData.describeStats(stats) == '30 songs finished\n12 online rounds, 5 won\nBest score 123,456', MultiplayerData.describeStats(stats));
+    check('stats are described', MultiplayerData.describeStats(stats) == '30 songs finished\n12 online rounds, 5 won\nBest score 123,456\nRating 1000 (play a rated round to earn one)', MultiplayerData.describeStats(stats));
     check('singular nouns are used', MultiplayerData.plural(1, 'song') == '1 song' && MultiplayerData.plural(0, 'song') == '0 songs' && MultiplayerData.plural(2, 'song') == '2 songs');
     check('a player without history gets a friendly line', MultiplayerData.describeStats(MultiplayerData.parseStats(Json.parse('{"id":"x","found":false}'))) == 'No songs finished on this server yet.');
 
@@ -109,6 +109,50 @@ class MultiplayerDataTests
 
     var awayRoom = MultiplayerData.parseRoom(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[{"id":"p1"},{"id":"p2","ready":true,"away":true}]}'));
     check('an away player keeps the round from starting', !MultiplayerData.everyoneReady(awayRoom));
+
+    Sys.println('ratings, passwords and spectators');
+
+    var rated = MultiplayerData.parseMember(Json.parse('{"id":"p1","rating":1234}'));
+
+    check('a member rating is parsed', rated != null && rated.rating == 1234 && MultiplayerData.parseMember(Json.parse('{"id":"p2"}')).rating == 1000);
+
+    var lockedRoom = MultiplayerData.parseRoom(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[],"locked":true,"spectators":3}'));
+
+    check('a locked room and its spectators are parsed', lockedRoom.locked && lockedRoom.spectators == 3);
+    check('a room is open and unwatched by default', !MultiplayerData.parseRoom(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[]}')).locked && MultiplayerData.parseRoom(Json.parse('{"roomId":"AB3DE","hostId":"p1","members":[]}')).spectators == 0);
+
+    var summaries = MultiplayerData.parseRooms(Json.parse('{"rooms":[{"roomId":"AAAAA","locked":true,"spectators":2,"rating":1180},{"roomId":"BBBBB"}]}'));
+
+    check('room summaries carry the lock, the spectators and the rating', summaries[0].locked && summaries[0].spectators == 2 && summaries[0].rating == 1180);
+    check('room summaries default to an open, unwatched room', !summaries[1].locked && summaries[1].spectators == 0 && summaries[1].rating == 1000);
+
+    var ratedResults = MultiplayerData.parseResults(Json.parse('{"songId":"s","difficultyId":"hard","rated":true,"rankings":[{"userId":"p1","username":"A","score":10,"rank":1,"finished":true,"rating":1020,"ratingChange":20},{"userId":"p2","username":"B","score":5,"rank":2,"finished":true,"rating":980,"ratingChange":-20}]}'));
+
+    check('results say whether they were rated', ratedResults.rated && ratedResults.rankings[0].ratingChange == 20 && ratedResults.rankings[1].rating == 980);
+    check('rated results show the change', MultiplayerData.describeResults(ratedResults).indexOf('+20 (1020)') >= 0 && MultiplayerData.describeResults(ratedResults).indexOf('-20 (980)') >= 0, MultiplayerData.describeResults(ratedResults));
+
+    var unratedResults = MultiplayerData.parseResults(Json.parse('{"songId":"s","rankings":[{"userId":"p1","username":"A","score":10,"rank":1}]}'));
+
+    check('unrated results hide the rating', !unratedResults.rated && MultiplayerData.describeResults(unratedResults).indexOf('(') < 0, MultiplayerData.describeResults(unratedResults));
+    check('a rating change has a sign', MultiplayerData.formatRatingChange(20) == '+20' && MultiplayerData.formatRatingChange(-5) == '-5' && MultiplayerData.formatRatingChange(0) == '0');
+
+    var ratedStats = MultiplayerData.parseStats(Json.parse('{"id":"d1","found":true,"roundsPlayed":4,"songsFinished":4,"rating":1087,"ratedRounds":4,"peakRating":1102}'));
+
+    check('stats carry the rating', ratedStats.rating == 1087 && ratedStats.ratedRounds == 4 && ratedStats.peakRating == 1102);
+    check('stats show the rating and the best one', MultiplayerData.describeStats(ratedStats).indexOf('Rating 1087 (best 1102)') >= 0, MultiplayerData.describeStats(ratedStats));
+
+    var board = MultiplayerData.parseRatings(Json.parse('{"entries":[{"rank":1,"username":"A","rating":1100,"ratedRounds":5,"authenticated":true},{"username":"B","rating":1000}]}'));
+
+    check('the rating board is parsed', board.length == 2 && board[0].rating == 1100 && board[0].authenticated && board[1].rank == 2 && board[1].ratedRounds == 0);
+    check('an empty rating board is fine', MultiplayerData.parseRatings(null).length == 0 && MultiplayerData.parseRatings(Json.parse('{}')).length == 0);
+
+    var live = [
+      {userId: 'a', username: 'Ana', score: 1500, combo: 0, health: 1.0, accuracy: 90.0},
+      {userId: 'b', username: 'Bo', score: 2500, combo: 0, health: 1.0, accuracy: 90.0}
+    ];
+
+    check('the live line puts the leader first', MultiplayerData.describeLive(live) == 'Bo 2,500   Ana 1,500', MultiplayerData.describeLive(live));
+    check('the live line waits for scores', MultiplayerData.describeLive([]) == 'Waiting for the first scores...');
 
     Sys.println(failures == 0 ? '\nall ' + checks + ' checks passed' : '\n' + failures + ' of ' + checks + ' checks failed');
     Sys.exit(failures == 0 ? 0 : 1);

@@ -2440,22 +2440,40 @@ class PlayState extends MusicBeatSubState
   }
 
   #if FEATURE_3D_RENDERING
+  public var stage3D(get, never):Null<funkin.graphics.render3d.Funkin3D>;
+
+  function get_stage3D():Null<funkin.graphics.render3d.Funkin3D>
+  {
+    return scene3D;
+  }
+
+  public function enable3D(layer:Int = 1):funkin.graphics.render3d.Funkin3D
+  {
+    if (scene3D != null) return scene3D;
+
+    scene3D = camGame.attach3DScene(FlxG.width, FlxG.height);
+    scene3D.scene.zIndex = layer;
+
+    add(scene3D.scene);
+    refresh();
+
+    return scene3D;
+  }
+
   public function enable3DStage(modelPath:String, binary:Bool = false):Void
   {
     if (scene3D != null) return;
 
-    scene3D = camGame.attach3DScene(FlxG.width, FlxG.height);
+    var created:funkin.graphics.render3d.Funkin3D = enable3D();
 
     if (binary)
     {
-      scene3D.loadGLTFBinary(modelPath);
+      created.loadGLTFBinary(modelPath);
     }
     else
     {
-      scene3D.loadGLTFModel(modelPath);
+      created.loadGLTFModel(modelPath);
     }
-
-    add(scene3D.scene);
   }
 
   public function disable3DStage():Void

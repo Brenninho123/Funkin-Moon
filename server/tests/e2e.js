@@ -86,7 +86,12 @@ class Client {
     return new Promise((resolve) => this.socket.once('connect', resolve));
   }
 
+  reply(type, timeout = 3000) {
+    return this.wait(type, timeout, this.sendMark || 0);
+  }
+
   send(type, data) {
+    this.sendMark = this.messages.length;
     this.socket.write(JSON.stringify({ type, data: data || {} }) + '\n');
   }
 
@@ -130,6 +135,8 @@ async function main() {
     MOON_CHAT_COOLDOWN_MS: '600',
     MOON_RECONNECT_GRACE_SECONDS: '2',
     MOON_ADMIN_TOKEN: ADMIN_TOKEN,
+    MOON_MAX_SPECTATORS: '2',
+    MOON_MIN_RATED_ROUND_SECONDS: '1',
     MOON_PUBLIC_URL: 'http://127.0.0.1:' + HTTP_PORT,
     MOON_DISCORD_CLIENT_ID: '1234567890',
     MOON_DISCORD_CLIENT_SECRET: 'test-secret',
@@ -300,7 +307,7 @@ async function main() {
     const g1 = await guest('Guest1');
     const g2 = await guest('Guest2');
     const g3 = await guest('Guest3');
-    check('welcome lists the features', h.welcome.data.protocol === 2 && h.welcome.data.features.includes('rooms') && h.welcome.data.features.includes('leaderboard'));
+    check('welcome lists the features', h.welcome.data.protocol === 3 && h.welcome.data.features.includes('rooms') && h.welcome.data.features.includes('leaderboard'));
 
     h.client.send('mp_startSong');
     const noRoom = await h.client.wait('error');
@@ -769,6 +776,281 @@ async function main() {
     check('the address can join again after the ban is lifted', freed.welcome !== null);
     freed.client.socket.destroy();
 
+    console.log('ratings');
+    async function playRound(host, guestPlayer, hostScore, guestScore, waitMs) {
+      const hostMark = host.client.messages.length;
+      const guestMark = guestPlayer.client.messages.length;
+      host.client.send('mp_selectSong', { songId: 'bopeebo', difficultyId: 'normal' });
+      await guestPlayer.client.wait('mp_songSelected', 3000, guestMark);
+      guestPlayer.client.send('mp_setReady', { ready: true });
+      await host.client.wait('mp_playerReady', 3000, hostMark);
+      host.client.send('mp_startSong');
+      await guestPlayer.client.wait('mp_startSong', 3000, guestMark);
+      if (waitMs) await sleep(waitMs);
+      host.client.send('mp_playerFinished', { score: hostScore, combo: 5, health: 1, accuracy: 90 });
+      guestPlayer.client.send('mp_playerFinished', { score: guestScore, combo: 5, health: 1, accuracy: 80 });
+      return await host.client.wait('mp_results', 4000, hostMark);
+    }
+
+    const observer = await guest('Observer');
+    const elo1 = await guest('EloOne');
+    const elo2 = await guest('EloTwo');
+    check('welcome carries the rating', elo1.welcome.data.rating === 1000 && observer.welcome.data.rating === 1000);
+    elo1.client.send('mp_createRoom', { name: 'Elo', maxPlayers: 2 });
+    const eloCreated = await elo1.client.wait('mp_roomCreated');
+    elo2.client.send('mp_joinRoom', { roomId: eloCreated.data.roomId });
+    await elo2.client.wait('mp_roomJoined');
+    check('members carry their rating', eloCreated.data.members[0].rating === 1000);
+
+    const quick = await playRound(elo1, elo2, 5000, 3000, 0);
+    check('a round shorter than the minimum is not rated', quick.data.rated === false && quick.data.rankings.every((r) => r.ratingChange === 0 && r.rated === false), JSON.stringify(quick.data.rankings));
+
+    const observerMark = observer.client.messages.length;
+    const rated = await playRound(elo1, elo2, 5000, 3000, 1300);
+    check('a long enough round is rated', rated.data.rated === true);
+    check('the winner of two equal new players gains twenty', rated.data.rankings[0].userId === elo1.id && rated.data.rankings[0].ratingChange === 20 && rated.data.rankings[0].rating === 1020, JSON.stringify(rated.data.rankings[0]));
+    check('the loser gives twenty', rated.data.rankings[1].ratingChange === -20 && rated.data.rankings[1].rating === 980);
+    const ratingUpdate = await observer.client.wait('userUpdated', 3000, observerMark);
+    check('everybody online hears about the new rating', ratingUpdate && ratingUpdate.data.rating === 1020 || observer.client.messages.slice(observerMark).some((m) => m.type === 'userUpdated' && m.data.rating === 1020));
+
+    elo1.client.send('stats');
+    const eloStats = await elo1.client.wait('stats');
+    check('stats report the rating and the rated rounds', eloStats.data.rating === 1020 && eloStats.data.ratedRounds === 1 && eloStats.data.peakRating === 1020, JSON.stringify(eloStats.data));
+
+    await playRound(elo1, elo2, 6000, 2000, 1300);
+    await playRound(elo1, elo2, 6000, 2000, 1300);
+
+    const marks = observer.client.messages.length;
+    observer.client.send('ratings', { limit: 5 });
+    const ratingBoard = await observer.client.wait('ratings', 3000, marks);
+    check('the rating board lists players with enough rated rounds', ratingBoard && ratingBoard.data.entries.length >= 2 && ratingBoard.data.entries[0].username === 'EloOne' && ratingBoard.data.entries[0].rank === 1, JSON.stringify(ratingBoard && ratingBoard.data));
+    check('the rating board is ordered by rating', ratingBoard.data.entries[0].rating > ratingBoard.data.entries[1].rating && ratingBoard.data.minimumRounds === 3);
+    const boardHttp = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/ratings')).body);
+    check('the rating board is also served over http', boardHttp.entries.some((entry) => entry.username === 'EloTwo'));
+
+    await playRound(elo1, elo2, 6000, 2000, 1300);
+    await playRound(elo1, elo2, 6000, 2000, 1300);
+    elo1.client.send('mp_leaveRoom');
+    elo2.client.send('mp_leaveRoom');
+    await sleep(200);
+
+    console.log('matchmaking by rating');
+    const stooge = await guest('Stooge');
+    const novice = await guest('Novice');
+    novice.client.send('mp_createRoom', { name: 'Novice', maxPlayers: 2 });
+    const noviceRoom = await novice.client.reply('mp_roomCreated');
+    stooge.client.send('mp_joinRoom', { roomId: noviceRoom.data.roomId });
+    await stooge.client.wait('mp_roomJoined');
+    const noviceWin = await playRound(novice, stooge, 9000, 100, 1300);
+    check('a new player can win a first rated round', noviceWin.data.rankings[0].rating === 1020);
+    novice.client.send('mp_leaveRoom');
+    stooge.client.send('mp_leaveRoom');
+    await sleep(200);
+
+    elo1.client.send('mp_createRoom', { name: 'High', maxPlayers: 4 });
+    const highRoom = await elo1.client.reply('mp_roomCreated');
+    elo2.client.send('mp_createRoom', { name: 'Low', maxPlayers: 4 });
+    const lowRoom = await elo2.client.reply('mp_roomCreated');
+    novice.client.send('mp_listRooms');
+    const ratedRooms = await novice.client.wait('mp_rooms');
+    const highSummary = ratedRooms.data.rooms.find((room) => room.roomId === highRoom.data.roomId);
+    const lowSummary = ratedRooms.data.rooms.find((room) => room.roomId === lowRoom.data.roomId);
+    check('rooms report the average rating of their players', highSummary && lowSummary && highSummary.rating > 1020 && lowSummary.rating < 1000, JSON.stringify([highSummary, lowSummary]));
+    novice.client.send('mp_quickMatch');
+    const matched = await Promise.race([novice.client.reply('mp_roomJoined'), novice.client.reply('mp_roomCreated')]);
+    check('quick match picks the room closest to the player rating', matched && matched.data.roomId === highRoom.data.roomId, matched && matched.data.roomId + ' vs ' + highRoom.data.roomId);
+    novice.client.send('mp_leaveRoom');
+    elo1.client.send('mp_leaveRoom');
+    elo2.client.send('mp_leaveRoom');
+    await sleep(200);
+
+    console.log('room passwords');
+    const lock1 = await guest('LockHost');
+    const lock2 = await guest('LockGuest');
+    lock1.client.send('mp_createRoom', { name: 'Private', maxPlayers: 3, password: 'secret' });
+    const lockCreated = await lock1.client.wait('mp_roomCreated');
+    check('a locked room says it is locked', lockCreated.data.locked === true);
+    check('the password is never sent back', !JSON.stringify(lock1.client.messages).includes('secret'));
+    lock2.client.send('mp_joinRoom', { roomId: lockCreated.data.roomId });
+    const noPassword = await lock2.client.reply('mp_roomJoinFailed');
+    check('joining without the password is refused', noPassword && noPassword.data.reason === 'wrong_password');
+    lock2.client.send('mp_joinRoom', { roomId: lockCreated.data.roomId, password: 'Secret' });
+    const badPassword = await lock2.client.reply('mp_roomJoinFailed');
+    check('the password is case sensitive', badPassword && badPassword.data.reason === 'wrong_password');
+    lock2.client.send('mp_listRooms');
+    const lockedList = await lock2.client.wait('mp_rooms');
+    check('the room list marks locked rooms', lockedList.data.rooms.some((room) => room.roomId === lockCreated.data.roomId && room.locked === true));
+    check('the room list never carries the password', !JSON.stringify(lockedList.data).includes('secret'));
+    const quickLock = await guest('QuickLock');
+    quickLock.client.send('mp_quickMatch');
+    const skipped = await Promise.race([quickLock.client.wait('mp_roomJoined'), quickLock.client.wait('mp_roomCreated')]);
+    check('quick match never enters a locked room', skipped && skipped.data.roomId !== lockCreated.data.roomId);
+    quickLock.client.send('mp_leaveRoom');
+    lock2.client.send('mp_joinRoom', { roomId: lockCreated.data.roomId, password: 'secret' });
+    const lockJoined = await lock2.client.reply('mp_roomJoined');
+    check('the right password opens the room', lockJoined && lockJoined.data.roomId === lockCreated.data.roomId);
+    lock2.client.send('mp_leaveRoom');
+    await sleep(100);
+    lock1.client.send('mp_roomSettings', { password: '' });
+    const unlocked = await lock1.client.reply('mp_roomState');
+    check('the host can remove the password', unlocked.data.locked === false);
+    lock2.client.send('mp_joinRoom', { roomId: lockCreated.data.roomId });
+    const openJoin = await lock2.client.reply('mp_roomJoined');
+    check('an unlocked room needs no password', openJoin !== null);
+    lock2.client.send('mp_leaveRoom');
+    lock1.client.send('mp_roomSettings', { password: 'again' });
+    const relocked = await lock1.client.reply('mp_roomState');
+    check('the host can set a password later', relocked.data.locked === true);
+
+    console.log('spectators');
+    const watcher1 = await guest('Watcher1');
+    const watcher2 = await guest('Watcher2');
+    const watcher3 = await guest('Watcher3');
+    lock1.client.send('mp_roomSettings', { password: '' });
+    await lock1.client.reply('mp_roomState');
+    lock2.client.send('mp_joinRoom', { roomId: lockCreated.data.roomId });
+    await lock2.client.reply('mp_roomJoined');
+
+    watcher1.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    const watching = await watcher1.client.reply('mp_roomSpectating');
+    check('a spectator receives the room', watching && watching.data.roomId === lockCreated.data.roomId && watching.data.members.length === 2);
+    check('the room counts its spectators', watching.data.spectators === 1);
+    const spectatorCount = await lock1.client.wait('mp_spectatorCount');
+    check('the players are told about a new spectator', spectatorCount && spectatorCount.data.count === 1);
+    check('a spectator is not a member', !watching.data.members.some((member) => member.id === watcher1.id));
+
+    watcher1.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    const twice2 = await watcher1.client.reply('mp_roomJoinFailed');
+    check('a spectator cannot watch twice', twice2 && twice2.data.reason === 'already_in_room');
+    watcher1.client.send('mp_createRoom', {});
+    const noCreate = await watcher1.client.reply('mp_roomJoinFailed');
+    check('a spectator cannot host a room', noCreate && noCreate.data.reason === 'already_in_room');
+
+    watcher1.client.send('mp_startSong');
+    const spectatorStart = await watcher1.client.wait('error');
+    check('a spectator cannot start a round', spectatorStart && spectatorStart.data.reason === 'not_host');
+    watcher1.client.send('mp_setReady', { ready: true });
+    await sleep(150);
+    check('a spectator cannot get ready', !lock1.client.messages.some((m) => m.type === 'mp_playerReady' && m.data.userId === watcher1.id));
+
+    const specMark = watcher1.client.messages.length;
+    lock1.client.send('mp_selectSong', { songId: 'bopeebo', difficultyId: 'hard' });
+    const specSong = await watcher1.client.wait('mp_songSelected', 3000, specMark);
+    check('a spectator sees the song being picked', specSong && specSong.data.songId === 'bopeebo');
+    lock2.client.send('mp_setReady', { ready: true });
+    await lock1.client.reply('mp_playerReady');
+    lock1.client.send('mp_startSong');
+    const specStart = await watcher1.client.wait('mp_startSong', 3000, specMark);
+    check('a spectator sees the round start', specStart !== null);
+
+    const liveMark = watcher1.client.messages.length;
+    lock1.client.send('mp_scoreUpdate', { score: 1500, combo: 4, health: 1, accuracy: 95 });
+    const specScore = await watcher1.client.wait('mp_scoreUpdate', 3000, liveMark);
+    check('a spectator sees the scores live', specScore && specScore.data.score === 1500);
+
+    watcher2.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    const lateWatcher = await watcher2.client.wait('mp_roomSpectating');
+    check('a spectator can join in the middle of a round', lateWatcher && lateWatcher.data.state === 'playing');
+    check('a late spectator gets the current scores', Array.isArray(lateWatcher.data.live) && lateWatcher.data.live.some((entry) => entry.score === 1500), JSON.stringify(lateWatcher.data.live));
+    watcher3.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    const spectatorsFull = await watcher3.client.wait('mp_roomJoinFailed');
+    check('the number of spectators is limited', spectatorsFull && spectatorsFull.data.reason === 'spectators_full');
+
+    const secretMark = lock1.client.messages.length;
+    watcher1.client.send('mp_scoreUpdate', { score: 99999, combo: 1, health: 1, accuracy: 100 });
+    watcher1.client.send('mp_relay', { payload: { hello: 1 } });
+    await sleep(200);
+    check('what a spectator sends during a round goes nowhere', !lock1.client.messages.slice(secretMark).some((m) => m.type === 'mp_scoreUpdate' || m.type === 'mp_relay'));
+
+    watcher2.client.send('mp_chat', { text: 'go go go', scope: 'room' });
+    const specChat = await lock1.client.wait('mp_chat');
+    check('a spectator can chat with the room', specChat && specChat.data.text === 'go go go');
+
+    lock1.client.send('mp_playerFinished', { score: 4000, combo: 5, health: 1, accuracy: 90 });
+    lock2.client.send('mp_playerFinished', { score: 2000, combo: 5, health: 1, accuracy: 80 });
+    const specResults = await watcher1.client.wait('mp_results', 3000, specMark);
+    check('a spectator gets the results', specResults && specResults.data.rankings.length === 2 && specResults.data.rankings[0].score === 4000);
+
+    const metricsSpec = (await httpGet('http://127.0.0.1:' + HTTP_PORT + '/metrics')).body;
+    check('metrics count the spectators', /moon_spectators 2/.test(metricsSpec) && /moon_spectator_joins_total \d+/.test(metricsSpec));
+    const statusSpec = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/status')).body);
+    check('status counts the spectators', statusSpec.spectators === 2 && statusSpec.protocol === 3);
+
+    const countMark = lock1.client.messages.length;
+    watcher2.client.send('mp_leaveRoom');
+    const countDown = await lock1.client.wait('mp_spectatorCount', 3000, countMark);
+    check('leaving as a spectator updates the count', countDown && countDown.data.count === 1);
+    watcher2.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    await watcher2.client.reply('mp_roomSpectating');
+
+    lock1.client.send('mp_kick', { userId: watcher2.id });
+    const kickedWatcher = await watcher2.client.wait('mp_roomClosed');
+    check('the host can remove a spectator', kickedWatcher && kickedWatcher.data.reason === 'kicked');
+
+    watcher1.client.socket.destroy();
+    await sleep(300);
+    const afterDrop2 = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/status')).body);
+    check('a spectator who disconnects is removed at once', afterDrop2.spectators === 0, JSON.stringify(afterDrop2));
+
+    const watcher4 = await guest('Watcher4');
+    watcher4.client.send('mp_spectate', { roomId: lockCreated.data.roomId });
+    await watcher4.client.wait('mp_roomSpectating');
+    lock2.client.send('mp_leaveRoom');
+    lock1.client.send('mp_leaveRoom');
+    const roomGone = await watcher4.client.wait('mp_roomClosed');
+    check('spectators are told when the room closes', roomGone && roomGone.data.reason === 'room_closed');
+    watcher4.client.send('mp_spectate', { roomId: 'ZZZZZ' });
+    const noRoomToWatch = await watcher4.client.wait('mp_roomJoinFailed');
+    check('watching a room that does not exist fails', noRoomToWatch && noRoomToWatch.data.reason === 'not_found');
+
+    console.log('reports and mutes');
+    const reporter = await guest('Reporter');
+    const rude = await guest('Rude');
+    reporter.client.send('mp_report', { userId: rude.id, reason: 'insults in chat' });
+    const reported = await reporter.client.wait('mp_reported');
+    check('a report is accepted', reported && reported.data.userId === rude.id);
+    reporter.client.send('mp_report', { userId: rude.id, reason: 'again' });
+    const reportCooldown = await reporter.client.wait('error');
+    check('reports have a cooldown', reportCooldown && reportCooldown.data.reason === 'report_cooldown');
+    rude.client.send('mp_report', { userId: rude.id, reason: 'myself' });
+    const selfReport = await rude.client.wait('error');
+    check('nobody can report themselves', selfReport && selfReport.data.reason === 'unknown_member');
+    const ghost = await guest('Ghost');
+    ghost.client.send('mp_report', { userId: 'p99999', reason: 'nobody' });
+    const unknownReport = await ghost.client.wait('error');
+    check('an unknown player cannot be reported', unknownReport && unknownReport.data.reason === 'unknown_member');
+
+    const reportList = JSON.parse((await admin('reports')).body);
+    check('the admin sees the reports', reportList.reports.some((r) => r.targetName === 'Rude' && r.reporterName === 'Reporter' && r.reason === 'insults in chat' && r.againstTarget === 1), JSON.stringify(reportList));
+    const noReports = await admin('reports', '', {});
+    check('the reports need the token', noReports.status === 401);
+
+    rude.client.send('mp_chat', { text: 'hello everybody', scope: 'global' });
+    const beforeMute = await reporter.client.wait('mp_chat');
+    check('chat works before the mute', beforeMute && beforeMute.data.text === 'hello everybody');
+    const muted = await admin('mute', 'id=' + rude.id + '&minutes=10&reason=insults');
+    check('a player can be muted', muted.status === 200);
+    await sleep(700);
+    const muteMark = reporter.client.messages.length;
+    rude.client.send('mp_chat', { text: 'still talking', scope: 'global' });
+    const muteError = await rude.client.reply('error');
+    check('a muted player is told why', muteError && muteError.data.reason === 'muted' && muteError.data.detail === 'insults');
+    await sleep(200);
+    check('a muted player is not heard', !reporter.client.messages.slice(muteMark).some((m) => m.type === 'mp_chat'));
+    const mutesList = JSON.parse((await admin('mutes')).body);
+    check('the mutes are listed', mutesList.mutes.length === 1 && mutesList.mutes[0].reason === 'insults');
+    const badMute = await admin('mute', 'key=nonsense');
+    check('a malformed mute key is rejected', badMute.status === 400);
+    const unmuted = await admin('unmute', 'key=' + mutesList.mutes[0].key);
+    check('a mute can be lifted', unmuted.status === 200);
+    await sleep(700);
+    const talkMark = reporter.client.messages.length;
+    rude.client.send('mp_chat', { text: 'sorry', scope: 'global' });
+    const afterMute = await reporter.client.wait('mp_chat', 3000, talkMark);
+    check('a player can talk again after the mute', afterMute && afterMute.data.text === 'sorry');
+    const metricsReports = (await httpGet('http://127.0.0.1:' + HTTP_PORT + '/metrics')).body;
+    check('metrics count reports and muted messages', /moon_reports_total 1/.test(metricsReports) && /moon_chat_muted_total 1/.test(metricsReports) && /moon_rated_rounds_total \d+/.test(metricsReports));
+
     console.log('cleanup');
     acct.client.socket.destroy();
     h.client.socket.destroy();
@@ -816,6 +1098,10 @@ async function main() {
     const keptBoard = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/leaderboard?song=bopeebo&difficulty=hard')).body);
     const keptStats = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/player?id=g%3ARemy')).body);
     check('player stats survive a server restart', keptStats.found === true && keptStats.roundsPlayed === 3 && keptStats.roundsWon === 1, JSON.stringify(keptStats));
+    const keptRating = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/player?id=g%3AEloOne')).body);
+    check('ratings survive a server restart', keptRating.rating > 1000 && keptRating.ratedRounds >= 5 && keptRating.peakRating >= keptRating.rating, JSON.stringify(keptRating));
+    const keptReports = JSON.parse((await httpGet('http://127.0.0.1:' + HTTP_PORT + '/admin/reports', { Authorization: 'Bearer ' + ADMIN_TOKEN })).body);
+    check('reports survive a server restart', keptReports.reports.some((r) => r.targetName === 'Rude' && r.reason === 'insults in chat'), JSON.stringify(keptReports));
     f.send('mp_quickMatch');
     const quickRoom = await f.wait('mp_roomCreated');
     check('quick match opens a public room when none is free', quickRoom && quickRoom.data.isPublic === true && quickRoom.data.members.length === 1);

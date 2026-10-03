@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-03 - Online, Assets and 3D
+
+A feature release: a much more advanced online server, a reworked asset path system, and real 3D graphics.
+
+### Added
+
+#### 3D Rendering
+
+* Updated **Foxlite to 0.2.9** (GitHub tag `v0.2.9-beta`, pinned by commit in `hmm.json`) and turned the 3D on for desktop builds (`FEATURE_3D_RENDERING`).
+* The **main menu** now has a real lit 3D scene when *3D Mode* is on: a ring and a core that pulse with the beat, orbiting orbs, pillars, colored lights and a floor grid. If the 3D cannot start, the menu turns the option off and keeps working.
+* New `Funkin3D` helper with lit shapes (box, sphere, cylinder, torus, plane), grids, lights, fog, camera control and glTF/OBJ model loading, built on a generated mesh library (`MeshGeometry`, `Mesh3D`).
+* New **Lua 3D API** (`enable3D`, `make3DBox`, `make3DSphere`, `make3DTorus`, `add3DLight`, `set3DCamera` and more) and `3d:` tween targets. See `LUA_API.md`.
+* New documentation: `docs/3D_RENDERING.md`.
+
+#### Asset Paths
+
+* New `AssetResolver`: resolves a key through a list of folders and extensions, refuses `..`, absolute paths and drives.
+* New `Paths3D` and `Paths.model(...)` for `glb`, `gltf` and `obj` models and textures, with mod override support.
+* New `AssetReport`: counts the assets that were asked for and not found, and includes them in the crash and freeze reports.
+* The asset type table knows the 3D file extensions.
+* New documentation: `docs/ASSET_PATHS.md`.
+
+#### Online Server
+
+* **Elo rating**: rated rounds change every player's rating, shown in results, lists and the rating board.
+* **Quick match**: puts a player in the public room closest to their rating.
+* **Spectators**: watch a room live without taking a place.
+* **Room passwords**, compared in constant time and never sent to players.
+* **Reports and mutes**: players can report each other, and the admin can mute accounts and addresses.
+* Protocol version 3. Lobby updated with password, watch and report fields.
+* Updated the server tests, the bot and the load tools.
+
+### Changed
+
+* Moon Engine version is now **0.2.0**.
+
+---
+
 ## [0.1.1] - 2026-10-03 - Hotfix
 
 A hotfix release focused on UI improvements and bug fixes following the Moon Engine v0.1.0 release.

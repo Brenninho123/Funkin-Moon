@@ -137,6 +137,10 @@ class FunkinCamera extends FlxCamera
     return bufferRenderer.texture;
   }
 
+  #if FEATURE_3D_RENDERING
+  public var scene3D(default, null):Null<funkin.graphics.render3d.Funkin3D> = null;
+  #end
+
   var _blendShader:RuntimeCustomBlendShader;
   var _blendBackgroundFrame:FlxFrame;
   var _foregroundRenderTexture:RenderTexture;
@@ -384,9 +388,46 @@ class FunkinCamera extends FlxCamera
     super.clearDrawStack();
   }
 
+  #if FEATURE_3D_RENDERING
+  public function attach3DScene(width:Int = 0, height:Int = 0, background:flixel.util.FlxColor = 0x00000000):funkin.graphics.render3d.Funkin3D
+  {
+    if (scene3D != null) detach3DScene();
+
+    var sceneWidth:Int = width > 0 ? width : this.width;
+    var sceneHeight:Int = height > 0 ? height : this.height;
+    var created:funkin.graphics.render3d.Funkin3D = new funkin.graphics.render3d.Funkin3D(sceneWidth, sceneHeight, background);
+
+    created.scene.cameras = [this];
+    created.scene.scrollFactor.set(0, 0);
+    created.scene.setGraphicSize(this.width, this.height);
+    created.scene.updateHitbox();
+    created.scene.setPosition(0, 0);
+
+    scene3D = created;
+
+    return created;
+  }
+
+  public function detach3DScene():Void
+  {
+    if (scene3D == null) return;
+
+    var old:funkin.graphics.render3d.Funkin3D = scene3D;
+
+    scene3D = null;
+
+    old.scene.cameras = [];
+    old.destroy();
+  }
+  #end
+
   override function destroy():Void
   {
     renderBuffer = false;
+
+    #if FEATURE_3D_RENDERING
+    detach3DScene();
+    #end
 
     super.destroy();
 

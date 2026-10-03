@@ -25,6 +25,12 @@ class AssetsUtil
     'fnt' => FunkinAssetType.TEXT, // Bitmap Font data file
     'frag' => FunkinAssetType.TEXT, // GLSL fragment shader
     'gif' => FunkinAssetType.IMAGE, // Graphics Interchange Format image
+    'glb' => FunkinAssetType.UNKNOWN, // Binary glTF 3D model, read as bytes
+    'gltf' => FunkinAssetType.TEXT, // glTF 3D model
+    'glsl' => FunkinAssetType.TEXT, // GLSL shader include
+    'bin' => FunkinAssetType.UNKNOWN, // Binary buffer of a glTF model
+    'obj' => FunkinAssetType.TEXT, // Wavefront 3D model
+    'mtl' => FunkinAssetType.TEXT, // Wavefront material library
     'hscript' => FunkinAssetType.SCRIPT, // Haxe script
     'hx' => FunkinAssetType.SCRIPT, // Haxe script
     'hxc' => FunkinAssetType.SCRIPTED_CLASS, // Haxe scripted class

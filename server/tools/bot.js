@@ -23,6 +23,8 @@ node tools/bot.js [options]
   --name Bot            player name
   --create              create a room and host it (otherwise the bot joins --room)
   --room CODE           join this room
+  --spectate CODE       watch this room without playing
+  --password TEXT       the password of the room, to create it with or to join it
   --song bopeebo        song the bot picks when it hosts
   --difficulty normal   difficulty the bot picks when it hosts
   --start               start the round as soon as everybody is ready
@@ -97,9 +99,11 @@ function handle(message) {
       log('joined as ' + myId + ' on ' + (data.serverName || 'the server'));
 
       if (flag('create')) {
-        send('mp_createRoom', { name: name + "'s room", maxPlayers: 4 });
+        send('mp_createRoom', { name: name + "'s room", maxPlayers: 4, password: option('password', '') });
+      } else if (option('spectate', '')) {
+        send('mp_spectate', { roomId: option('spectate', ''), password: option('password', '') });
       } else if (option('room', '')) {
-        send('mp_joinRoom', { roomId: option('room', '') });
+        send('mp_joinRoom', { roomId: option('room', ''), password: option('password', '') });
       } else {
         send('mp_listRooms');
       }
@@ -119,6 +123,13 @@ function handle(message) {
       }
 
       send('mp_chat', { text: 'hello from ' + name });
+      break;
+    case 'mp_roomSpectating':
+      roomId = data.roomId;
+      log('watching room ' + roomId + ' with ' + data.players.length + ' player(s), state ' + data.state);
+      break;
+    case 'mp_spectatorCount':
+      log(data.count + ' spectator(s)');
       break;
     case 'mp_roomJoinFailed':
       log('could not join: ' + data.reason);
@@ -143,7 +154,7 @@ function handle(message) {
       break;
     case 'mp_results':
       playing = false;
-      log('results:\n' + data.rankings.map((r) => '  ' + r.rank + '. ' + r.username + ' ' + r.score + (r.finished ? '' : ' (did not finish)')).join('\n'));
+      log('results:\n' + data.rankings.map((r) => '  ' + r.rank + '. ' + r.username + ' ' + r.score + (r.finished ? '' : ' (did not finish)') + (data.rated ? ' ' + (r.ratingChange > 0 ? '+' : '') + r.ratingChange + ' -> ' + r.rating : '')).join('\n'));
       break;
     case 'mp_chat':
       log('chat ' + data.username + ': ' + data.text);

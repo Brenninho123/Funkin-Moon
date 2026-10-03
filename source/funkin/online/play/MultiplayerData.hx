@@ -12,6 +12,7 @@ typedef MultiplayerMember =
   var accuracy:Float;
   var isHost:Bool;
   var away:Bool;
+  var rating:Int;
 }
 
 typedef MultiplayerRoom =
@@ -29,6 +30,8 @@ typedef MultiplayerRoom =
   var members:Array<MultiplayerMember>;
   var round:Int;
   var seed:Int;
+  var locked:Bool;
+  var spectators:Int;
 }
 
 typedef MultiplayerRoomSummary =
@@ -41,6 +44,9 @@ typedef MultiplayerRoomSummary =
   var state:String;
   var songId:String;
   var difficultyId:String;
+  var locked:Bool;
+  var spectators:Int;
+  var rating:Int;
 }
 
 typedef MultiplayerScore =
@@ -58,6 +64,8 @@ typedef MultiplayerRanking =
   > MultiplayerScore,
   var rank:Int;
   var finished:Bool;
+  var rating:Int;
+  var ratingChange:Int;
 }
 
 typedef MultiplayerResults =
@@ -66,6 +74,7 @@ typedef MultiplayerResults =
   var difficultyId:String;
   var variation:String;
   var round:Int;
+  var rated:Bool;
   var rankings:Array<MultiplayerRanking>;
 }
 
@@ -88,6 +97,18 @@ typedef MultiplayerStats =
   var songsFinished:Int;
   var totalScore:Int;
   var bestScore:Int;
+  var rating:Int;
+  var ratedRounds:Int;
+  var peakRating:Int;
+}
+
+typedef MultiplayerRatingEntry =
+{
+  var rank:Int;
+  var username:String;
+  var rating:Int;
+  var ratedRounds:Int;
+  var authenticated:Bool;
 }
 
 typedef MultiplayerResume =
@@ -108,6 +129,7 @@ class MultiplayerData
 {
   public static inline var STATE_LOBBY:String = 'lobby';
   public static inline var STATE_PLAYING:String = 'playing';
+  public static inline var DEFAULT_RATING:Int = 1000;
 
   static function text(value:Dynamic, fallback:String = ''):String
   {
@@ -148,7 +170,8 @@ class MultiplayerData
       combo: integer(data.combo),
       accuracy: number(data.accuracy),
       isHost: flag(data.isHost),
-      away: flag(data.away)
+      away: flag(data.away),
+      rating: integer(data.rating, DEFAULT_RATING)
     };
   }
 
@@ -164,7 +187,10 @@ class MultiplayerData
       roundsWon: integer(data.roundsWon),
       songsFinished: integer(data.songsFinished),
       totalScore: integer(data.totalScore),
-      bestScore: integer(data.bestScore)
+      bestScore: integer(data.bestScore),
+      rating: integer(data.rating, DEFAULT_RATING),
+      ratedRounds: integer(data.ratedRounds),
+      peakRating: integer(data.peakRating, DEFAULT_RATING)
     };
   }
 
@@ -190,6 +216,10 @@ class MultiplayerData
     ];
 
     if (stats.bestScore > 0) lines.push('Best score ' + formatScore(stats.bestScore));
+
+    if (stats.ratedRounds > 0) lines.push('Rating ' + stats.rating + ' (best ' + stats.peakRating + ')');
+    else
+      lines.push('Rating ' + stats.rating + ' (play a rated round to earn one)');
 
     return lines.join('\n');
   }
@@ -230,7 +260,9 @@ class MultiplayerData
       players: players,
       members: members,
       round: integer(data.round),
-      seed: integer(data.seed)
+      seed: integer(data.seed),
+      locked: flag(data.locked),
+      spectators: integer(data.spectators)
     };
   }
 
@@ -252,7 +284,10 @@ class MultiplayerData
         maxPlayers: integer(raw.maxPlayers, 4),
         state: text(raw.state, STATE_LOBBY),
         songId: text(raw.songId),
-        difficultyId: text(raw.difficultyId)
+        difficultyId: text(raw.difficultyId),
+        locked: flag(raw.locked),
+        spectators: integer(raw.spectators),
+        rating: integer(raw.rating, DEFAULT_RATING)
       });
     }
 
@@ -296,7 +331,9 @@ class MultiplayerData
         health: score.health,
         accuracy: score.accuracy,
         rank: integer(raw.rank, position),
-        finished: flag(raw.finished, true)
+        finished: flag(raw.finished, true),
+        rating: integer(raw.rating, DEFAULT_RATING),
+        ratingChange: integer(raw.ratingChange)
       });
     }
 
@@ -305,6 +342,7 @@ class MultiplayerData
       difficultyId: text(data.difficultyId),
       variation: text(data.variation, 'default'),
       round: integer(data.round),
+      rated: flag(data.rated),
       rankings: rankings
     };
   }
@@ -363,6 +401,10 @@ class MultiplayerData
       case 'rate_limited': 'You are sending too much. Slow down.';
       case 'server_full': 'The server is full.';
       case 'kicked': 'You were removed from the room.';
+      case 'wrong_password': 'That room needs a password, and it was not the right one.';
+      case 'spectators_full': 'That room has no more places for spectators.';
+      case 'muted': 'You are muted and cannot chat for now.';
+      case 'report_cooldown': 'Wait a little before you report again.';
       case 'banned': 'You are banned from this server.';
       case 'cheating': 'You were removed from the room because your scores were not valid.';
       case 'closed_by_admin': 'The room was closed by the server.';
@@ -443,13 +485,56 @@ class MultiplayerData
     return (score < 0 ? '-' : '') + digits + result;
   }
 
+  public static function formatRatingChange(change:Int):String
+  {
+    return (change > 0 ? '+' : '') + change;
+  }
+
+  public static function parseRatings(data:Dynamic):Array<MultiplayerRatingEntry>
+  {
+    var entries:Array<MultiplayerRatingEntry> = [];
+
+    if (data == null) return entries;
+
+    for (raw in list(data.entries))
+    {
+      if (raw == null) continue;
+
+      entries.push({
+        rank: integer(raw.rank, entries.length + 1),
+        username: text(raw.username, 'Player'),
+        rating: integer(raw.rating, DEFAULT_RATING),
+        ratedRounds: integer(raw.ratedRounds),
+        authenticated: flag(raw.authenticated)
+      });
+    }
+
+    return entries;
+  }
+
+  public static function describeLive(scores:Array<MultiplayerScore>):String
+  {
+    if (scores.length == 0) return 'Waiting for the first scores...';
+
+    return [for (score in sortScoreboard(scores)) score.username + ' ' + formatScore(score.score)].join('   ');
+  }
+
   public static function describeResults(results:MultiplayerResults):String
   {
     var lines:Array<String> = [];
 
     for (entry in results.rankings)
     {
-      lines.push(entry.rank + '. ' + entry.username + '  ' + formatScore(entry.score) + '  ' + (Std.int(entry.accuracy * 10) / 10) + '%' + (entry.finished ? '' : '  (did not finish)'));
+      lines.push(entry.rank
+        + '. '
+        + entry.username
+        + '  '
+        + formatScore(entry.score)
+        + '  '
+        + (Std.int(entry.accuracy * 10) / 10)
+        + '%'
+        + (entry.finished ? '' : '  (did not finish)')
+        + (results.rated ? '  ' + formatRatingChange(entry.ratingChange) + ' (' + entry.rating + ')' : ''));
     }
 
     return lines.join('\n');

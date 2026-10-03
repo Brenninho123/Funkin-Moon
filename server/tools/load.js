@@ -160,14 +160,20 @@ async function main() {
   console.log('  ' + messages + ' messages received in ' + (Date.now() - started) + ' ms');
 
   rooms.flat().forEach((bot) => bot.socket.destroy());
-  await sleep(1800);
-  const after = await new Promise((resolve) => {
-    require('http').get('http://127.0.0.1:' + HTTP_PORT + '/status', (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => resolve(JSON.parse(body)));
-    }).on('error', () => resolve(null));
-  });
+  const readStatus = () =>
+    new Promise((resolve) => {
+      require('http').get('http://127.0.0.1:' + HTTP_PORT + '/status', (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve(JSON.parse(body)));
+      }).on('error', () => resolve(null));
+    });
+  let after = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await sleep(500);
+    after = await readStatus();
+    if (after && after.online === 0 && after.rooms === 0) break;
+  }
   check('rooms and players are cleaned up when everybody leaves', after && after.online === 0 && after.rooms === 0);
 
   server.kill();

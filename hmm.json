@@ -40,8 +40,9 @@
     },
     {
       "name": "foxlite",
-      "type": "haxelib",
-      "version": "0.1.1"
+      "type": "git",
+      "ref": "5b62ed743091a78b9ba740f8698d17ff23a04186",
+      "url": "https://github.com/dwdvIl/foxlite"
     },
     {
       "name": "dox",

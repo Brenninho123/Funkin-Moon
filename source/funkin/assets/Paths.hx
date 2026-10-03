@@ -70,6 +70,7 @@ class Paths implements ConsoleClass
     }
     else
     {
+      funkin.assets.AssetReport.miss(assetPath.toString());
       trace(' ERROR '.bold().error() + 'Asset path "$assetPath" points to an asset that does not exist!');
       FlxG.log.warn('Asset path "$assetPath" points to an asset that does not exist!');
       // TODO: Improve error handling here.
@@ -286,6 +287,20 @@ class Paths implements ConsoleClass
    * @param validate Whether to validate that the file exists
    * @return An AssetPath pointing to the image file.
    */
+  public static function model(key:String, validate:Bool = true):AssetPath
+  {
+    var resolved:Null<String> = funkin.assets.Paths3D.resolveModel(key);
+
+    if (resolved == null)
+    {
+      if (validate) funkin.assets.AssetReport.miss('assets/models/' + key);
+
+      return new AssetPath('assets/models/' + key, 'glb');
+    }
+
+    return new AssetPath(haxe.io.Path.withoutExtension(resolved), haxe.io.Path.extension(resolved));
+  }
+
   public static function image(key:String, validate:Bool = true):AssetPath
   {
     return file(key, 'png', validate);
