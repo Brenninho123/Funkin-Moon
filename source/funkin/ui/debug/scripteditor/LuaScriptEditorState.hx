@@ -46,31 +46,92 @@ class LuaScriptEditorState extends UIState
   static final MAX_HIGHLIGHT_LENGTH:Int = 60000;
   static final MAX_UNDO:Int = 200;
   static final TEMPLATE:String = 'function onCreate()\n  debugPrint("script started")\nend\n\nfunction onUpdate(elapsed)\nend\n';
-
-  static final SNIPPETS:Array<{trigger:String, body:String}> = [
-    {trigger: 'onCreate', body: 'function onCreate()\n  |\nend\n'},
-    {trigger: 'onUpdate', body: 'function onUpdate(elapsed)\n  |\nend\n'},
-    {trigger: 'onStepHit', body: 'function onStepHit(step)\n  |\nend\n'},
-    {trigger: 'onBeatHit', body: 'function onBeatHit(beat)\n  |\nend\n'},
-    {trigger: 'onSongStart', body: 'function onSongStart()\n  |\nend\n'},
-    {trigger: 'onNoteHit', body: 'function onNoteHit(judgement, combo)\n  |\nend\n'},
-    {trigger: 'onNoteMiss', body: 'function onNoteMiss(healthChange)\n  |\nend\n'},
-    {trigger: 'onSongEvent', body: 'function onSongEvent(kind, value)\n  |\nend\n'},
-    {trigger: 'function', body: 'function name(|)\n  \nend\n'},
-    {trigger: 'for', body: 'for i = 1, 10 do\n  |\nend\n'},
-    {trigger: 'foreach', body: 'for key, value in pairs(|) do\n  \nend\n'},
-    {trigger: 'if', body: 'if | then\n  \nend\n'},
-    {trigger: 'ifelse', body: 'if | then\n  \nelse\n  \nend\n'},
-    {trigger: 'while', body: 'while | do\n  \nend\n'}
+  static final SNIPPETS:Array<
+    {trigger:String, body:String}> = [
+    {
+      trigger: 'onCreate',
+      body: 'function onCreate()\n  |\nend\n'
+    },
+    {
+      trigger: 'onUpdate',
+      body: 'function onUpdate(elapsed)\n  |\nend\n'
+    },
+    {
+      trigger: 'onStepHit',
+      body: 'function onStepHit(step)\n  |\nend\n'
+    },
+    {
+      trigger: 'onBeatHit',
+      body: 'function onBeatHit(beat)\n  |\nend\n'
+    },
+    {
+      trigger: 'onSongStart',
+      body: 'function onSongStart()\n  |\nend\n'
+    },
+    {
+      trigger: 'onNoteHit',
+      body: 'function onNoteHit(judgement, combo)\n  |\nend\n'
+    },
+    {
+      trigger: 'onNoteMiss',
+      body: 'function onNoteMiss(healthChange)\n  |\nend\n'
+    },
+    {
+      trigger: 'onSongEvent',
+      body: 'function onSongEvent(kind, value)\n  |\nend\n'
+    },
+    {
+      trigger: 'function',
+      body: 'function name(|)\n  \nend\n'
+    },
+    {
+      trigger: 'for',
+      body: 'for i = 1, 10 do\n  |\nend\n'
+    },
+    {
+      trigger: 'foreach',
+      body: 'for key, value in pairs(|) do\n  \nend\n'
+    },
+    {
+      trigger: 'if',
+      body: 'if | then\n  \nend\n'
+    },
+    {
+      trigger: 'ifelse',
+      body: 'if | then\n  \nelse\n  \nend\n'
+    },
+    {
+      trigger: 'while',
+      body: 'while | do\n  \nend\n'
+    }
   ];
   static final LUA_KEYWORDS:Array<String> = [
-    'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then',
-    'true', 'until', 'while'
+    'and',
+    'break',
+    'do',
+    'else',
+    'elseif',
+    'end',
+    'false',
+    'for',
+    'function',
+    'goto',
+    'if',
+    'in',
+    'local',
+    'nil',
+    'not',
+    'or',
+    'repeat',
+    'return',
+    'then',
+    'true',
+    'until',
+    'while'
   ];
   static final OPENING_PATTERN:EReg = ~/(\bthen|\bdo|\belse|\brepeat|\bfunction\b.*\)|\{)$/;
   static final WORD_PATTERN:EReg = ~/[A-Za-z_][A-Za-z0-9_]*$/;
   static final REGEX_ESCAPE:EReg = ~/[.*+?^$|(){}\[\]\\]/g;
-
   static final KEYWORD_PATTERN:EReg = ~/\b(and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while)\b/g;
   static final NUMBER_PATTERN:EReg = ~/\b(0[xX][0-9a-fA-F]+|[0-9]+\.?[0-9]*)\b/g;
   static final STRING_PATTERN:EReg = ~/"(\\.|[^"\\\n])*"|'(\\.|[^'\\\n])*'/g;
@@ -81,7 +142,6 @@ class LuaScriptEditorState extends UIState
   var gutter:TextField;
   var console:TextField;
   var completionField:TextField;
-
   var camBackdrop:FunkinCamera;
   var camUI:FunkinCamera;
   var editorSnapshot:FlxSprite;
@@ -102,12 +162,10 @@ class LuaScriptEditorState extends UIState
   var errorLine:Int = -1;
   var lastError:Null<String> = null;
   var matchFormat:TextFormat = new TextFormat(null, null, 0xFFE066, true);
-
   var bot:LuaBotEngine;
   var apiNames:Array<String> = [];
   var pendingCode:Null<String> = null;
   var botPortuguese:Bool = false;
-
   var baseFormat:TextFormat;
   var numberFormat:TextFormat = new TextFormat(null, null, 0xD19A66);
   var keywordFormat:TextFormat = new TextFormat(null, null, 0xC678DD);
@@ -115,14 +173,11 @@ class LuaScriptEditorState extends UIState
   var stringFormat:TextFormat = new TextFormat(null, null, 0x98C379);
   var commentFormat:TextFormat = new TextFormat(null, null, 0x6B7280);
   var apiPattern:Null<EReg> = null;
-
   var scripts:Array<String> = [];
   var currentPath:String = '';
   var dirty:Bool = false;
   var exitArmed:Bool = false;
-
   var runner:Null<FunkinLua> = null;
-
   var previousText:String = '';
   var undoStack:Array<String> = [];
   var redoStack:Array<String> = [];
@@ -187,6 +242,9 @@ class LuaScriptEditorState extends UIState
 
     createCompletion();
 
+    // gutter, editor e console ficam na camada de baixo; o completion por último para ficar acima do editor
+    for (field in [gutter, editor, console, completionField]) moveToBackdropLayer(field);
+
     editorSnapshot = new FlxSprite();
     gutterSnapshot = new FlxSprite();
     consoleSnapshot = new FlxSprite();
@@ -215,7 +273,10 @@ class LuaScriptEditorState extends UIState
     refreshScripts();
     newScript();
 
-    logLine('info', 'Lua script editor ready. Ctrl+S save, F5 run, F6 stop, F7 check, Ctrl+F find, Ctrl+H replace, Ctrl+G go to line, Ctrl+Space complete, Ctrl+/ comment, F4 bot, F1 guide, Esc exit.');
+    logLine(
+      'info',
+      'Lua script editor ready. Ctrl+S save, F5 run, F6 stop, F7 check, Ctrl+F find, Ctrl+H replace, Ctrl+G go to line, Ctrl+Space complete, Ctrl+/ comment, F4 bot, F1 guide, Esc exit.'
+    );
 
     haxe.ui.Toolkit.callLater(() ->
     {
@@ -280,10 +341,23 @@ class LuaScriptEditorState extends UIState
 
   function placeField(field:TextField, x:Float, y:Float, width:Float, height:Float):Void
   {
+    var parent = field.parent;
+    var sx:Float = 1;
+    var sy:Float = 1;
+
+    if (parent != null)
+    {
+      var local = parent.globalToLocal(new openfl.geom.Point(x, y));
+      x = local.x;
+      y = local.y;
+      sx = parent.scaleX == 0 ? 1 : parent.scaleX;
+      sy = parent.scaleY == 0 ? 1 : parent.scaleY;
+    }
+
     field.x = x;
     field.y = y;
-    field.width = Math.max(40, width);
-    field.height = Math.max(24, height);
+    field.width = Math.max(40, width / sx);
+    field.height = Math.max(24, height / sy);
   }
 
   function updateLayout():Void
@@ -353,6 +427,8 @@ class LuaScriptEditorState extends UIState
 
   function updateOverlay():Void
   {
+    return; // não é mais necessário: os campos já ficam abaixo da camUI
+
     var open:Bool = overlayOpen();
 
     if (open == overlayShown) return;
@@ -393,9 +469,13 @@ class LuaScriptEditorState extends UIState
   {
     var focused = FocusManager.instance.focus;
 
-    return focused != null
-      && (Std.isOfType(focused, haxe.ui.components.TextField) || Std.isOfType(focused, haxe.ui.components.NumberStepper)
-        || Std.isOfType(focused, haxe.ui.components.DropDown));
+    return
+      focused != null
+      && (
+        Std.isOfType(focused, haxe.ui.components.TextField)
+        || Std.isOfType(focused, haxe.ui.components.NumberStepper)
+        || Std.isOfType(focused, haxe.ui.components.DropDown)
+      );
   }
 
   function handleShortcuts():Void
@@ -423,10 +503,8 @@ class LuaScriptEditorState extends UIState
     else if (keys.justPressed.ESCAPE)
     {
       if (completionItems.length > 0) hideCompletion();
-      else if (findVisible)
-        closeFind();
-      else if (typing)
-        FocusManager.instance.focus.focus = false;
+      else if (findVisible) closeFind();
+      else if (typing) FocusManager.instance.focus.focus = false;
       else
         requestExit();
     }
@@ -501,7 +579,10 @@ class LuaScriptEditorState extends UIState
 
       var shown:String = path.length > 36 ? '..' + path.substr(path.length - 34) : path;
 
-      scriptList.dataSource.add({text: shown, path: path});
+      scriptList.dataSource.add({
+        text: shown,
+        path: path
+      });
 
       if (path == currentPath) selectedIndex = count;
 
@@ -727,7 +808,16 @@ class LuaScriptEditorState extends UIState
     var caret:Int = editor.caretIndex;
     var line:Int = Std.int(Math.max(0, editor.getLineIndexOfChar(caret)));
     var column:Int = caret - editor.getLineOffset(line) + 1;
-    var status:String = 'Ln ' + (line + 1) + ', Col ' + column + '   ' + editor.numLines + ' lines' + (dirty ? '   MODIFIED' : '') + (runner != null ? '   RUNNING' : '');
+    var status:String =
+      'Ln '
+      + (line + 1)
+      + ', Col '
+      + column
+      + '   '
+      + editor.numLines
+      + ' lines'
+      + (dirty ? '   MODIFIED' : '')
+      + (runner != null ? '   RUNNING' : '');
 
     if (status == lastStatus) return;
 
@@ -757,7 +847,8 @@ class LuaScriptEditorState extends UIState
     logLine('ok', 'Saved $path (scripts that are already loaded keep running the old version until they are reloaded)');
 
     if (scripts.indexOf(path) == -1) refreshScripts();
-    else refreshList();
+    else
+      refreshList();
   }
 
   function check():Bool
@@ -851,10 +942,14 @@ class LuaScriptEditorState extends UIState
 
     var color:Int = switch (level)
     {
-      case 'error': 0xFF6B6B;
-      case 'warn': 0xFFD166;
-      case 'ok': 0x7CFC9A;
-      default: 0xC8D0DA;
+      case 'error':
+        0xFF6B6B;
+      case 'warn':
+        0xFFD166;
+      case 'ok':
+        0x7CFC9A;
+      default:
+        0xC8D0DA;
     };
 
     var start:Int = console.text.length;
@@ -865,6 +960,12 @@ class LuaScriptEditorState extends UIState
     consoleLines++;
 
     console.scrollV = console.maxScrollV;
+  }
+
+  function moveToBackdropLayer(field:TextField):Void
+  {
+    camBackdrop.flashSprite.addChild(field);
+    lastLayout = '';
   }
 
   function openFind(withReplace:Bool):Void
@@ -1138,7 +1239,8 @@ class LuaScriptEditorState extends UIState
     applyHighlight();
   }
 
-  function lineRange():{first:Int, last:Int}
+  function lineRange():
+    {first:Int, last:Int}
   {
     var begin:Int = editor.selectionBeginIndex;
     var end:Int = editor.selectionEndIndex;
@@ -1146,7 +1248,10 @@ class LuaScriptEditorState extends UIState
     var lastChar:Int = end > begin ? end - 1 : end;
     var last:Int = Std.int(Math.max(first, editor.getLineIndexOfChar(Std.int(Math.max(begin, lastChar)))));
 
-    return {first: first, last: Std.int(Math.min(last, editor.numLines - 1))};
+    return {
+      first: first,
+      last: Std.int(Math.min(last, editor.numLines - 1))
+    };
   }
 
   function lineOffset(lines:Array<String>, index:Int):Int
@@ -1440,13 +1545,18 @@ class LuaScriptEditorState extends UIState
     {
       if (exitDialog == null)
       {
-        exitDialog = Dialogs.messageBox('You are about to leave the editor without saving.\n\nAre you sure?', 'Leave Editor', MessageBoxType.TYPE_YESNO, true,
+        exitDialog = Dialogs.messageBox(
+          'You are about to leave the editor without saving.\n\nAre you sure?',
+          'Leave Editor',
+          MessageBoxType.TYPE_YESNO,
+          true,
           function(button:DialogButton):Void
           {
             exitDialog = null;
 
             if (button == DialogButton.YES) leave();
-          });
+          }
+        );
       }
 
       return;
@@ -1473,8 +1583,7 @@ class LuaScriptEditorState extends UIState
     Dialogs.messageBox('This script has unsaved changes. Discard them?', 'Unsaved Changes', MessageBoxType.TYPE_YESNO, true, function(button:DialogButton):Void
     {
       if (button == DialogButton.YES) action();
-      else if (cancel != null)
-        cancel();
+      else if (cancel != null) cancel();
     });
   }
 
@@ -1500,7 +1609,10 @@ class LuaScriptEditorState extends UIState
   {
     botRecipes.dataSource.clear();
 
-    for (recipe in funkin.ui.debug.scripteditor.bot.LuaBotRecipes.ALL) botRecipes.dataSource.add({id: recipe.id, text: recipe.title});
+    for (recipe in funkin.ui.debug.scripteditor.bot.LuaBotRecipes.ALL) botRecipes.dataSource.add({
+      id: recipe.id,
+      text: recipe.title
+    });
   }
 
   function botSay(who:String, text:String, code:Bool = false):Void
@@ -1569,7 +1681,10 @@ class LuaScriptEditorState extends UIState
 
     if (LuaScan.scan(editor.text).issues.length > 0)
     {
-      botSay('bot', botPortuguese ? 'Seu script tem blocos sem end. Corrija primeiro, ou use Substituir.' : 'Your script has blocks without an end. Fix them first, or use Replace.');
+      botSay(
+        'bot',
+        botPortuguese ? 'Seu script tem blocos sem end. Corrija primeiro, ou use Substituir.' : 'Your script has blocks without an end. Fix them first, or use Replace.'
+      );
       return;
     }
 
@@ -1606,7 +1721,10 @@ class LuaScriptEditorState extends UIState
 
     if (message == null)
     {
-      botSay('bot', botPortuguese ? 'Nao ha erros para explicar. O script passa na checagem de sintaxe.' : 'There is no error to explain. The script passes the syntax check.');
+      botSay(
+        'bot',
+        botPortuguese ? 'Nao ha erros para explicar. O script passa na checagem de sintaxe.' : 'There is no error to explain. The script passes the syntax check.'
+      );
       return;
     }
 
