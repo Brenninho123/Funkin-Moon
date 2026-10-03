@@ -55,9 +55,7 @@ import funkin.mobile.util.HapticUtil;
 class ModMenuState extends MusicBeatState
 {
   public static var instance:Null<ModMenuState> = null;
-
   public static inline final BASE_GAME_MOD_ID:String = '__base_game__';
-
   static inline final BASE_GAME_MOD_ICON_PATH:String = 'ui/mods/base-icon';
 
   public var bf:ModMenuCharacter;
@@ -76,19 +74,16 @@ class ModMenuState extends MusicBeatState
   var buttonDone:ModMenuButton = new ModMenuButton();
   var hitboxOpenFolder:FunkinSprite;
   var exitingMenu:Bool = false;
-
   #if FEATURE_ONE_CLICK_INSTALL
   var installPopup:ModMenuInstallPopup;
   var pendingInstall:Null<OneClickMod> = null;
   var installCancelled:Bool = false;
   #end
-
   var disabledModItems:ModMenuItemList = new ModMenuItemList();
   var enabledModItems:ModMenuItemList = new ModMenuItemList();
   var selection:ModMenuSelection = DisabledModList;
   var transitionLayer:FunkinSpriteGroup;
   var pendingTransitions:Array<TransitionRecord> = [];
-
   var bgWires:FunkinSprite;
   var darkness:FunkinSprite;
   var fileDrop:FunkinSprite;
@@ -154,6 +149,10 @@ class ModMenuState extends MusicBeatState
 
     transIn = FlxTransitionableState.defaultTransIn;
     transOut = FlxTransitionableState.defaultTransOut;
+
+    #if !mobile
+    Cursor.show();
+    #end
 
     super.create();
 
@@ -1108,6 +1107,9 @@ class ModMenuState extends MusicBeatState
     }
 
     handleInput(elapsed);
+    #if !mobile
+    updateMouseCursor();
+    #end
 
     if (!allowInput && !shockTimer.active)
     {
@@ -1189,7 +1191,8 @@ class ModMenuState extends MusicBeatState
       }
       #end
 
-      handleKeyboard();
+      handleMouse(elapsed);
+      if (mouseGrabbedItem == null) handleKeyboard();
     }
     else
     {
@@ -1202,27 +1205,227 @@ class ModMenuState extends MusicBeatState
     }
   }
 
-  function handleMouse():Void
+  // ---------- MOUSE ----------
+  var mousePoint:FlxPoint = FlxPoint.get();
+  var mouseGrabbedItem:Null<ModMenuItem> = null;
+  var mouseOriginList:Null<ModMenuItemList> = null;
+  var mouseTapItem:Null<ModMenuItem> = null;
+  var mouseTapList:Null<ModMenuItemList> = null;
+  var mouseStartX:Float = 0;
+  var mouseStartY:Float = 0;
+  var mouseTapElapsed:Float = 0;
+  var mouseGrabOffX:Float = 0;
+  var mouseGrabOffY:Float = 0;
+  var mouseVelX:Float = 0;
+  final mouseDragThreshold:Float = 6;
+  final mouseTapMaxDuration:Float = 0.25;
+  final mouseFlickVelocity:Float = 900;
+
+  function mouseOver(spr:flixel.FlxObject):Bool
   {
-    if (hasTransitions() || exitingMenu) return;
+    var p:FlxPoint = FlxG.mouse.getWorldPosition(spr.camera, mousePoint);
+    return p.x >= spr.x && p.x <= spr.x + spr.width && p.y >= spr.y && p.y <= spr.y + spr.height;
+  }
 
-    if (FlxG.mouse.justPressed)
+  function pickMouseItem(list:ModMenuItemList, rect:flixel.FlxObject):Null<ModMenuItem>
+  {
+    if (!mouseOver(rect)) return null; // evita pegar item cortado pelo clipRect
+    for (item in list.modItems)
     {
-      var target = FlxG.mouse.getWorldPosition();
+      if (item.locked) continue;
+      if (mouseOver(item)) return item;
+    }
+    return null;
+  }
 
-      if (buttonBackToMenu.overlapsPoint(target))
+  function updateMouseCursor():Void
+  {
+    if (!FlxG.mouse.visible) return;
+
+    var mode:CursorMode = Default;
+
+    if (mouseGrabbedItem != null)
+    {
+      mode = Grabbing;
+    }
+    else if (allowInput && !exitingMenu && !hasTransitions())
+    {
+      if (mouseOver(hitboxOpenFolder) || mouseOver(buttonDone) || mouseOver(buttonBackToMenu)) mode = Pointer;
+      else if (pickMouseItem(enabledModItems, rightRectangle) != null || pickMouseItem(disabledModItems, leftRectangle) != null) mode = Pointer;
+    }
+
+    Cursor.cursorMode = mode;
+  }
+
+  function handleMouse(elapsed:Float):Void
+  {
+    if (exitingMenu || backPressStage > 0) return;
+
+    // arrastando um mod
+    if (mouseGrabbedItem != null)
+    {
+      var item:ModMenuItem = mouseGrabbedItem;
+      var p:FlxPoint = FlxG.mouse.getWorldPosition(item.camera, mousePoint);
+      var k:Float = Math.min(1, elapsed * 30);
+      var prevX:Float = item.localX;
+
+      item.localX = FlxMath.lerp(item.localX, p.x - mouseGrabOffX - transitionLayer.x, k);
+      item.localY = FlxMath.lerp(item.localY, p.y - mouseGrabOffY - transitionLayer.y, k);
+      mouseVelX = FlxMath.lerp(mouseVelX, (item.localX - prevX) / Math.max(elapsed, 0.0001), 0.35);
+
+      if (FlxG.mouse.justReleased) releaseMouseItem();
+      return;
+    }
+
+    if (hasTransitions()) return;
+
+    // scroll com a rodinha
+    if (FlxG.mouse.wheel != 0)
+    {
+      var wheelList:Null<ModMenuItemList> = mouseOver(leftRectangle) ? disabledModItems : mouseOver(rightRectangle) ? enabledModItems : null;
+      wheelList?.scrollBy(FlxG.mouse.wheel * 40); // se ficar invertido, troque o sinal
+    }
+
+    // hover nos botões
+    if (FlxG.mouse.justMoved)
+    {
+      var hovered:Null<ModMenuSelection> = null;
+      if (mouseOver(hitboxOpenFolder)) hovered = OpenModsFolder;
+      else if (mouseOver(buttonDone)) hovered = Done;
+      else if (mouseOver(buttonBackToMenu)) hovered = BackToMenu;
+
+      if (hovered != null && hovered != selection)
       {
-        backToMainMenu();
-      }
-      else if (buttonOpenFolder.overlapsPoint(target))
-      {
-        openModsFolder();
-      }
-      else if (buttonDone.overlapsPoint(target))
-      {
-        applyModlist();
+        oldSelection = selection;
+        selection = hovered;
+        handleSelection();
       }
     }
+
+    // clique
+    if (FlxG.mouse.justPressed)
+    {
+      if (mouseOver(buttonBackToMenu))
+      {
+        FunkinSound.playOnce(Paths.sound('ui/main-menu/cancel-menu'), 0.4);
+        pressBackButton();
+        return;
+      }
+      if (mouseOver(hitboxOpenFolder))
+      {
+        FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+        openFolderAnimator.playAnimation('accept');
+        openFolderAnimator.onFinish = openModsFolder;
+        return;
+      }
+      if (mouseOver(buttonDone))
+      {
+        FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+        playElectrocutionSequence();
+        return;
+      }
+
+      var item:Null<ModMenuItem> = pickMouseItem(enabledModItems, rightRectangle);
+      var list:Null<ModMenuItemList> = enabledModItems;
+      if (item == null)
+      {
+        item = pickMouseItem(disabledModItems, leftRectangle);
+        list = disabledModItems;
+      }
+
+      if (item != null)
+      {
+        mouseTapItem = item;
+        mouseTapList = list;
+        mouseStartX = FlxG.mouse.x;
+        mouseStartY = FlxG.mouse.y;
+        mouseTapElapsed = 0;
+      }
+    }
+
+    if (mouseTapItem == null) return;
+
+    if (FlxG.mouse.pressed)
+    {
+      mouseTapElapsed += elapsed;
+
+      var dx:Float = FlxG.mouse.x - mouseStartX;
+      var dy:Float = FlxG.mouse.y - mouseStartY;
+
+      if (Math.sqrt(dx * dx + dy * dy) >= mouseDragThreshold)
+      {
+        var item:ModMenuItem = mouseTapItem;
+        var list:ModMenuItemList = mouseTapList;
+        mouseTapItem = null;
+        mouseTapList = null;
+
+        FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+
+        list.selectModItem(item, false);
+        mouseGrabbedItem = item;
+        mouseOriginList = list;
+        mouseVelX = 0;
+
+        var p:FlxPoint = FlxG.mouse.getWorldPosition(item.camera, mousePoint);
+        mouseGrabOffX = p.x - item.x;
+        mouseGrabOffY = p.y - item.y;
+
+        putItemInTransitionLayer(item, item.x, item.y);
+        selection = (list == enabledModItems) ? EnabledModList : DisabledModList;
+      }
+    }
+    else if (FlxG.mouse.justReleased)
+    {
+      var item:ModMenuItem = mouseTapItem;
+      var list:ModMenuItemList = mouseTapList;
+      mouseTapItem = null;
+      mouseTapList = null;
+
+      // clique rápido = alterna o mod
+      if (mouseTapElapsed <= mouseTapMaxDuration && item.getModId() != BASE_GAME_MOD_ID)
+      {
+        FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
+        if (list == disabledModItems) enableMod(item);
+        else
+          disableMod(item);
+      }
+    }
+  }
+
+  function releaseMouseItem():Void
+  {
+    var item:ModMenuItem = mouseGrabbedItem;
+    var origin:ModMenuItemList = mouseOriginList;
+    var changed:Bool = false;
+
+    if (origin == enabledModItems)
+    {
+      if (mouseOver(leftRectangle) || mouseVelX < -mouseFlickVelocity)
+      {
+        disableMod(item);
+        changed = true;
+      }
+    }
+    else
+    {
+      if (mouseOver(rightRectangle) || mouseVelX > mouseFlickVelocity)
+      {
+        changed = enableMod(item);
+      }
+    }
+
+    // soltou fora de qualquer caixa: volta pro lugar de origem
+    if (!changed)
+    {
+      var finalIndex:Int = origin.modItems.indexOf(item);
+      var count:Int = origin.modItems.length;
+      var tx:Float = origin.x + ModMenuItemList.ITEM_X_OFFSET;
+      var ty:Float = origin.y + origin.getModItemYPosForCount(finalIndex, count) + origin.scrollOffset;
+      startItemTransition(item, tx, ty, origin, finalIndex);
+    }
+    mouseGrabbedItem = null;
+    mouseOriginList = null;
+    mouseVelX = 0;
   }
 
   var holdDirection:Int = 0;
@@ -1647,13 +1850,11 @@ class ModMenuState extends MusicBeatState
   final flickVelocityThreshold:Float = 900;
   final momentumStopVelocity:Float = 40;
   final momentumDecayRate:Float = 4.5;
-
   var tapItem:Null<ModMenuItem> = null;
   var tapList:Null<ModMenuItemList> = null;
   var tapStartX:Float = 0;
   var tapStartY:Float = 0;
   var tapElapsed:Float = 0;
-
   var scrollVelocity:Float = 0;
   var itemVelocityX:Float = 0;
   var touchScrolling:Bool = false;
@@ -1662,9 +1863,12 @@ class ModMenuState extends MusicBeatState
   {
     return switch (selection)
     {
-      case EnabledModList: enabledModItems;
-      case DisabledModList: disabledModItems;
-      default: null;
+      case EnabledModList:
+        enabledModItems;
+      case DisabledModList:
+        disabledModItems;
+      default:
+        null;
     }
   }
 
@@ -1686,7 +1890,8 @@ class ModMenuState extends MusicBeatState
     }
   }
 
-  function checkItemTouch(itemList:ModMenuItemList, targetSelection:ModMenuSelection):Void
+  function checkItemTouch(itemList:ModMenuItemList,
+    targetSelection:ModMenuSelection):Void
   {
     if (grabbedItem == null && tapItem == null)
     {
@@ -1965,6 +2170,7 @@ class ModMenuState extends MusicBeatState
   #end
 
   var lastModIndex:Int = 0;
+
   function handleSelection():Void
   {
     FunkinSound.playOnce(Paths.sound('ui/main-menu/scroll-menu'), 0.4);
@@ -1990,28 +2196,30 @@ class ModMenuState extends MusicBeatState
     switch (selection)
     {
       case DisabledModList:
-        switch(oldSelection)
+        switch (oldSelection)
         {
           case OpenModsFolder:
-            if(lastInput == 'up') disabledModItems.selectLastItem(lastSelectDir);
+            if (lastInput == 'up') disabledModItems.selectLastItem(lastSelectDir);
           case EnabledModList:
             var offset = (disabledModItems.length - 1) - (enabledModItems.length - 1);
 
-            if (disabledModItems.modItems.indexOf(disabledModItems.modItems[lastModIndex + offset]) == -1) disabledModItems.selectLastItem(lastSelectDir);
-            else disabledModItems.selectItem(lastModIndex + offset, lastSelectDir);
+            if (disabledModItems.modItems.indexOf(
+              disabledModItems.modItems[lastModIndex + offset]
+            ) == -1) disabledModItems.selectLastItem(lastSelectDir); else disabledModItems.selectItem(lastModIndex + offset, lastSelectDir);
           default:
             disabledModItems.selectFirstItem(lastSelectDir);
         }
       case EnabledModList:
-        switch(oldSelection)
+        switch (oldSelection)
         {
           case OpenModsFolder:
-            if(lastInput == 'up') enabledModItems.selectLastItem(lastSelectDir);
+            if (lastInput == 'up') enabledModItems.selectLastItem(lastSelectDir);
           case DisabledModList:
             var offset = (enabledModItems.length - 1) - (disabledModItems.length - 1);
 
-            if(enabledModItems.modItems.indexOf(enabledModItems.modItems[lastModIndex + offset]) == -1) enabledModItems.selectLastItem(lastSelectDir);
-            else enabledModItems.selectItem(lastModIndex + offset, lastSelectDir);
+            if (enabledModItems.modItems.indexOf(
+              enabledModItems.modItems[lastModIndex + offset]
+            ) == -1) enabledModItems.selectLastItem(lastSelectDir); else enabledModItems.selectItem(lastModIndex + offset, lastSelectDir);
           default:
             enabledModItems.selectFirstItem(lastSelectDir);
         }
