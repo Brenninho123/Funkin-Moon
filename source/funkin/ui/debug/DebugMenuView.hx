@@ -43,8 +43,11 @@ class DebugMenuView extends Box
 
     this.entries = entries;
 
-    debugList.onComponentEvent = onItemEvent;
+    // debugList.onComponentEvent = onItemEvent;
     debugSearch.onChange = onSearchChange;
+
+    debugList.registerEvent(MouseEvent.MOUSE_MOVE, onListMouseMove);
+    debugList.registerEvent(MouseEvent.CLICK, onListClick);
 
     debugDim.opacity = 0;
     debugPanel.opacity = 0;
@@ -82,15 +85,24 @@ class DebugMenuView extends Box
 
     for (entry in entries)
     {
-      if (query == '' || entry.title.toLowerCase().indexOf(query) >= 0 || entry.subtitle.toLowerCase().indexOf(query) >= 0
-        || entry.tag.toLowerCase().indexOf(query) >= 0) shown.push(entry);
+      if (
+        query == ''
+        || entry.title.toLowerCase().indexOf(query) >= 0
+        || entry.subtitle.toLowerCase().indexOf(query) >= 0
+        || entry.tag.toLowerCase().indexOf(query) >= 0
+      ) shown.push(entry);
     }
 
     updating = true;
 
     debugList.dataSource.clear();
 
-    for (entry in shown) debugList.dataSource.add({title: entry.title, subtitle: entry.subtitle, tag: entry.tag, id: entry.id});
+    for (entry in shown) debugList.dataSource.add({
+      title: entry.title,
+      subtitle: entry.subtitle,
+      tag: entry.tag,
+      id: entry.id
+    });
 
     index = 0;
 
@@ -101,20 +113,55 @@ class DebugMenuView extends Box
     debugCount.text = shown.length == entries.length ? entries.length + ' tools' : shown.length + ' of ' + entries.length;
   }
 
-  function onItemEvent(event:ItemEvent):Void
+  // Sobe pela hierarquia a partir do componente sob o mouse até achar o item da lista
+
+  function itemIndexFromTarget(target:Component):Int
   {
-    if (updating || event.sourceEvent == null || event.sourceEvent.type != MouseEvent.CLICK) return;
+    var current:Component = target;
 
-    var id:String = Std.string(Reflect.field(event.data, 'id'));
-
-    for (i in 0...shown.length)
+    while (current != null && current != debugList)
     {
-      if (shown[i].id != id) continue;
+      var value:Dynamic = Reflect.getProperty(current, 'itemIndex');
 
-      index = i;
-      activate();
-      return;
+      if (value != null && Std.isOfType(value, Int))
+      {
+        var found:Int = cast value;
+
+        return (found >= 0 && found < shown.length) ? found : -1;
+      }
+
+      current = current.parentComponent;
     }
+
+    return -1;
+  }
+
+  function selectIndex(newIndex:Int):Void
+  {
+    if (newIndex < 0 || newIndex >= shown.length || newIndex == index) return;
+
+    index = newIndex;
+
+    updating = true;
+    debugList.selectedIndex = index;
+    updating = false;
+
+    if (onSelectionMove != null) onSelectionMove();
+  }
+
+  function onListMouseMove(event:MouseEvent):Void
+  {
+    selectIndex(itemIndexFromTarget(event.target));
+  }
+
+  function onListClick(event:MouseEvent):Void
+  {
+    var clicked:Int = itemIndexFromTarget(event.target);
+
+    if (clicked < 0) return;
+
+    index = clicked;
+    activate();
   }
 
   public function move(delta:Int):Void

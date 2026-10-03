@@ -37,6 +37,15 @@ class FunkinDebugDisplay extends Sprite
   static final EXTRA_LINE_HEIGHT:Float = 14.5;
   static final EXTRA_MIN_WIDTH:Float = 210;
   static final EXTRA_TEXT_COLOR:Int = 0xC8D0DA;
+  // Layout do modo avançado
+  static final ADV_TEXT_Y:Int = 3;
+  static final ADV_TEXT_LINES:Int = 7;
+  static final ADV_TEXT_LINE_HEIGHT:Float = 15;
+  static final ADV_TEXT_GAP:Int = 6;
+  static final ADV_LABEL_HEIGHT:Int = 18;
+  static final ADV_GRAPH_HEIGHT:Int = 25;
+  static final ADV_GRAPH_GAP:Int = 6;
+  static final ADV_GRAPH_STEP:Int = ADV_LABEL_HEIGHT + ADV_GRAPH_HEIGHT + ADV_GRAPH_GAP;
 
   public var isAdvanced(default, set):Bool = false;
   public var backgroundOpacity(default, set):Float = 0.5;
@@ -195,6 +204,8 @@ class FunkinDebugDisplay extends Sprite
     extraLineCount = 0;
     lastExtraText = null;
 
+    baseHeight = advanced ? computeAdvancedHeight() : (OUTER_RECT_DIMENSIONS[1] * bgHeightMultiplier) + (INNER_RECT_DIFF * 2);
+
     background = new Shape();
     drawPanelBackground();
     background.alpha = backgroundOpacity;
@@ -258,52 +269,61 @@ class FunkinDebugDisplay extends Sprite
     g.endFill();
   }
 
+  function getFpsGraphY():Int
+  {
+    return Math.ceil(ADV_TEXT_Y + (ADV_TEXT_LINES * ADV_TEXT_LINE_HEIGHT) + ADV_TEXT_GAP);
+  }
+
+  function computeAdvancedHeight():Float
+  {
+    var graphCount:Int = 2; // fps + frame time
+
+    if (MemoryUtil.supportsGCMem()) graphCount++;
+    if (MemoryUtil.supportsTaskMem()) graphCount++;
+
+    var lastGraphBottom:Int = getFpsGraphY() + ADV_GRAPH_HEIGHT + ((graphCount - 1) * ADV_GRAPH_STEP);
+
+    return lastGraphBottom + OTHERS_OFFSET;
+  }
+
+  function createLabeledGraph(y:Int, width:Int):FunkinStatsGraph
+  {
+    var graph:FunkinStatsGraph = new FunkinStatsGraph(OTHERS_OFFSET, y, width, ADV_GRAPH_HEIGHT, color);
+
+    graph.textDisplay.y = -ADV_LABEL_HEIGHT; // label de uma linha logo acima do gráfico
+    graph.textDisplay.x = ACCENT_BAR_WIDTH;
+    graph.minValue = 0;
+    addChild(graph);
+
+    return graph;
+  }
+
   function createAdvancedElements():Void
   {
     var graphsWidth:Int = OUTER_RECT_DIMENSIONS[0] + (INNER_RECT_DIFF * 2) - (OTHERS_OFFSET * 3);
-    var graphsHeight:Int = 25;
 
-    fpsGraph = new FunkinStatsGraph(OTHERS_OFFSET, OTHERS_OFFSET + 49, graphsWidth, graphsHeight, color);
-    fpsGraph.textDisplay.y = -49;
+    // Gráfico de FPS: o texto de 7 linhas fica acima dele
+    var y:Int = getFpsGraphY();
+
+    fpsGraph = new FunkinStatsGraph(OTHERS_OFFSET, y, graphsWidth, ADV_GRAPH_HEIGHT, color);
+    fpsGraph.textDisplay.y = ADV_TEXT_Y - y; // posição absoluta ADV_TEXT_Y
+    fpsGraph.textDisplay.x = ACCENT_BAR_WIDTH; // 8 + 4 = 12, igual ao modo simples
     fpsGraph.minValue = 0;
     addChild(fpsGraph);
 
-    frameTimeGraph = new FunkinStatsGraph(
-      OTHERS_OFFSET,
-      Math.floor(OTHERS_OFFSET + (fpsGraph.y + fpsGraph.axisHeight) + 22),
-      graphsWidth,
-      graphsHeight,
-      color
-    );
-    frameTimeGraph.minValue = 0;
-    addChild(frameTimeGraph);
+    y += ADV_GRAPH_STEP;
+    frameTimeGraph = createLabeledGraph(y, graphsWidth);
 
     if (MemoryUtil.supportsGCMem())
     {
-      gcMemGraph = new FunkinStatsGraph(
-        OTHERS_OFFSET,
-        Math.floor(OTHERS_OFFSET + (frameTimeGraph.y + frameTimeGraph.axisHeight) + 22),
-        graphsWidth,
-        graphsHeight,
-        color
-      );
-      gcMemGraph.minValue = 0;
-      addChild(gcMemGraph);
+      y += ADV_GRAPH_STEP;
+      gcMemGraph = createLabeledGraph(y, graphsWidth);
     }
 
     if (MemoryUtil.supportsTaskMem())
     {
-      var previousGraph:FunkinStatsGraph = gcMemGraph != null ? gcMemGraph : frameTimeGraph;
-
-      taskMemGraph = new FunkinStatsGraph(
-        OTHERS_OFFSET,
-        Math.floor(OTHERS_OFFSET + (previousGraph.y + previousGraph.axisHeight) + 22),
-        graphsWidth,
-        graphsHeight,
-        color
-      );
-      taskMemGraph.minValue = 0;
-      addChild(taskMemGraph);
+      y += ADV_GRAPH_STEP;
+      taskMemGraph = createLabeledGraph(y, graphsWidth);
     }
   }
 
@@ -342,7 +362,15 @@ class FunkinDebugDisplay extends Sprite
 
     if (memory.pressure != MemoryPressure.Normal)
     {
-      lines.push('MEMORY: ' + memory.pressure.getName().toUpperCase() + '  ' + FlxStringUtil.formatBytes(memory.getUsedBytes()).toLowerCase() + ' / ' + FlxStringUtil.formatBytes(memory.softLimitBytes).toLowerCase() + ' budget');
+      lines.push(
+        'MEMORY: ' + memory.pressure
+        .getName()
+        .toUpperCase()
+        + '  ' + FlxStringUtil
+        .formatBytes(memory.getUsedBytes())
+        .toLowerCase()
+        + ' / ' + FlxStringUtil.formatBytes(memory.softLimitBytes).toLowerCase() + ' budget'
+      );
     }
 
     if (showPlayStateInfo && PlayState.instance != null)
