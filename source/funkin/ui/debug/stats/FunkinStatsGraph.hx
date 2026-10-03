@@ -34,7 +34,7 @@ class FunkinStatsGraph extends Sprite
 
     textDisplay = new TextField();
     textDisplay.width = 500;
-    textDisplay.y -= 49;
+    textDisplay.y -= 55;
     textDisplay.selectable = false;
     textDisplay.mouseEnabled = false;
     textDisplay.defaultTextFormat = new TextFormat('Montserrat', 12, graphColor, JUSTIFY);

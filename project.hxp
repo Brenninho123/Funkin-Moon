@@ -17,9 +17,9 @@ class Project extends HXProject
 {
   static final VERSION:String = "0.8.8";
 
-  static final BUILD_NUMBER:Int = 283;
+  static final BUILD_NUMBER:Int = 293;
 
-  static final MOON_VERSION:String = '0.1.0';
+  static final MOON_VERSION:String = '0.1.1';
 
   static final TITLE:String = "Friday Night Funkin': Moon Engine";
 
